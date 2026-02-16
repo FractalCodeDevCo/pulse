@@ -1,16 +1,14 @@
 export const dynamic = "force-dynamic"
 
-import MaterialPageClient from "../../../components/material/MaterialPageClient"
+import MaterialModulePage from "../../../components/material/MaterialModulePage"
 
-type MaterialPageProps = {
+type MaterialCapturePageProps = {
   searchParams: Promise<{
     project?: string
   }>
 }
 
-export default async function MaterialPage({ searchParams }: MaterialPageProps) {
+export default async function MaterialCapturePage({ searchParams }: MaterialCapturePageProps) {
   const params = await searchParams
-  const projectId = params.project ?? null
-
-  return <MaterialPageClient projectId={projectId} />
+  return <MaterialModulePage projectId={params.project ?? null} />
 }
