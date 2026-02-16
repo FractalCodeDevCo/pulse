@@ -1,50 +1,48 @@
 import { FieldType } from "./fieldType"
 import { Zone } from "./zones"
 
-export enum TrafficLightStatus {
-  GREEN = "GREEN",
-  YELLOW = "YELLOW",
-  RED = "RED",
-}
-
-export enum RollStatusSelection {
-  JUSTO_NORMAL = "JUSTO_NORMAL",
-  FALTO = "FALTO",
-  SOBRO = "SOBRO",
-  SOBRO_DEMASIADO = "SOBRO_DEMASIADO",
-}
-
-export interface RollLabelData {
-  length: number
-  color?: string
-  dyeLot?: string
-  rollId?: string
+export enum ZoneRollosStatus {
+  IN_PROGRESS = "IN_PROGRESS",
+  COMPLETED = "COMPLETED",
 }
 
 export interface RollosFormValues {
   zone: Zone | ""
-  labelPhoto: string | null
-  installationPhoto: string | null
-  length: string
-  color: string
-  dyeLot: string
-  rollId: string
-  status: RollStatusSelection | ""
-  comments: string
-  manualOverride: boolean
-  certifiedRoll?: boolean
+  totalRollsInstalled: string
+  seamsCompleted: string
+  wasteEstimated: string
+  zoneStatus: ZoneRollosStatus | ""
+  generalPhotos: string[]
+  observations: string
+  crewId: string
 }
 
 export interface RollosRecord {
+  id?: string
+  projectId: string
   fieldType: FieldType
   zone: Zone
-  labelData: RollLabelData
-  manualOverride: boolean
-  status: RollStatusSelection
-  trafficLightStatus: TrafficLightStatus
-  comments?: string
-  labelPhoto?: string
-  installationPhoto?: string
-  certifiedRoll?: boolean
+  totalRollsInstalled: number
+  seamsCompleted: number
+  wasteEstimated?: number
+  zoneStatus: ZoneRollosStatus
+  generalPhotos: string[]
+  observations?: string
+  crewId: string
   timestamp: string
+}
+
+export interface RollosRow {
+  id: string
+  zone_id: Zone
+  project_id: string | null
+  field_type: string | null
+  total_rolls_installed: number
+  seams_completed: number
+  waste_estimated: number | null
+  zone_status: ZoneRollosStatus
+  observations: string | null
+  crew_id: string
+  created_at: string
+  rollos_photos: Array<{ image_url: string }> | null
 }

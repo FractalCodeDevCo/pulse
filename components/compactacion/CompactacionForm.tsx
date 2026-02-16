@@ -1,13 +1,13 @@
 "use client"
 
 import Image from "next/image"
-import { ChangeEvent, FormEvent, useState } from "react"
+import { ChangeEvent, FormEvent, useMemo, useState } from "react"
 
 import {
   CompactacionFormValues,
   CompactacionRecord,
-  CompactionMethod,
-  LevelingStatus,
+  CompactacionType,
+  TrafficLightStatus,
 } from "../../types/compactacion"
 import { FieldType } from "../../types/fieldType"
 import { Zone } from "../../types/zones"
@@ -15,17 +15,15 @@ import { ZoneSelect } from "../shared/ZoneSelect"
 
 const INITIAL_VALUES: CompactacionFormValues = {
   zone: "",
-  compactionMethod: "",
-  levelingVerified: "",
-  notes: "",
-  evidencePhoto: null,
+  compactacionType: CompactacionType.GENERAL,
+  directionAlignedToRolls: true,
+  surfaceFirm: true,
+  moistureOk: true,
+  trafficLightStatus: "",
+  photos: [],
+  observations: "",
+  crewId: "",
 }
-
-const METHOD_OPTIONS: Array<{ value: CompactionMethod; label: string }> = [
-  { value: CompactionMethod.PLACA, label: "Placa" },
-  { value: CompactionMethod.RODILLO, label: "Rodillo" },
-  { value: CompactionMethod.MANUAL, label: "Manual" },
-]
 
 function readAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -38,47 +36,69 @@ function readAsDataUrl(file: File): Promise<string> {
 
 type CompactacionFormProps = {
   fieldType: FieldType
+  projectId: string
+  defaultZone?: Zone | ""
   onSubmitRecord: (record: CompactacionRecord) => Promise<void> | void
 }
 
-export function CompactacionForm({ fieldType, onSubmitRecord }: CompactacionFormProps) {
-  const [values, setValues] = useState<CompactacionFormValues>(INITIAL_VALUES)
+export function CompactacionForm({
+  fieldType,
+  projectId,
+  defaultZone = "",
+  onSubmitRecord,
+}: CompactacionFormProps) {
+  const [values, setValues] = useState<CompactacionFormValues>({ ...INITIAL_VALUES, zone: defaultZone })
   const [error, setError] = useState("")
   const [isReadingPhoto, setIsReadingPhoto] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  async function handlePhotoChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0]
-    if (!file) return
+  const canSubmit = useMemo(() => {
+    return Boolean(values.zone && values.compactacionType && values.trafficLightStatus && values.crewId.trim())
+  }, [values])
 
-    setIsReadingPhoto(true)
+  async function handlePhotosChange(event: ChangeEvent<HTMLInputElement>) {
+    const files = event.target.files
+    if (!files || files.length === 0) return
+
     setError("")
+    setIsReadingPhoto(true)
 
     try {
-      const evidencePhoto = await readAsDataUrl(file)
-      setValues((prev) => ({ ...prev, evidencePhoto }))
+      const selected = Array.from(files).slice(0, 2)
+      const urls = await Promise.all(selected.map((file) => readAsDataUrl(file)))
+      setValues((prev) => ({ ...prev, photos: urls }))
     } catch {
-      setError("Failed to load photo. Try again.")
+      setError("No pudimos cargar las fotos.")
     } finally {
       setIsReadingPhoto(false)
     }
   }
 
+  function removePhoto(index: number) {
+    setValues((prev) => ({ ...prev, photos: prev.photos.filter((_, i) => i !== index) }))
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
-    if (!values.zone) return setError("Zone is required.")
-    if (!values.compactionMethod) return setError("Compaction method is required.")
-    if (!values.levelingVerified) return setError("Leveling status is required.")
-    if (!values.evidencePhoto) return setError("Evidence photo is required.")
+    if (!values.zone) return setError("Zona requerida.")
+    if (!values.compactacionType) return setError("Tipo de compactación requerido.")
+    if (!values.trafficLightStatus) return setError("Semáforo requerido.")
+    if (values.photos.length < 1 || values.photos.length > 2) return setError("Sube 1 o 2 fotos.")
+    if (!values.crewId.trim()) return setError("Crew ID requerido.")
 
     const record: CompactacionRecord = {
+      projectId,
       fieldType,
       zone: values.zone as Zone,
-      compactionMethod: values.compactionMethod as CompactionMethod,
-      levelingVerified: values.levelingVerified as LevelingStatus,
-      notes: values.notes.trim() || undefined,
-      evidencePhoto: values.evidencePhoto,
+      compactacionType: values.compactacionType as CompactacionType,
+      directionAlignedToRolls: values.directionAlignedToRolls,
+      surfaceFirm: values.surfaceFirm,
+      moistureOk: values.moistureOk,
+      trafficLightStatus: values.trafficLightStatus as TrafficLightStatus,
+      photos: values.photos,
+      observations: values.observations.trim() || undefined,
+      crewId: values.crewId.trim(),
       timestamp: new Date().toISOString(),
     }
 
@@ -87,9 +107,9 @@ export function CompactacionForm({ fieldType, onSubmitRecord }: CompactacionForm
 
     try {
       await onSubmitRecord(record)
-      setValues(INITIAL_VALUES)
+      setValues({ ...INITIAL_VALUES, zone: defaultZone })
     } catch {
-      setError("Could not save record. Kept local backup.")
+      setError("No se pudo guardar en nube. Queda respaldo local.")
     } finally {
       setIsSubmitting(false)
     }
@@ -97,98 +117,160 @@ export function CompactacionForm({ fieldType, onSubmitRecord }: CompactacionForm
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
-      <ZoneSelect value={values.zone} onChange={(zone) => setValues((prev) => ({ ...prev, zone }))} />
+      <ZoneSelect
+        label="Zona"
+        value={values.zone}
+        onChange={(zone) => setValues((prev) => ({ ...prev, zone }))}
+      />
 
       <label className="block space-y-2">
-        <span className="text-sm text-neutral-300">Compaction Method</span>
+        <span className="text-sm text-neutral-300">Tipo de compactación</span>
         <select
-          value={values.compactionMethod}
+          value={values.compactacionType}
           onChange={(event) =>
-            setValues((prev) => ({ ...prev, compactionMethod: event.target.value as CompactionMethod | "" }))
+            setValues((prev) => ({ ...prev, compactacionType: event.target.value as CompactacionType | "" }))
           }
           className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
           required
         >
-          <option value="">Select method</option>
-          {METHOD_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
+          <option value={CompactacionType.GENERAL}>General</option>
+          <option value={CompactacionType.AJUSTE}>Ajuste</option>
         </select>
       </label>
 
+      <div className="grid gap-3 sm:grid-cols-3">
+        <button
+          type="button"
+          onClick={() => setValues((prev) => ({ ...prev, directionAlignedToRolls: !prev.directionAlignedToRolls }))}
+          className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
+            values.directionAlignedToRolls
+              ? "border-emerald-500 bg-emerald-500/20 text-emerald-200"
+              : "border-neutral-700 bg-neutral-900"
+          }`}
+        >
+          Dirección alineada: {values.directionAlignedToRolls ? "Sí" : "No"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setValues((prev) => ({ ...prev, surfaceFirm: !prev.surfaceFirm }))}
+          className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
+            values.surfaceFirm
+              ? "border-emerald-500 bg-emerald-500/20 text-emerald-200"
+              : "border-neutral-700 bg-neutral-900"
+          }`}
+        >
+          Superficie firme: {values.surfaceFirm ? "Sí" : "No"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setValues((prev) => ({ ...prev, moistureOk: !prev.moistureOk }))}
+          className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
+            values.moistureOk
+              ? "border-emerald-500 bg-emerald-500/20 text-emerald-200"
+              : "border-neutral-700 bg-neutral-900"
+          }`}
+        >
+          Humedad ok: {values.moistureOk ? "Sí" : "No"}
+        </button>
+      </div>
+
       <fieldset className="space-y-2">
-        <legend className="text-sm text-neutral-300">Leveling Verified</legend>
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={() => setValues((prev) => ({ ...prev, levelingVerified: LevelingStatus.SI }))}
-            className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
-              values.levelingVerified === LevelingStatus.SI
-                ? "border-emerald-500 bg-emerald-500/20 text-emerald-200"
-                : "border-neutral-700 bg-neutral-900"
-            }`}
-          >
-            Si (Bien)
-          </button>
-          <button
-            type="button"
-            onClick={() => setValues((prev) => ({ ...prev, levelingVerified: LevelingStatus.NO }))}
-            className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
-              values.levelingVerified === LevelingStatus.NO
-                ? "border-amber-500 bg-amber-500/20 text-amber-200"
-                : "border-neutral-700 bg-neutral-900"
-            }`}
-          >
-            No (Le falta)
-          </button>
+        <legend className="text-sm text-neutral-300">Semáforo</legend>
+        <div className="grid gap-2 sm:grid-cols-3">
+          {[
+            { value: TrafficLightStatus.GREEN, label: "Green", cls: "border-emerald-500 text-emerald-200" },
+            { value: TrafficLightStatus.YELLOW, label: "Yellow", cls: "border-amber-500 text-amber-200" },
+            { value: TrafficLightStatus.RED, label: "Red", cls: "border-red-500 text-red-200" },
+          ].map((option) => {
+            const active = values.trafficLightStatus === option.value
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() =>
+                  setValues((prev) => ({ ...prev, trafficLightStatus: option.value as TrafficLightStatus }))
+                }
+                className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
+                  active ? `${option.cls} bg-neutral-950` : "border-neutral-700 bg-neutral-900"
+                }`}
+              >
+                {option.label}
+              </button>
+            )
+          })}
         </div>
       </fieldset>
 
       <label className="block space-y-2">
-        <span className="text-sm text-neutral-300">Notes (optional)</span>
-        <textarea
-          rows={3}
-          value={values.notes}
-          onChange={(event) => setValues((prev) => ({ ...prev, notes: event.target.value }))}
-          className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
-        />
-      </label>
-
-      <label className="block space-y-2">
-        <span className="text-sm text-neutral-300">Evidence Photo</span>
+        <span className="text-sm text-neutral-300">Fotos (1 a 2)</span>
         <input
           type="file"
           accept="image/*"
           capture="environment"
-          onChange={handlePhotoChange}
+          multiple
+          onChange={handlePhotosChange}
           className="block w-full rounded-xl border border-neutral-700 bg-neutral-900 p-2 text-sm"
           required
         />
       </label>
 
-      {values.evidencePhoto ? (
-        <div className="overflow-hidden rounded-xl border border-neutral-700">
-          <Image
-            src={values.evidencePhoto}
-            alt="Evidence preview"
-            width={960}
-            height={540}
-            unoptimized
-            className="h-52 w-full object-cover"
-          />
+      {values.photos.length > 0 ? (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {values.photos.map((photo, index) => (
+            <div key={photo} className="space-y-2">
+              <Image
+                src={photo}
+                alt={`Compactacion ${index + 1}`}
+                width={600}
+                height={400}
+                unoptimized
+                className="h-32 w-full rounded-xl border border-neutral-700 object-cover"
+              />
+              <button
+                type="button"
+                onClick={() => removePhoto(index)}
+                className="w-full rounded-lg border border-neutral-600 px-2 py-1 text-xs hover:bg-neutral-800"
+              >
+                Quitar
+              </button>
+            </div>
+          ))}
         </div>
       ) : null}
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block space-y-2">
+          <span className="text-sm text-neutral-300">Crew ID</span>
+          <input
+            type="text"
+            value={values.crewId}
+            onChange={(event) => setValues((prev) => ({ ...prev, crewId: event.target.value }))}
+            className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
+            required
+          />
+        </label>
+
+        <label className="block space-y-2">
+          <span className="text-sm text-neutral-300">Observaciones (opcional)</span>
+          <textarea
+            rows={3}
+            value={values.observations}
+            onChange={(event) => setValues((prev) => ({ ...prev, observations: event.target.value }))}
+            className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
+          />
+        </label>
+      </div>
 
       {error ? <p className="text-sm text-red-300">{error}</p> : null}
 
       <button
         type="submit"
-        disabled={isReadingPhoto || isSubmitting}
+        disabled={!canSubmit || isReadingPhoto || isSubmitting}
         className="w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold hover:bg-blue-700 disabled:opacity-50"
       >
-        Save Compactacion
+        Guardar Compactación
       </button>
     </form>
   )
