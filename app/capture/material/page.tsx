@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic"
 
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { useEffect, useState } from "react"
+import { Suspense, useEffect, useState } from "react"
 
 import { FieldTypeSelector } from "../../../components/shared/FieldTypeSelector"
 import { saveCloudRecord } from "../../../lib/recordClient"
@@ -30,6 +30,20 @@ function readMaterialRecords(storageKey: string): MaterialRecord[] {
 }
 
 export default function MaterialPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center bg-neutral-950 text-white">
+          Cargando Material...
+        </main>
+      }
+    >
+      <MaterialPageContent />
+    </Suspense>
+  )
+}
+
+function MaterialPageContent() {
   const searchParams = useSearchParams()
   const projectId = searchParams.get("project")
   const storageKey = `pulse_material_records_${projectId ?? "default"}`
