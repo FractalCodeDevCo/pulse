@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic"
 
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { useEffect, useState } from "react"
+import { Suspense, useEffect, useState } from "react"
 
 import { RollosForm } from "../../../components/rollos/RollosForm"
 import { FieldTypeSelector } from "../../../components/shared/FieldTypeSelector"
@@ -25,6 +25,14 @@ function readRollosRecords(storageKey: string): RollosRecord[] {
 }
 
 export default function RollosPage() {
+  return (
+    <Suspense fallback={<main className="flex min-h-screen items-center justify-center bg-neutral-950 text-white">Cargando Rollos...</main>}>
+      <RollosPageContent />
+    </Suspense>
+  )
+}
+
+function RollosPageContent() {
   const searchParams = useSearchParams()
   const projectId = searchParams.get("project")
   const storageKey = `pulse_rollos_records_${projectId ?? "default"}`

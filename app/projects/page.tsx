@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic"
 
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
-import { useMemo, useState } from "react"
+import { Suspense, useMemo, useState } from "react"
 
 import { MOCK_PROJECTS, slugifyProjectName } from "../../lib/projects"
 
@@ -51,6 +51,14 @@ function saveLastProject(projectId: string) {
 }
 
 export default function ProjectsPage() {
+  return (
+    <Suspense fallback={<main className="flex min-h-screen items-center justify-center bg-neutral-950 text-white">Cargando proyectos...</main>}>
+      <ProjectsPageContent />
+    </Suspense>
+  )
+}
+
+function ProjectsPageContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const flow = (searchParams.get("flow") === "new" ? "new" : "load") as FlowMode

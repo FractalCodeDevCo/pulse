@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic"
 import Image from "next/image"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react"
+import { ChangeEvent, FormEvent, Suspense, useEffect, useMemo, useState } from "react"
 import { saveCloudRecord } from "../../../lib/recordClient"
 
 type FieldType = "football" | "soccer" | "beisbol" | "softbol"
@@ -139,6 +139,14 @@ function readPegadaRecords(storageKey: string): PegadaRecord[] {
 }
 
 export default function PegadaPage() {
+  return (
+    <Suspense fallback={<main className="flex min-h-screen items-center justify-center bg-neutral-950 text-white">Cargando Pegada...</main>}>
+      <PegadaPageContent />
+    </Suspense>
+  )
+}
+
+function PegadaPageContent() {
   const searchParams = useSearchParams()
   const projectId = searchParams.get("project")
 

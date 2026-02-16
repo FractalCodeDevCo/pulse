@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic"
 
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { useEffect, useState } from "react"
+import { Suspense, useEffect, useState } from "react"
 
 import { CompactacionForm } from "../../../components/compactacion/CompactacionForm"
 import { FieldTypeSelector } from "../../../components/shared/FieldTypeSelector"
@@ -25,6 +25,14 @@ function readCompactacionRecords(storageKey: string): CompactacionRecord[] {
 }
 
 export default function CompactacionPage() {
+  return (
+    <Suspense fallback={<main className="flex min-h-screen items-center justify-center bg-neutral-950 text-white">Cargando Compactacion...</main>}>
+      <CompactacionPageContent />
+    </Suspense>
+  )
+}
+
+function CompactacionPageContent() {
   const searchParams = useSearchParams()
   const projectId = searchParams.get("project")
   const storageKey = `pulse_compactacion_records_${projectId ?? "default"}`
