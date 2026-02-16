@@ -7,7 +7,7 @@ export enum Zone {
 
 export const ZONE_OPTIONS: Array<{ value: Zone; label: string }> = [
   { value: Zone.CENTRAL, label: "Central" },
-  { value: Zone.SIDELINE_RIGHT, label: "Sideline Right" },
-  { value: Zone.SIDELINE_LEFT, label: "Sideline Left" },
-  { value: Zone.CABECERAS, label: "Endzone" },
+  { value: Zone.SIDELINE_RIGHT, label: "Sideline Derecho" },
+  { value: Zone.SIDELINE_LEFT, label: "Sideline Izquierdo" },
+  { value: Zone.CABECERAS, label: "Cabeceras" },
 ]
