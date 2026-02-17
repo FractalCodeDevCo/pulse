@@ -37,7 +37,7 @@ export default function RollosPage() {
     <Suspense
       fallback={
         <main className="flex min-h-screen items-center justify-center bg-neutral-950 text-white">
-          Cargando Rollos...
+          Cargando Instalación Rollos...
         </main>
       }
     >
@@ -134,7 +134,7 @@ function RollosPageContent() {
   if (!projectId) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-neutral-950 px-4 text-white">
-        <p className="text-center text-neutral-300">Selecciona proyecto antes de capturar Rollos.</p>
+        <p className="text-center text-neutral-300">Selecciona proyecto antes de capturar Instalación Rollos.</p>
         <Link href="/projects?flow=load" className="rounded-xl bg-blue-600 px-4 py-3 font-semibold">
           Ir a proyectos
         </Link>
@@ -147,8 +147,8 @@ function RollosPageContent() {
       <section className="mx-auto w-full max-w-3xl space-y-6">
         <header className="space-y-2">
           <p className="text-sm text-neutral-400">Pulse / Capture / {projectId}</p>
-          <h1 className="text-3xl font-bold">Rollos</h1>
-          <p className="text-neutral-300">Registro por zona completada o parcial, no por rollo individual.</p>
+          <h1 className="text-3xl font-bold">Instalación Rollos</h1>
+          <p className="text-neutral-300">Fase unificada: Compactación + Rollos, por zona.</p>
         </header>
 
         <FieldTypeSelector value={fieldType} onChange={handleFieldTypeChange} />

@@ -35,10 +35,10 @@ export default function CaptureHubClient({ projectId }: CaptureHubClientProps) {
 
       <div className="flex w-80 flex-col gap-4">
         <Link
-          href={`/capture/compactacion${q}`}
+          href={`/capture/rollos${q}`}
           className="rounded-xl bg-orange-600 py-4 text-center text-lg font-bold transition hover:bg-orange-700"
         >
-          Compactacion
+          Instalación Rollos
         </Link>
 
         <Link
@@ -53,13 +53,6 @@ export default function CaptureHubClient({ projectId }: CaptureHubClientProps) {
           className="rounded-xl bg-green-600 py-4 text-center text-lg font-bold transition hover:bg-green-700"
         >
           Pegada
-        </Link>
-
-        <Link
-          href={`/capture/rollos${q}`}
-          className="rounded-xl bg-purple-600 py-4 text-center text-lg font-bold transition hover:bg-purple-700"
-        >
-          Rollos
         </Link>
       </div>
 

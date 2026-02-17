@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { getSupabaseAdminClient } from "../../../lib/supabase/server"
-import { ZoneRollosStatus } from "../../../types/rollos"
+import { CompactionType, PhaseStatus, RollLengthStatus } from "../../../types/rollos"
 import { Zone } from "../../../types/zones"
 
 export const runtime = "nodejs"
@@ -11,13 +11,16 @@ type RollosBody = {
   projectId?: string
   fieldType?: string
   zone?: Zone
-  totalRollsInstalled?: number
-  seamsCompleted?: number
-  wasteEstimated?: number
-  zoneStatus?: ZoneRollosStatus
-  generalPhotos?: string[]
+  totalRolls?: number
+  totalSeams?: number
+  phaseStatus?: PhaseStatus
+  compactionType?: CompactionType
+  surfaceFirm?: boolean
+  moistureOk?: boolean
+  doubleCompaction?: boolean
+  rollLengthStatus?: RollLengthStatus
+  photos?: string[]
   observations?: string
-  crewId?: string
   timestamp?: string
 }
 
@@ -31,11 +34,7 @@ function parseDataUrl(dataUrl: string): { mimeType: string; bytes: Uint8Array } 
   }
 }
 
-async function uploadImage(
-  dataUrlOrUrl: string,
-  projectId: string,
-  index: number,
-): Promise<string> {
+async function uploadImage(dataUrlOrUrl: string, projectId: string, index: number): Promise<string> {
   if (!dataUrlOrUrl.startsWith("data:image/")) return dataUrlOrUrl
 
   const parsed = parseDataUrl(dataUrlOrUrl)
@@ -82,14 +81,19 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json()) as RollosBody
 
-    if (!body.projectId || !body.zone || body.totalRollsInstalled === undefined || body.seamsCompleted === undefined) {
+    if (
+      !body.projectId ||
+      !body.zone ||
+      body.totalRolls === undefined ||
+      body.totalSeams === undefined ||
+      !body.phaseStatus ||
+      !body.compactionType ||
+      !body.rollLengthStatus
+    ) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
-    if (!body.zoneStatus || !body.crewId) {
-      return NextResponse.json({ error: "zoneStatus and crewId are required" }, { status: 400 })
-    }
 
-    const photos = (body.generalPhotos ?? []).slice(0, 3)
+    const photos = (body.photos ?? []).slice(0, 3)
     if (photos.length < 1) {
       return NextResponse.json({ error: "At least one photo is required" }, { status: 400 })
     }
@@ -107,12 +111,15 @@ export async function POST(request: Request) {
         zone_id: body.zone,
         project_id: body.projectId,
         field_type: body.fieldType ?? null,
-        total_rolls_installed: body.totalRollsInstalled,
-        seams_completed: body.seamsCompleted,
-        waste_estimated: body.wasteEstimated ?? null,
-        zone_status: body.zoneStatus,
+        total_rolls: body.totalRolls,
+        total_seams: body.totalSeams,
+        phase_status: body.phaseStatus,
+        compaction_type: body.compactionType,
+        surface_firm: body.surfaceFirm ?? false,
+        moisture_ok: body.moistureOk ?? false,
+        double_compaction: body.doubleCompaction ?? false,
+        roll_length_status: body.rollLengthStatus,
         observations: body.observations ?? null,
-        crew_id: body.crewId,
         created_at: body.timestamp ?? new Date().toISOString(),
       })
       .select("id")
@@ -155,10 +162,14 @@ export async function PATCH(request: Request) {
   if (!body.id) return NextResponse.json({ error: "id is required" }, { status: 400 })
 
   const updatePayload: Record<string, unknown> = {}
-  if (body.totalRollsInstalled !== undefined) updatePayload.total_rolls_installed = body.totalRollsInstalled
-  if (body.seamsCompleted !== undefined) updatePayload.seams_completed = body.seamsCompleted
-  if (body.wasteEstimated !== undefined) updatePayload.waste_estimated = body.wasteEstimated
-  if (body.zoneStatus !== undefined) updatePayload.zone_status = body.zoneStatus
+  if (body.totalRolls !== undefined) updatePayload.total_rolls = body.totalRolls
+  if (body.totalSeams !== undefined) updatePayload.total_seams = body.totalSeams
+  if (body.phaseStatus !== undefined) updatePayload.phase_status = body.phaseStatus
+  if (body.compactionType !== undefined) updatePayload.compaction_type = body.compactionType
+  if (body.surfaceFirm !== undefined) updatePayload.surface_firm = body.surfaceFirm
+  if (body.moistureOk !== undefined) updatePayload.moisture_ok = body.moistureOk
+  if (body.doubleCompaction !== undefined) updatePayload.double_compaction = body.doubleCompaction
+  if (body.rollLengthStatus !== undefined) updatePayload.roll_length_status = body.rollLengthStatus
   if (body.observations !== undefined) updatePayload.observations = body.observations
 
   const supabase = getSupabaseAdminClient()

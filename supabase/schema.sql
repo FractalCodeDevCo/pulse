@@ -35,7 +35,7 @@ create table if not exists public.material_records (
 create index if not exists idx_material_records_project on public.material_records(project_id);
 create index if not exists idx_material_records_created_at on public.material_records(created_at desc);
 
--- Zones catalog used by Rollos + Compactacion
+-- Zones catalog
 create table if not exists public.zones (
   id text primary key,
   name text not null unique
@@ -49,18 +49,21 @@ values
   ('CABECERAS', 'Cabeceras')
 on conflict (id) do update set name = excluded.name;
 
--- Rollos module (zone-based record)
+-- Unified Rollos + Compactacion phase (zone-based)
 create table if not exists public.rollos (
   id uuid primary key default gen_random_uuid(),
   zone_id text not null references public.zones(id),
   project_id text,
   field_type text,
-  total_rolls_installed integer not null check (total_rolls_installed >= 0),
-  seams_completed integer not null check (seams_completed >= 0),
-  waste_estimated numeric,
-  zone_status text not null check (zone_status in ('IN_PROGRESS', 'COMPLETED')),
+  total_rolls integer not null check (total_rolls >= 0),
+  total_seams integer not null check (total_seams >= 0),
+  phase_status text not null check (phase_status in ('COMPACTING', 'IN_PROGRESS', 'COMPLETED')),
+  compaction_type text not null check (compaction_type in ('PLATE', 'ROLLER', 'MANUAL')),
+  surface_firm boolean not null default false,
+  moisture_ok boolean not null default false,
+  double_compaction boolean not null default false,
+  roll_length_status text not null check (roll_length_status in ('NORMAL', 'JUSTO', 'MAJOR_MISMATCH')),
   observations text,
-  crew_id text not null,
   created_at timestamptz not null default now()
 );
 
@@ -76,7 +79,17 @@ create table if not exists public.rollos_photos (
 
 create index if not exists idx_rollos_photos_rollos on public.rollos_photos(rollos_id);
 
--- Compactacion module (general / ajuste per zone)
+-- Compatibility migration for previous rollos schema
+alter table if exists public.rollos add column if not exists total_rolls integer;
+alter table if exists public.rollos add column if not exists total_seams integer;
+alter table if exists public.rollos add column if not exists phase_status text;
+alter table if exists public.rollos add column if not exists compaction_type text;
+alter table if exists public.rollos add column if not exists surface_firm boolean;
+alter table if exists public.rollos add column if not exists moisture_ok boolean;
+alter table if exists public.rollos add column if not exists double_compaction boolean;
+alter table if exists public.rollos add column if not exists roll_length_status text;
+
+-- Keep compactacion table for backward compatibility
 create table if not exists public.compactacion (
   id uuid primary key default gen_random_uuid(),
   zone_id text not null references public.zones(id),

@@ -37,7 +37,20 @@ export async function listRollosRecords(projectId: string): Promise<RollosRow[]>
 
 export async function updateRollosRecord(
   id: string,
-  payload: Partial<Pick<RollosRecord, "totalRollsInstalled" | "seamsCompleted" | "wasteEstimated" | "zoneStatus" | "observations">>,
+  payload: Partial<
+    Pick<
+      RollosRecord,
+      | "totalRolls"
+      | "totalSeams"
+      | "phaseStatus"
+      | "compactionType"
+      | "surfaceFirm"
+      | "moistureOk"
+      | "doubleCompaction"
+      | "rollLengthStatus"
+      | "observations"
+    >
+  >,
 ): Promise<RollosRow> {
   const response = await fetch("/api/rollos", {
     method: "PATCH",

@@ -4,25 +4,29 @@ import Image from "next/image"
 import { ChangeEvent, FormEvent, useMemo, useState } from "react"
 
 import { FieldType } from "../../types/fieldType"
-import { RollosFormValues, RollosRecord, ZoneRollosStatus } from "../../types/rollos"
+import {
+  CompactionType,
+  PhaseStatus,
+  RollLengthStatus,
+  RollosFormValues,
+  RollosRecord,
+} from "../../types/rollos"
 import { Zone } from "../../types/zones"
 import { ZoneSelect } from "../shared/ZoneSelect"
 
 const INITIAL_VALUES: RollosFormValues = {
   zone: "",
-  totalRollsInstalled: "",
-  seamsCompleted: "",
-  wasteEstimated: "",
-  zoneStatus: "",
-  generalPhotos: [],
+  totalRolls: "",
+  totalSeams: "",
+  phaseStatus: "",
+  compactionType: "",
+  surfaceFirm: true,
+  moistureOk: true,
+  doubleCompaction: false,
+  rollLengthStatus: "",
+  photos: [],
   observations: "",
-  crewId: "",
 }
-
-const ZONE_STATUS_OPTIONS: Array<{ value: ZoneRollosStatus; label: string }> = [
-  { value: ZoneRollosStatus.IN_PROGRESS, label: "In Progress" },
-  { value: ZoneRollosStatus.COMPLETED, label: "Completed" },
-]
 
 function readAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -49,11 +53,12 @@ export function RollosForm({ fieldType, projectId, defaultZone = "", onSubmitRec
   const canSubmit = useMemo(() => {
     return Boolean(
       values.zone &&
-        values.totalRollsInstalled &&
-        values.seamsCompleted &&
-        values.zoneStatus &&
-        values.crewId.trim() &&
-        values.generalPhotos.length >= 1,
+        values.totalRolls &&
+        values.totalSeams &&
+        values.phaseStatus &&
+        values.compactionType &&
+        values.rollLengthStatus &&
+        values.photos.length >= 1,
     )
   }, [values])
 
@@ -67,7 +72,7 @@ export function RollosForm({ fieldType, projectId, defaultZone = "", onSubmitRec
     try {
       const selected = Array.from(files).slice(0, 3)
       const urls = await Promise.all(selected.map((file) => readAsDataUrl(file)))
-      setValues((prev) => ({ ...prev, generalPhotos: urls }))
+      setValues((prev) => ({ ...prev, photos: urls }))
     } catch {
       setError("No pudimos cargar las fotos.")
     } finally {
@@ -76,41 +81,34 @@ export function RollosForm({ fieldType, projectId, defaultZone = "", onSubmitRec
   }
 
   function removePhoto(index: number) {
-    setValues((prev) => ({
-      ...prev,
-      generalPhotos: prev.generalPhotos.filter((_, currentIndex) => currentIndex !== index),
-    }))
+    setValues((prev) => ({ ...prev, photos: prev.photos.filter((_, i) => i !== index) }))
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
     if (!values.zone) return setError("Zona requerida.")
-    if (!values.totalRollsInstalled || Number(values.totalRollsInstalled) < 0) {
-      return setError("Total de rollos instalado requerido.")
-    }
-    if (!values.seamsCompleted || Number(values.seamsCompleted) < 0) {
-      return setError("Seams completed requerido.")
-    }
-    if (!values.zoneStatus) return setError("Estatus de zona requerido.")
-    if (values.generalPhotos.length < 1 || values.generalPhotos.length > 3) {
-      return setError("Sube de 1 a 3 fotos generales.")
-    }
-    if (!values.crewId.trim()) return setError("Crew ID requerido.")
-
-    const waste = values.wasteEstimated.trim()
+    if (!values.totalRolls || Number(values.totalRolls) < 0) return setError("Total de rollos requerido.")
+    if (!values.totalSeams || Number(values.totalSeams) < 0) return setError("Total de costuras requerido.")
+    if (!values.phaseStatus) return setError("Estado de fase requerido.")
+    if (!values.compactionType) return setError("Tipo de compactación requerido.")
+    if (!values.rollLengthStatus) return setError("Semáforo requerido.")
+    if (values.photos.length < 1 || values.photos.length > 3) return setError("Sube 1 a 3 fotos.")
 
     const record: RollosRecord = {
       projectId,
       fieldType,
       zone: values.zone as Zone,
-      totalRollsInstalled: Number(values.totalRollsInstalled),
-      seamsCompleted: Number(values.seamsCompleted),
-      wasteEstimated: waste ? Number(waste) : undefined,
-      zoneStatus: values.zoneStatus as ZoneRollosStatus,
-      generalPhotos: values.generalPhotos,
+      totalRolls: Number(values.totalRolls),
+      totalSeams: Number(values.totalSeams),
+      phaseStatus: values.phaseStatus as PhaseStatus,
+      compactionType: values.compactionType as CompactionType,
+      surfaceFirm: values.surfaceFirm,
+      moistureOk: values.moistureOk,
+      doubleCompaction: values.doubleCompaction,
+      rollLengthStatus: values.rollLengthStatus as RollLengthStatus,
+      photos: values.photos,
       observations: values.observations.trim() || undefined,
-      crewId: values.crewId.trim(),
       timestamp: new Date().toISOString(),
     }
 
@@ -129,11 +127,7 @@ export function RollosForm({ fieldType, projectId, defaultZone = "", onSubmitRec
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
-      <ZoneSelect
-        label="Zona"
-        value={values.zone}
-        onChange={(zone) => setValues((prev) => ({ ...prev, zone }))}
-      />
+      <ZoneSelect label="Zona" value={values.zone} onChange={(zone) => setValues((prev) => ({ ...prev, zone }))} />
 
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block space-y-2">
@@ -141,71 +135,133 @@ export function RollosForm({ fieldType, projectId, defaultZone = "", onSubmitRec
           <input
             type="number"
             min={0}
-            value={values.totalRollsInstalled}
-            onChange={(event) =>
-              setValues((prev) => ({ ...prev, totalRollsInstalled: event.target.value }))
-            }
+            value={values.totalRolls}
+            onChange={(event) => setValues((prev) => ({ ...prev, totalRolls: event.target.value }))}
             className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
             required
           />
         </label>
 
         <label className="block space-y-2">
-          <span className="text-sm text-neutral-300">Seams completed</span>
+          <span className="text-sm text-neutral-300">Total de costuras (seams)</span>
           <input
             type="number"
             min={0}
-            value={values.seamsCompleted}
-            onChange={(event) => setValues((prev) => ({ ...prev, seamsCompleted: event.target.value }))}
-            className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
-            required
-          />
-        </label>
-
-        <label className="block space-y-2">
-          <span className="text-sm text-neutral-300">Waste estimado (opcional)</span>
-          <input
-            type="number"
-            min={0}
-            value={values.wasteEstimated}
-            onChange={(event) => setValues((prev) => ({ ...prev, wasteEstimated: event.target.value }))}
-            className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
-          />
-        </label>
-
-        <label className="block space-y-2">
-          <span className="text-sm text-neutral-300">Crew ID</span>
-          <input
-            type="text"
-            value={values.crewId}
-            onChange={(event) => setValues((prev) => ({ ...prev, crewId: event.target.value }))}
+            value={values.totalSeams}
+            onChange={(event) => setValues((prev) => ({ ...prev, totalSeams: event.target.value }))}
             className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
             required
           />
         </label>
       </div>
 
+      <fieldset className="space-y-2">
+        <legend className="text-sm text-neutral-300">Estado de la fase</legend>
+        <div className="grid gap-2 sm:grid-cols-3">
+          {[
+            { value: PhaseStatus.COMPACTING, label: "Compactando" },
+            { value: PhaseStatus.IN_PROGRESS, label: "In Progress" },
+            { value: PhaseStatus.COMPLETED, label: "Completed" },
+          ].map((option) => {
+            const active = values.phaseStatus === option.value
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setValues((prev) => ({ ...prev, phaseStatus: option.value }))}
+                className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
+                  active ? "border-blue-500 bg-blue-500/20 text-blue-200" : "border-neutral-700 bg-neutral-900"
+                }`}
+              >
+                {option.label}
+              </button>
+            )
+          })}
+        </div>
+      </fieldset>
+
       <label className="block space-y-2">
-        <span className="text-sm text-neutral-300">Estatus de zona</span>
+        <span className="text-sm text-neutral-300">Tipo de compactación</span>
         <select
-          value={values.zoneStatus}
+          value={values.compactionType}
           onChange={(event) =>
-            setValues((prev) => ({ ...prev, zoneStatus: event.target.value as ZoneRollosStatus | "" }))
+            setValues((prev) => ({ ...prev, compactionType: event.target.value as CompactionType | "" }))
           }
           className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
           required
         >
-          <option value="">Selecciona estatus</option>
-          {ZONE_STATUS_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
+          <option value="">Selecciona</option>
+          <option value={CompactionType.PLATE}>Placa</option>
+          <option value={CompactionType.ROLLER}>Rodillo</option>
+          <option value={CompactionType.MANUAL}>Manual</option>
         </select>
       </label>
 
+      <div className="grid gap-2 sm:grid-cols-3">
+        <button
+          type="button"
+          onClick={() => setValues((prev) => ({ ...prev, surfaceFirm: !prev.surfaceFirm }))}
+          className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
+            values.surfaceFirm ? "border-emerald-500 bg-emerald-500/20 text-emerald-200" : "border-neutral-700"
+          }`}
+        >
+          Superficie firme: {values.surfaceFirm ? "Sí" : "No"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setValues((prev) => ({ ...prev, moistureOk: !prev.moistureOk }))}
+          className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
+            values.moistureOk ? "border-emerald-500 bg-emerald-500/20 text-emerald-200" : "border-neutral-700"
+          }`}
+        >
+          Humedad OK: {values.moistureOk ? "Sí" : "No"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setValues((prev) => ({ ...prev, doubleCompaction: !prev.doubleCompaction }))}
+          className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
+            values.doubleCompaction
+              ? "border-emerald-500 bg-emerald-500/20 text-emerald-200"
+              : "border-neutral-700"
+          }`}
+        >
+          Doble compactación: {values.doubleCompaction ? "Sí" : "No"}
+        </button>
+      </div>
+
+      <fieldset className="space-y-2">
+        <legend className="text-sm text-neutral-300">Semáforo Longitud de Rollos</legend>
+        <div className="grid gap-2 sm:grid-cols-3">
+          {[
+            { value: RollLengthStatus.NORMAL, label: "Verde · Normal", cls: "border-emerald-500 text-emerald-200" },
+            { value: RollLengthStatus.JUSTO, label: "Amarillo · Justo", cls: "border-amber-500 text-amber-200" },
+            {
+              value: RollLengthStatus.MAJOR_MISMATCH,
+              label: "Rojo · Falta/Sobra",
+              cls: "border-red-500 text-red-200",
+            },
+          ].map((option) => {
+            const active = values.rollLengthStatus === option.value
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setValues((prev) => ({ ...prev, rollLengthStatus: option.value }))}
+                className={`rounded-xl border px-3 py-4 text-sm font-semibold ${
+                  active ? `${option.cls} bg-neutral-950` : "border-neutral-700 bg-neutral-900"
+                }`}
+              >
+                {option.label}
+              </button>
+            )
+          })}
+        </div>
+      </fieldset>
+
       <label className="block space-y-2">
-        <span className="text-sm text-neutral-300">Foto general (1 a 3)</span>
+        <span className="text-sm text-neutral-300">Fotos (1 a 3)</span>
         <input
           type="file"
           accept="image/*"
@@ -217,13 +273,13 @@ export function RollosForm({ fieldType, projectId, defaultZone = "", onSubmitRec
         />
       </label>
 
-      {values.generalPhotos.length > 0 ? (
+      {values.photos.length > 0 ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          {values.generalPhotos.map((photo, index) => (
+          {values.photos.map((photo, index) => (
             <div key={photo} className="space-y-2">
               <Image
                 src={photo}
-                alt={`General ${index + 1}`}
+                alt={`Evidencia ${index + 1}`}
                 width={600}
                 height={400}
                 unoptimized
@@ -258,7 +314,7 @@ export function RollosForm({ fieldType, projectId, defaultZone = "", onSubmitRec
         disabled={!canSubmit || isReadingPhoto || isSubmitting}
         className="w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold hover:bg-blue-700 disabled:opacity-50"
       >
-        Guardar Rollos
+        Guardar Instalación
       </button>
     </form>
   )
