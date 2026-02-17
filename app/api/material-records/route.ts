@@ -80,11 +80,13 @@ export async function POST(request: Request) {
       !body.tipoPasada ||
       !body.valvula ||
       !body.bolsasEsperadas ||
-      !body.bolsasUtilizadas ||
-      !body.fotos ||
-      body.fotos.length < 1
+      !body.bolsasUtilizadas
     ) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
+    }
+
+    if (body.valvula < 1 || body.valvula > 6) {
+      return NextResponse.json({ error: "Valve must be between 1 and 6" }, { status: 400 })
     }
 
     if (body.bolsasEsperadas <= 0 || body.bolsasUtilizadas <= 0) {
@@ -93,9 +95,10 @@ export async function POST(request: Request) {
 
     const supabase = getSupabaseAdminClient()
 
+    const inputPhotos = body.fotos ?? []
     const fotoUrls: string[] = []
-    for (let index = 0; index < body.fotos.length; index += 1) {
-      fotoUrls.push(await uploadMaterialPhoto(supabase, body.fotos[index], body.projectId, index))
+    for (let index = 0; index < inputPhotos.length; index += 1) {
+      fotoUrls.push(await uploadMaterialPhoto(supabase, inputPhotos[index], body.projectId, index))
     }
 
     const desviacion = computeDeviation(body.bolsasEsperadas, body.bolsasUtilizadas)

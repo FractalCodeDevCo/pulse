@@ -115,7 +115,7 @@ function RollosPageContent() {
     saveProjectFieldType(projectId, next)
   }
 
-  async function handleSubmitRecord(record: RollosRecord) {
+  async function handleSubmitRecord(record: RollosRecord, returnToHub: boolean) {
     setRecords((prev) => [record, ...prev])
 
     if (!projectId || typeof window === "undefined") return
@@ -128,6 +128,10 @@ function RollosPageContent() {
       const queued = raw ? (JSON.parse(raw) as RollosRecord[]) : []
       localStorage.setItem(queueKey, JSON.stringify([record, ...queued]))
       setSaveMessage("Guardado local. Se sincroniza al recuperar conexión.")
+    }
+
+    if (returnToHub) {
+      window.location.href = `/capture?project=${encodeURIComponent(projectId)}`
     }
   }
 

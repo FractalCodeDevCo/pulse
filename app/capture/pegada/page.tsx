@@ -328,6 +328,12 @@ function PegadaPageContent() {
           <p className="text-sm text-neutral-400">Pulse / Pegada / {projectId}</p>
           <h1 className="text-3xl font-bold">Captura de Pegada</h1>
           <p className="text-neutral-300">Flujo simple: fotos, cuestionario y guardado.</p>
+          <Link
+            href={`/capture?project=${encodeURIComponent(projectId)}`}
+            className="inline-block rounded-xl border border-neutral-600 px-3 py-2 text-sm font-semibold hover:bg-neutral-800"
+          >
+            Volver al Hub
+          </Link>
         </header>
 
         <section className="space-y-3 rounded-2xl border border-neutral-800 bg-neutral-900 p-4">

@@ -22,7 +22,7 @@ create table if not exists public.material_records (
   field_type text,
   tipo_material text not null,
   tipo_pasada text not null,
-  valvula integer not null check (valvula between 1 and 5),
+  valvula integer not null check (valvula between 1 and 6),
   bolsas_esperadas numeric not null,
   bolsas_utilizadas numeric not null,
   desviacion numeric not null,
