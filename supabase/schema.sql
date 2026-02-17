@@ -22,7 +22,7 @@ create table if not exists public.material_records (
   field_type text,
   tipo_material text not null,
   tipo_pasada text not null,
-  valvula integer not null check (valvula between 1 and 5),
+  valvula integer not null check (valvula between 1 and 6),
   bolsas_esperadas numeric not null,
   bolsas_utilizadas numeric not null,
   desviacion numeric not null,
@@ -34,6 +34,23 @@ create table if not exists public.material_records (
 
 create index if not exists idx_material_records_project on public.material_records(project_id);
 create index if not exists idx_material_records_created_at on public.material_records(created_at desc);
+
+do $$
+begin
+  if exists (
+    select 1
+    from pg_constraint
+    where conname = 'material_records_valvula_check'
+  ) then
+    alter table public.material_records drop constraint material_records_valvula_check;
+  end if;
+exception
+  when undefined_table then
+    null;
+end $$;
+
+alter table if exists public.material_records
+  add constraint material_records_valvula_check check (valvula between 1 and 6);
 
 -- Zones catalog
 create table if not exists public.zones (

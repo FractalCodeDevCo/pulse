@@ -9,9 +9,9 @@ export interface MaterialRecordInput {
   fieldType: FieldType
   tipoMaterial: MaterialKind
   tipoPasada: PassType
-  valvula: 1 | 2 | 3 | 4 | 5
+  valvula: 1 | 2 | 3 | 4 | 5 | 6
   bolsasEsperadas: number
-  bolsasUtilizadas: number
+  bolsasUtilizadas?: number
   observaciones?: string
   fotos: string[]
 }

@@ -5,116 +5,32 @@ export const dynamic = "force-dynamic"
 import Image from "next/image"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { ChangeEvent, FormEvent, Suspense, useEffect, useMemo, useState } from "react"
+import { ChangeEvent, Suspense, useMemo, useState } from "react"
+
+import { FieldTypeSelector } from "../../../components/shared/FieldTypeSelector"
 import { saveCloudRecord } from "../../../lib/recordClient"
+import { FieldType, readProjectFieldType, saveProjectFieldType } from "../../../types/fieldType"
+import { Zone } from "../../../types/zones"
 
-type FieldType = "football" | "soccer" | "beisbol" | "softbol"
-type ZoneKey =
-  | "lineas"
-  | "numeros"
-  | "letras"
-  | "hashmarks"
-  | "logo"
-  | "general"
-  | "batbox"
-  | "coach_base"
-  | "pitcher_mound"
-  | "linea_corredor"
-
-type PhotoField = "prep" | "antes" | "despues"
-
-type PhotoState = {
-  dataUrl: string | null
-  fileName: string
-}
+type PhotoItem = { dataUrl: string; fileName: string }
+type PegadaPhaseStatus = "IN_PROGRESS" | "COMPLETED"
 
 type PegadaRecord = {
   id: string
-  createdAt: string
+  projectId: string
   fieldType: FieldType
-  zone: ZoneKey
-  ftTotales: number
-  botesUsados: number
-  clima: string[]
-  condicion: string
-  observaciones: string
-  photoNames: {
-    prep: string
-    antes: string
-    despues: string
-  }
+  zone: Zone
+  phaseStatus: PegadaPhaseStatus
+  observations?: string
+  photos: string[]
+  timestamp: string
 }
 
-const DEFAULT_FIXED_FT = 10
-
-const FIELD_TYPE_LABELS: Record<FieldType, string> = {
-  football: "Football",
-  soccer: "Soccer",
-  beisbol: "Beisbol",
-  softbol: "Softbol",
-}
-
-const ZONE_LABELS: Record<ZoneKey, string> = {
-  lineas: "Lineas",
-  numeros: "Numeros",
-  letras: "Letras",
-  hashmarks: "Hashmarks",
-  logo: "Logo",
-  general: "General",
-  batbox: "Bat Box",
-  coach_base: "Coach Base",
-  pitcher_mound: "Pitcher Mound",
-  linea_corredor: "Linea del corredor",
-}
-
-const ZONES_BY_FIELD_TYPE: Record<FieldType, ZoneKey[]> = {
-  football: ["lineas", "numeros", "letras", "hashmarks", "logo", "general"],
-  soccer: ["lineas", "general", "logo", "letras"],
-  beisbol: [
-    "batbox",
-    "lineas",
-    "coach_base",
-    "pitcher_mound",
-    "linea_corredor",
-    "logo",
-    "letras",
-    "general",
-  ],
-  softbol: [
-    "batbox",
-    "lineas",
-    "coach_base",
-    "pitcher_mound",
-    "linea_corredor",
-    "logo",
-    "letras",
-    "general",
-  ],
-}
-
-const CLIMATE_OPTIONS = ["Soleado", "Nublado", "Lluvioso", "Viento", "Humedad alta"]
-const CONDITION_OPTIONS = ["Excelente", "Buena", "Regular", "Mala"]
-
-function readStoredFieldType(storageKey: string): FieldType {
-  if (typeof window === "undefined") return "football"
-
-  try {
-    const raw = localStorage.getItem(storageKey)
-    if (!raw) return "football"
-    const parsed = JSON.parse(raw) as FieldType
-    if (parsed in ZONES_BY_FIELD_TYPE) return parsed
-  } catch {
-    // fallback
-  }
-
-  return "football"
-}
-
-function emptyPhoto(): PhotoState {
-  return {
-    dataUrl: null,
-    fileName: "",
-  }
+function parseZone(zoneValue: string | null): Zone | "" {
+  if (!zoneValue) return ""
+  const upper = zoneValue.toUpperCase()
+  if (upper in Zone) return Zone[upper as keyof typeof Zone]
+  return ""
 }
 
 function readAsDataUrl(file: File): Promise<string> {
@@ -149,165 +65,112 @@ export default function PegadaPage() {
 function PegadaPageContent() {
   const searchParams = useSearchParams()
   const projectId = searchParams.get("project")
+  const defaultZone = parseZone(searchParams.get("zone"))
 
   const recordsKey = `pulse_pegada_records_${projectId ?? "default"}`
-  const fieldTypeKey = `pulse_project_field_type_${projectId ?? "default"}`
-
-  const [step, setStep] = useState<1 | 2 | 3>(1)
-
-  const [fieldType, setFieldType] = useState<FieldType>("football")
-  const [zone, setZone] = useState<ZoneKey>("lineas")
-
-  const [prepPhoto, setPrepPhoto] = useState<PhotoState>(emptyPhoto())
-  const [antesPhoto, setAntesPhoto] = useState<PhotoState>(emptyPhoto())
-  const [despuesPhoto, setDespuesPhoto] = useState<PhotoState>(emptyPhoto())
-
-  const [ftTotales, setFtTotales] = useState<number>(30)
-  const [botesUsados, setBotesUsados] = useState<number>(1)
-  const [clima, setClima] = useState<string[]>([])
-  const [condicion, setCondicion] = useState<string>("")
-  const [observaciones, setObservaciones] = useState<string>("")
-
+  const [step, setStep] = useState<1 | 2>(1)
+  const [fieldType, setFieldType] = useState<FieldType>(() =>
+    projectId ? readProjectFieldType(projectId) : "football",
+  )
+  const [zone, setZone] = useState<Zone | "">(defaultZone || "")
+  const [phaseStatus, setPhaseStatus] = useState<PegadaPhaseStatus | "">("")
+  const [observations, setObservations] = useState("")
+  const [photos, setPhotos] = useState<PhotoItem[]>([])
   const [isReadingPhoto, setIsReadingPhoto] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState("")
   const [saveMessage, setSaveMessage] = useState("")
 
-  useEffect(() => {
-    const storedFieldType = readStoredFieldType(fieldTypeKey)
-    setFieldType(storedFieldType)
-    setZone(ZONES_BY_FIELD_TYPE[storedFieldType][0])
-  }, [fieldTypeKey])
+  const canContinue = photos.length >= 3
 
-  const zoneOptions = useMemo(() => ZONES_BY_FIELD_TYPE[fieldType], [fieldType])
-  const isGeneralZone = zone === "general"
+  const photoUrls = useMemo(() => photos.map((photo) => photo.dataUrl), [photos])
 
-  const hasAllPhotos = useMemo(() => {
-    return Boolean(prepPhoto.dataUrl && antesPhoto.dataUrl && despuesPhoto.dataUrl)
-  }, [prepPhoto.dataUrl, antesPhoto.dataUrl, despuesPhoto.dataUrl])
+  async function handlePhotoChange(event: ChangeEvent<HTMLInputElement>) {
+    const selectedFiles = Array.from(event.target.files ?? [])
+    if (selectedFiles.length === 0) return
 
-  function handleFieldTypeChange(next: FieldType) {
-    setFieldType(next)
-    setZone(ZONES_BY_FIELD_TYPE[next][0])
-    localStorage.setItem(fieldTypeKey, JSON.stringify(next))
     setError("")
-  }
-
-  async function handlePhotoChange(field: PhotoField, event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0]
-    if (!file) return
-
     setIsReadingPhoto(true)
-    setError("")
 
     try {
-      const dataUrl = await readAsDataUrl(file)
-      const nextState: PhotoState = { dataUrl, fileName: file.name }
-
-      if (field === "prep") setPrepPhoto(nextState)
-      if (field === "antes") setAntesPhoto(nextState)
-      if (field === "despues") setDespuesPhoto(nextState)
+      const next: PhotoItem[] = []
+      for (const file of selectedFiles) {
+        next.push({ dataUrl: await readAsDataUrl(file), fileName: file.name })
+      }
+      setPhotos((prev) => [...prev, ...next])
     } catch {
-      setError("No se pudo cargar esa foto. Intenta de nuevo.")
+      setError("No se pudo cargar una o más fotos.")
     } finally {
       setIsReadingPhoto(false)
     }
   }
 
-  function toggleClimate(option: string) {
-    setClima((current) => {
-      if (current.includes(option)) return current.filter((item) => item !== option)
-      return [...current, option]
-    })
+  function movePhoto(index: number, direction: -1 | 1) {
+    const target = index + direction
+    if (target < 0 || target >= photos.length) return
+    const next = [...photos]
+    const [item] = next.splice(index, 1)
+    next.splice(target, 0, item)
+    setPhotos(next)
   }
 
-  function goToQuestionnaire() {
-    if (!hasAllPhotos) {
-      setError("Debes subir las 3 fotos para continuar.")
-      return
-    }
-
-    setError("")
-    setStep(2)
+  function removePhoto(index: number) {
+    setPhotos((prev) => prev.filter((_, i) => i !== index))
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
+  function handleFieldTypeChange(next: FieldType) {
+    if (!projectId) return
+    setFieldType(next)
+    saveProjectFieldType(projectId, next)
+  }
 
-    if (!condicion) {
-      setError("Selecciona una condición.")
-      return
-    }
-
-    if (botesUsados <= 0) {
-      setError("Botes utilizados debe ser mayor a 0.")
-      return
-    }
-
-    if (isGeneralZone && ftTotales <= 0) {
-      setError("Ft totales debe ser mayor a 0 en zona General.")
-      return
-    }
+  async function savePegada(returnToHub: boolean) {
+    if (!projectId) return setError("Selecciona proyecto antes de capturar Pegada.")
+    if (!zone) return setError("Zona requerida.")
+    if (!phaseStatus) return setError("Phase Status requerido.")
+    if (photos.length < 3) return setError("Mínimo 3 fotos requeridas.")
 
     const record: PegadaRecord = {
       id: crypto.randomUUID(),
-      createdAt: new Date().toISOString(),
+      projectId,
       fieldType,
-      zone,
-      ftTotales: isGeneralZone ? ftTotales : DEFAULT_FIXED_FT,
-      botesUsados,
-      clima,
-      condicion,
-      observaciones,
-      photoNames: {
-        prep: prepPhoto.fileName,
-        antes: antesPhoto.fileName,
-        despues: despuesPhoto.fileName,
-      },
+      zone: zone as Zone,
+      phaseStatus: phaseStatus as PegadaPhaseStatus,
+      observations: observations.trim() || undefined,
+      photos: photoUrls,
+      timestamp: new Date().toISOString(),
     }
 
     const existing = readPegadaRecords(recordsKey)
     localStorage.setItem(recordsKey, JSON.stringify([record, ...existing]))
 
-    if (projectId) {
-      try {
-        await saveCloudRecord({
-          module: "pegada",
-          projectId,
-          fieldType,
-          payload: {
-            ...record,
-            evidencePhotos: {
-              prep: prepPhoto.dataUrl,
-              antes: antesPhoto.dataUrl,
-              despues: despuesPhoto.dataUrl,
-            },
-          } as Record<string, unknown>,
-        })
-        setSaveMessage("Guardado en nube.")
-      } catch {
-        setSaveMessage("Guardado local (sin conexión a nube).")
-      }
-    } else {
-      setSaveMessage("Captura guardada localmente.")
+    setIsSubmitting(true)
+    setError("")
+
+    try {
+      await saveCloudRecord({
+        module: "pegada",
+        projectId,
+        fieldType,
+        payload: record as unknown as Record<string, unknown>,
+      })
+      setSaveMessage("Guardado en nube.")
+    } catch {
+      setSaveMessage("Guardado local (sin conexión a nube).")
+    } finally {
+      setIsSubmitting(false)
     }
 
-    setError("")
-    setStep(3)
-  }
+    if (returnToHub) {
+      window.location.href = `/capture?project=${encodeURIComponent(projectId)}`
+      return
+    }
 
-  function resetForm() {
-    setPrepPhoto(emptyPhoto())
-    setAntesPhoto(emptyPhoto())
-    setDespuesPhoto(emptyPhoto())
-    setZone(ZONES_BY_FIELD_TYPE[fieldType][0])
-    setFtTotales(30)
-    setBotesUsados(1)
-    setClima([])
-    setCondicion("")
-    setObservaciones("")
-    setSaveMessage("")
-    setError("")
     setStep(1)
+    setZone(defaultZone || "")
+    setPhaseStatus("")
+    setObservations("")
+    setPhotos([])
   }
 
   if (!projectId) {
@@ -326,250 +189,143 @@ function PegadaPageContent() {
       <section className="mx-auto w-full max-w-3xl space-y-6">
         <header className="space-y-2">
           <p className="text-sm text-neutral-400">Pulse / Pegada / {projectId}</p>
-          <h1 className="text-3xl font-bold">Captura de Pegada</h1>
-          <p className="text-neutral-300">Flujo simple: fotos, cuestionario y guardado.</p>
+          <h1 className="text-3xl font-bold">Pegada</h1>
+          <p className="text-neutral-300">2 pasos: Fotos y Cuestionario.</p>
         </header>
 
-        <section className="space-y-3 rounded-2xl border border-neutral-800 bg-neutral-900 p-4">
-          <p className="text-sm text-neutral-400">Tipo de campo (por proyecto)</p>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {(Object.keys(FIELD_TYPE_LABELS) as FieldType[]).map((item) => {
-              const active = fieldType === item
-              return (
-                <button
-                  key={item}
-                  type="button"
-                  onClick={() => handleFieldTypeChange(item)}
-                  className={`rounded-xl px-3 py-3 text-sm font-semibold ${
-                    active
-                      ? "bg-emerald-600 text-white"
-                      : "border border-neutral-700 bg-neutral-950 hover:bg-neutral-800"
-                  }`}
-                >
-                  {FIELD_TYPE_LABELS[item]}
-                </button>
-              )
-            })}
-          </div>
-        </section>
+        <FieldTypeSelector value={fieldType} onChange={handleFieldTypeChange} />
 
         <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4 text-sm text-neutral-300">
-          Paso {step} de 3
+          Paso {step} de 2
         </div>
 
-        {error ? (
-          <div className="rounded-xl border border-red-500/70 bg-red-500/10 p-3 text-red-300">{error}</div>
-        ) : null}
+        {error ? <div className="rounded-xl border border-red-500/70 bg-red-500/10 p-3 text-red-300">{error}</div> : null}
 
         {step === 1 ? (
-          <section className="space-y-5 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
-            <h2 className="text-xl font-semibold">1) Fotos obligatorias</h2>
-            <p className="text-sm text-neutral-400">Prep, Antes de Pegado y Después de Pegado.</p>
+          <section className="space-y-4 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
+            <h2 className="text-xl font-semibold">1) Fotos</h2>
+            <p className="text-sm text-neutral-400">Mínimo 3 fotos requeridas. Puedes agregar más.</p>
 
-            <div className="grid gap-4 md:grid-cols-3">
-              <PhotoInputCard
-                title="Prep"
-                photo={prepPhoto}
-                onChange={(event) => void handlePhotoChange("prep", event)}
-              />
-              <PhotoInputCard
-                title="Antes de Pegado"
-                photo={antesPhoto}
-                onChange={(event) => void handlePhotoChange("antes", event)}
-              />
-              <PhotoInputCard
-                title="Después de Pegado"
-                photo={despuesPhoto}
-                onChange={(event) => void handlePhotoChange("despues", event)}
-              />
-            </div>
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={handlePhotoChange}
+              className="block w-full rounded-xl border border-neutral-700 bg-neutral-950 p-2 text-sm"
+            />
+
+            {photos.length > 0 ? (
+              <div className="space-y-3">
+                {photos.map((photo, index) => (
+                  <div key={`${photo.fileName}-${index}`} className="rounded-xl border border-neutral-700 p-3">
+                    <Image
+                      src={photo.dataUrl}
+                      alt={photo.fileName}
+                      width={1200}
+                      height={700}
+                      unoptimized
+                      className="h-60 w-full rounded-lg object-cover"
+                    />
+                    <div className="mt-2 grid grid-cols-3 gap-2">
+                      <button type="button" onClick={() => movePhoto(index, -1)} className="rounded-lg border border-neutral-600 px-2 py-1 text-sm hover:bg-neutral-800">Subir</button>
+                      <button type="button" onClick={() => movePhoto(index, 1)} className="rounded-lg border border-neutral-600 px-2 py-1 text-sm hover:bg-neutral-800">Bajar</button>
+                      <button type="button" onClick={() => removePhoto(index)} className="rounded-lg border border-neutral-600 px-2 py-1 text-sm hover:bg-neutral-800">Quitar</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
 
             <button
               type="button"
-              onClick={goToQuestionnaire}
-              disabled={isReadingPhoto}
+              onClick={() => setStep(2)}
+              disabled={!canContinue || isReadingPhoto}
               className="w-full rounded-xl bg-emerald-600 px-4 py-4 text-lg font-semibold hover:bg-emerald-700 disabled:opacity-50"
             >
-              Continuar al cuestionario
+              Continue to Pegada
             </button>
           </section>
         ) : null}
 
         {step === 2 ? (
-          <form
-            onSubmit={handleSubmit}
-            className="space-y-5 rounded-2xl border border-neutral-800 bg-neutral-900 p-5"
-          >
-            <h2 className="text-xl font-semibold">2) Cuestionario</h2>
+          <section className="space-y-4 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
+            <h2 className="text-xl font-semibold">2) Pegada Questionnaire</h2>
 
             <label className="block space-y-2">
-              <span className="text-sm text-neutral-300">Zona</span>
+              <span className="text-sm text-neutral-300">Zone</span>
               <select
                 value={zone}
-                onChange={(event) => setZone(event.target.value as ZoneKey)}
+                onChange={(event) => setZone(event.target.value as Zone | "")}
                 className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3"
                 required
               >
-                {zoneOptions.map((item) => (
-                  <option key={item} value={item}>
-                    {ZONE_LABELS[item]}
-                  </option>
-                ))}
+                <option value="">Select zone</option>
+                <option value={Zone.CENTRAL}>Central</option>
+                <option value={Zone.SIDELINE_RIGHT}>Sideline Derecho</option>
+                <option value={Zone.SIDELINE_LEFT}>Sideline Izquierdo</option>
+                <option value={Zone.CABECERAS}>Cabeceras</option>
               </select>
             </label>
 
-            <label className="block space-y-2">
-              <span className="text-sm text-neutral-300">
-                Ft Totales {isGeneralZone ? `(${ftTotales})` : "(fijo por plantilla)"}
-              </span>
-              <input
-                type="range"
-                min={1}
-                max={500}
-                value={ftTotales}
-                onChange={(event) => setFtTotales(Number(event.target.value))}
-                disabled={!isGeneralZone}
-                className="w-full disabled:cursor-not-allowed disabled:opacity-40"
-              />
-            </label>
-
-            <label className="block space-y-2">
-              <span className="text-sm text-neutral-300">Botes utilizados</span>
-              <input
-                type="number"
-                min={0.1}
-                step={0.1}
-                value={botesUsados}
-                onChange={(event) => setBotesUsados(Number(event.target.value))}
-                className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3"
-                required
-              />
-            </label>
-
-            <fieldset className="space-y-3">
-              <legend className="text-sm text-neutral-300">Clima (selección múltiple)</legend>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {CLIMATE_OPTIONS.map((option) => {
-                  const checked = clima.includes(option)
+            <fieldset className="space-y-2">
+              <legend className="text-sm text-neutral-300">Phase Status</legend>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {[
+                  { value: "IN_PROGRESS", label: "IN_PROGRESS" },
+                  { value: "COMPLETED", label: "COMPLETED" },
+                ].map((item) => {
+                  const active = phaseStatus === item.value
                   return (
-                    <label
-                      key={option}
-                      className="flex cursor-pointer items-center justify-between rounded-xl border border-neutral-700 px-3 py-3"
+                    <button
+                      key={item.value}
+                      type="button"
+                      onClick={() => setPhaseStatus(item.value as PegadaPhaseStatus)}
+                      className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
+                        active ? "border-blue-500 bg-blue-500/20 text-blue-200" : "border-neutral-700 bg-neutral-900"
+                      }`}
                     >
-                      <span>{option}</span>
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleClimate(option)}
-                        className="h-5 w-5"
-                      />
-                    </label>
+                      {item.label}
+                    </button>
                   )
                 })}
               </div>
             </fieldset>
 
             <label className="block space-y-2">
-              <span className="text-sm text-neutral-300">Condición</span>
-              <select
-                value={condicion}
-                onChange={(event) => setCondicion(event.target.value)}
-                className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3"
-                required
-              >
-                <option value="">Selecciona una condición</option>
-                {CONDITION_OPTIONS.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="block space-y-2">
-              <span className="text-sm text-neutral-300">Observaciones</span>
+              <span className="text-sm text-neutral-300">Observations (optional)</span>
               <textarea
-                value={observaciones}
-                onChange={(event) => setObservaciones(event.target.value)}
-                rows={4}
+                rows={3}
+                value={observations}
+                onChange={(event) => setObservations(event.target.value)}
                 className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3"
               />
             </label>
 
-            <div className="flex flex-col gap-3 sm:flex-row">
+            <div className="grid gap-2 sm:grid-cols-2">
               <button
                 type="button"
-                onClick={() => setStep(1)}
-                className="w-full rounded-xl border border-neutral-600 px-4 py-4 text-lg font-semibold hover:bg-neutral-800"
+                onClick={() => void savePegada(false)}
+                disabled={isSubmitting}
+                className="w-full rounded-xl bg-blue-600 py-3 font-semibold hover:bg-blue-700 disabled:opacity-50"
               >
-                Volver a fotos
+                Save Pegada
               </button>
               <button
-                type="submit"
-                className="w-full rounded-xl bg-emerald-600 px-4 py-4 text-lg font-semibold hover:bg-emerald-700"
+                type="button"
+                onClick={() => void savePegada(true)}
+                disabled={isSubmitting}
+                className="w-full rounded-xl border border-neutral-600 py-3 font-semibold hover:bg-neutral-800 disabled:opacity-50"
               >
-                Guardar captura
+                Save & Return to Hub
               </button>
             </div>
-          </form>
+          </section>
         ) : null}
 
-        {step === 3 ? (
-          <section className="space-y-5 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
-            <h2 className="text-xl font-semibold">3) Captura guardada</h2>
-            {saveMessage ? (
-              <p className="rounded-xl border border-blue-500/70 bg-blue-500/10 p-3 text-blue-300">
-                {saveMessage}
-              </p>
-            ) : null}
-
-            <button
-              type="button"
-              onClick={resetForm}
-              className="w-full rounded-xl bg-neutral-100 px-4 py-4 text-lg font-semibold text-neutral-950 hover:bg-white"
-            >
-              Nueva captura
-            </button>
-          </section>
+        {saveMessage ? (
+          <div className="rounded-xl border border-blue-500/70 bg-blue-500/10 p-3 text-blue-300">{saveMessage}</div>
         ) : null}
       </section>
     </main>
-  )
-}
-
-type PhotoInputCardProps = {
-  title: string
-  photo: PhotoState
-  onChange: (event: ChangeEvent<HTMLInputElement>) => void
-}
-
-function PhotoInputCard({ title, photo, onChange }: PhotoInputCardProps) {
-  return (
-    <label className="block space-y-2 rounded-2xl border border-neutral-700 bg-neutral-950 p-3">
-      <span className="font-medium">{title}</span>
-
-      <input
-        type="file"
-        accept="image/*"
-        capture="environment"
-        onChange={onChange}
-        className="block w-full rounded-lg border border-neutral-700 bg-neutral-900 p-2 text-sm"
-      />
-
-      <div className="flex h-40 items-center justify-center overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900 text-xs text-neutral-500">
-        {photo.dataUrl ? (
-          <Image
-            src={photo.dataUrl}
-            alt={title}
-            width={640}
-            height={360}
-            unoptimized
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <span>Sin foto</span>
-        )}
-      </div>
-    </label>
   )
 }
