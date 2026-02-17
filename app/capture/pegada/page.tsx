@@ -557,7 +557,6 @@ function PhotoInputCard({ title, photo, onChange }: PhotoInputCardProps) {
       <input
         type="file"
         accept="image/*"
-        capture="environment"
         onChange={onChange}
         className="block w-full rounded-lg border border-neutral-700 bg-neutral-900 p-2 text-sm"
       />

@@ -256,7 +256,6 @@ export default function MaterialModulePage({ projectId }: MaterialModulePageProp
               <input
                 type="file"
                 accept="image/*"
-                capture="environment"
                 multiple
                 onChange={handlePhotoChange}
                 className="block w-full rounded-xl border border-neutral-700 bg-neutral-950 p-2 text-sm"
