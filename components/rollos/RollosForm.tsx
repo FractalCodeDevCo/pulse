@@ -1,7 +1,7 @@
 "use client"
 
 import Image from "next/image"
-import { ChangeEvent, FormEvent, useMemo, useState } from "react"
+import { ChangeEvent, useState } from "react"
 
 import { FieldType } from "../../types/fieldType"
 import {
@@ -52,18 +52,6 @@ export function RollosForm({ fieldType, projectId, defaultZone = "", onSubmitRec
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const canContinue = values.photos.length >= 1
-
-  const canSubmit = useMemo(() => {
-    return Boolean(
-      values.zone &&
-        values.totalRolls &&
-        values.totalSeams &&
-        values.phaseStatus &&
-        values.compactionType &&
-        values.rollLengthStatus &&
-        values.photos.length >= 1,
-    )
-  }, [values])
 
   async function handlePhotosChange(event: ChangeEvent<HTMLInputElement>) {
     const files = event.target.files
@@ -129,11 +117,6 @@ export function RollosForm({ fieldType, projectId, defaultZone = "", onSubmitRec
     }
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    await saveRollos(false)
-  }
-
   return (
     <div className="space-y-4 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
       <div className="rounded-xl border border-neutral-700 bg-neutral-950 p-3 text-sm text-neutral-300">Paso {step} de 2</div>
@@ -187,7 +170,7 @@ export function RollosForm({ fieldType, projectId, defaultZone = "", onSubmitRec
       ) : null}
 
       {step === 2 ? (
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="space-y-4">
           <ZoneSelect label="Zona" value={values.zone} onChange={(zone) => setValues((prev) => ({ ...prev, zone }))} />
 
           <div className="grid gap-3 sm:grid-cols-2">
@@ -199,7 +182,6 @@ export function RollosForm({ fieldType, projectId, defaultZone = "", onSubmitRec
                 value={values.totalRolls}
                 onChange={(event) => setValues((prev) => ({ ...prev, totalRolls: event.target.value }))}
                 className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
-                required
               />
             </label>
 
@@ -211,7 +193,6 @@ export function RollosForm({ fieldType, projectId, defaultZone = "", onSubmitRec
                 value={values.totalSeams}
                 onChange={(event) => setValues((prev) => ({ ...prev, totalSeams: event.target.value }))}
                 className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
-                required
               />
             </label>
           </div>
@@ -249,7 +230,6 @@ export function RollosForm({ fieldType, projectId, defaultZone = "", onSubmitRec
                 setValues((prev) => ({ ...prev, compactionType: event.target.value as CompactionType | "" }))
               }
               className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
-              required
             >
               <option value="">Selecciona</option>
               <option value={CompactionType.PLATE}>Placa</option>
@@ -340,8 +320,9 @@ export function RollosForm({ fieldType, projectId, defaultZone = "", onSubmitRec
               Volver a fotos
             </button>
             <button
-              type="submit"
-              disabled={!canSubmit || isSubmitting}
+              type="button"
+              onClick={() => void saveRollos(false)}
+              disabled={isSubmitting}
               className="w-full rounded-xl bg-blue-600 py-3 font-semibold hover:bg-blue-700 disabled:opacity-50"
             >
               Save
@@ -349,13 +330,13 @@ export function RollosForm({ fieldType, projectId, defaultZone = "", onSubmitRec
             <button
               type="button"
               onClick={() => void saveRollos(true)}
-              disabled={!canSubmit || isSubmitting}
+              disabled={isSubmitting}
               className="w-full rounded-xl border border-blue-500 py-3 font-semibold text-blue-300 hover:bg-blue-500/10 disabled:opacity-50"
             >
               Save & Return to Hub
             </button>
           </div>
-        </form>
+        </div>
       ) : null}
 
       {error ? <p className="text-sm text-red-300">{error}</p> : null}
