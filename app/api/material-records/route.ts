@@ -74,29 +74,31 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json()) as RequestBody
 
-    if (!body.projectId || !body.tipoMaterial || !body.tipoPasada || !body.valvula || !body.bolsasEsperadas) {
+    if (
+      !body.projectId ||
+      !body.tipoMaterial ||
+      !body.tipoPasada ||
+      !body.valvula ||
+      !body.bolsasEsperadas ||
+      !body.bolsasUtilizadas ||
+      !body.fotos ||
+      body.fotos.length < 1
+    ) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
 
-    if (body.valvula < 1 || body.valvula > 6) {
-      return NextResponse.json({ error: "Valve must be between 1 and 6" }, { status: 400 })
+    if (body.bolsasEsperadas <= 0 || body.bolsasUtilizadas <= 0) {
+      return NextResponse.json({ error: "Bags must be greater than 0" }, { status: 400 })
     }
-
-    if (body.bolsasEsperadas <= 0) {
-      return NextResponse.json({ error: "Bags expected must be greater than 0" }, { status: 400 })
-    }
-
-    const bolsasUtilizadas = body.bolsasUtilizadas && body.bolsasUtilizadas > 0 ? body.bolsasUtilizadas : body.bolsasEsperadas
 
     const supabase = getSupabaseAdminClient()
 
-    const fotosInput = body.fotos ?? []
     const fotoUrls: string[] = []
-    for (let index = 0; index < fotosInput.length; index += 1) {
-      fotoUrls.push(await uploadMaterialPhoto(supabase, fotosInput[index], body.projectId, index))
+    for (let index = 0; index < body.fotos.length; index += 1) {
+      fotoUrls.push(await uploadMaterialPhoto(supabase, body.fotos[index], body.projectId, index))
     }
 
-    const desviacion = computeDeviation(body.bolsasEsperadas, bolsasUtilizadas)
+    const desviacion = computeDeviation(body.bolsasEsperadas, body.bolsasUtilizadas)
     const statusColor = computeStatusColor(desviacion)
     const sugerencia = computeSuggestion(desviacion, statusColor)
 
@@ -109,7 +111,7 @@ export async function POST(request: Request) {
         tipo_pasada: body.tipoPasada,
         valvula: body.valvula,
         bolsas_esperadas: body.bolsasEsperadas,
-        bolsas_utilizadas: bolsasUtilizadas,
+        bolsas_utilizadas: body.bolsasUtilizadas,
         desviacion,
         status_color: statusColor,
         sugerencia: sugerencia || null,
