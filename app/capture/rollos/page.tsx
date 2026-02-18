@@ -8,7 +8,7 @@ import { Suspense, useState } from "react"
 
 import { RollosForm } from "../../../components/rollos/RollosForm"
 import { FieldTypeSelector } from "../../../components/shared/FieldTypeSelector"
-import { createRollosRecord } from "../../../lib/zoneRecordsClient"
+import { saveCloudRecord } from "../../../lib/recordClient"
 import { FieldType, readProjectFieldType, saveProjectFieldType } from "../../../types/fieldType"
 import { RollosRecord } from "../../../types/rollos"
 import { Zone } from "../../../types/zones"
@@ -55,7 +55,12 @@ function RollosPageContent() {
     if (!projectId) return
 
     try {
-      const response = await createRollosRecord(record)
+      const response = await saveCloudRecord({
+        module: "rollos",
+        projectId,
+        fieldType,
+        payload: record as unknown as Record<string, unknown>,
+      })
       console.log("[rollos] save_success", { id: response.id, projectId, module: "rollos" })
       setRecords((prev) => [record, ...prev])
       setSaveMessage("Guardado en nube.")
