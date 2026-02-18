@@ -6,6 +6,7 @@ import Image from "next/image"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { ChangeEvent, FormEvent, Suspense, useEffect, useMemo, useState } from "react"
+import { processImageFile } from "../../../lib/clientImage"
 import { saveCloudRecord } from "../../../lib/recordClient"
 
 type FieldType = "football" | "soccer" | "beisbol" | "softbol"
@@ -117,27 +118,6 @@ function emptyPhoto(): PhotoState {
   }
 }
 
-function readAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result ?? ""))
-    reader.onerror = () => reject(new Error("No se pudo leer la foto"))
-    reader.readAsDataURL(file)
-  })
-}
-
-function readPegadaRecords(storageKey: string): PegadaRecord[] {
-  if (typeof window === "undefined") return []
-
-  try {
-    const raw = localStorage.getItem(storageKey)
-    if (!raw) return []
-    return JSON.parse(raw) as PegadaRecord[]
-  } catch {
-    return []
-  }
-}
-
 export default function PegadaPage() {
   return (
     <Suspense fallback={<main className="flex min-h-screen items-center justify-center bg-neutral-950 text-white">Cargando Pegada...</main>}>
@@ -150,7 +130,6 @@ function PegadaPageContent() {
   const searchParams = useSearchParams()
   const projectId = searchParams.get("project")
 
-  const recordsKey = `pulse_pegada_records_${projectId ?? "default"}`
   const fieldTypeKey = `pulse_project_field_type_${projectId ?? "default"}`
 
   const [step, setStep] = useState<1 | 2 | 3>(1)
@@ -200,7 +179,7 @@ function PegadaPageContent() {
     setError("")
 
     try {
-      const dataUrl = await readAsDataUrl(file)
+      const dataUrl = await processImageFile(file)
       const nextState: PhotoState = { dataUrl, fileName: file.name }
 
       if (field === "prep") setPrepPhoto(nextState)
@@ -230,22 +209,20 @@ function PegadaPageContent() {
     setStep(2)
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-
+  async function savePegada(returnToHub: boolean) {
     if (!condicion) {
       setError("Selecciona una condición.")
-      return
+      return false
     }
 
     if (botesUsados <= 0) {
       setError("Botes utilizados debe ser mayor a 0.")
-      return
+      return false
     }
 
     if (isGeneralZone && ftTotales <= 0) {
       setError("Ft totales debe ser mayor a 0 en zona General.")
-      return
+      return false
     }
 
     const record: PegadaRecord = {
@@ -265,12 +242,9 @@ function PegadaPageContent() {
       },
     }
 
-    const existing = readPegadaRecords(recordsKey)
-    localStorage.setItem(recordsKey, JSON.stringify([record, ...existing]))
-
     if (projectId) {
       try {
-        await saveCloudRecord({
+        const response = await saveCloudRecord({
           module: "pegada",
           projectId,
           fieldType,
@@ -283,16 +257,35 @@ function PegadaPageContent() {
             },
           } as Record<string, unknown>,
         })
+        console.log("[pegada] save_success", { id: response.id, projectId, module: "pegada" })
         setSaveMessage("Guardado en nube.")
-      } catch {
-        setSaveMessage("Guardado local (sin conexión a nube).")
+      } catch (error) {
+        console.error("[pegada] save_failed", {
+          projectId,
+          module: "pegada",
+          error: error instanceof Error ? error.message : "unknown_error",
+        })
+        setSaveMessage("Error al guardar en nube. Revisa conexión y campos.")
+        return false
       }
     } else {
-      setSaveMessage("Captura guardada localmente.")
+      setSaveMessage("Proyecto inválido para guardado.")
+      return false
     }
 
     setError("")
+    if (returnToHub && projectId) {
+      window.location.href = `/capture?project=${encodeURIComponent(projectId)}`
+      return true
+    }
+
     setStep(3)
+    return true
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    await savePegada(false)
   }
 
   function resetForm() {
@@ -493,7 +486,7 @@ function PegadaPageContent() {
             </label>
 
             <label className="block space-y-2">
-              <span className="text-sm text-neutral-300">Observaciones</span>
+              <span className="text-sm text-neutral-300">Observaciones (opcional)</span>
               <textarea
                 value={observaciones}
                 onChange={(event) => setObservaciones(event.target.value)}
@@ -514,7 +507,14 @@ function PegadaPageContent() {
                 type="submit"
                 className="w-full rounded-xl bg-emerald-600 px-4 py-4 text-lg font-semibold hover:bg-emerald-700"
               >
-                Guardar captura
+                Save Pegada
+              </button>
+              <button
+                type="button"
+                onClick={() => void savePegada(true)}
+                className="w-full rounded-xl border border-blue-500 px-4 py-4 text-lg font-semibold text-blue-300 hover:bg-blue-500/10"
+              >
+                Save & Return to Hub
               </button>
             </div>
           </form>

@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic"
 
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { Suspense, useEffect, useState } from "react"
+import { Suspense, useState } from "react"
 
 import { RollosForm } from "../../../components/rollos/RollosForm"
 import { FieldTypeSelector } from "../../../components/shared/FieldTypeSelector"
@@ -18,18 +18,6 @@ function parseZone(zoneValue: string | null): Zone | "" {
   const upper = zoneValue.toUpperCase()
   if (upper in Zone) return Zone[upper as keyof typeof Zone]
   return ""
-}
-
-function readRollosRecords(storageKey: string): RollosRecord[] {
-  if (typeof window === "undefined") return []
-
-  try {
-    const raw = localStorage.getItem(storageKey)
-    if (!raw) return []
-    return JSON.parse(raw) as RollosRecord[]
-  } catch {
-    return []
-  }
 }
 
 export default function RollosPage() {
@@ -50,64 +38,12 @@ function RollosPageContent() {
   const searchParams = useSearchParams()
   const projectId = searchParams.get("project")
   const defaultZone = parseZone(searchParams.get("zone"))
-  const storageKey = `pulse_rollos_records_${projectId ?? "default"}`
-  const queueKey = `pulse_rollos_queue_${projectId ?? "default"}`
 
-  const [records, setRecords] = useState<RollosRecord[]>(() => readRollosRecords(storageKey))
+  const [records, setRecords] = useState<RollosRecord[]>([])
   const [fieldType, setFieldType] = useState<FieldType>(() =>
     projectId ? readProjectFieldType(projectId) : "football",
   )
   const [saveMessage, setSaveMessage] = useState("")
-
-  useEffect(() => {
-    localStorage.setItem(storageKey, JSON.stringify(records))
-  }, [records, storageKey])
-
-  async function flushQueue() {
-    if (!projectId || typeof window === "undefined") return
-
-    const raw = localStorage.getItem(queueKey)
-    if (!raw) return
-
-    let queued: RollosRecord[] = []
-    try {
-      queued = JSON.parse(raw) as RollosRecord[]
-    } catch {
-      localStorage.removeItem(queueKey)
-      return
-    }
-
-    if (queued.length === 0) {
-      localStorage.removeItem(queueKey)
-      return
-    }
-
-    const failed: RollosRecord[] = []
-
-    for (const item of queued) {
-      try {
-        await createRollosRecord(item)
-      } catch {
-        failed.push(item)
-      }
-    }
-
-    if (failed.length > 0) {
-      localStorage.setItem(queueKey, JSON.stringify(failed))
-    } else {
-      localStorage.removeItem(queueKey)
-      setSaveMessage("Sincronización completada.")
-    }
-  }
-
-  useEffect(() => {
-    void flushQueue()
-    const onOnline = () => void flushQueue()
-
-    window.addEventListener("online", onOnline)
-    return () => window.removeEventListener("online", onOnline)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId])
 
   function handleFieldTypeChange(next: FieldType) {
     if (!projectId) return
@@ -116,18 +52,21 @@ function RollosPageContent() {
   }
 
   async function handleSubmitRecord(record: RollosRecord, returnToHub: boolean) {
-    setRecords((prev) => [record, ...prev])
-
-    if (!projectId || typeof window === "undefined") return
+    if (!projectId) return
 
     try {
-      await createRollosRecord(record)
+      const response = await createRollosRecord(record)
+      console.log("[rollos] save_success", { id: response.id, projectId, module: "rollos" })
+      setRecords((prev) => [record, ...prev])
       setSaveMessage("Guardado en nube.")
-    } catch {
-      const raw = localStorage.getItem(queueKey)
-      const queued = raw ? (JSON.parse(raw) as RollosRecord[]) : []
-      localStorage.setItem(queueKey, JSON.stringify([record, ...queued]))
-      setSaveMessage("Guardado local. Se sincroniza al recuperar conexión.")
+    } catch (error) {
+      console.error("[rollos] save_failed", {
+        projectId,
+        module: "rollos",
+        error: error instanceof Error ? error.message : "unknown_error",
+      })
+      setSaveMessage("Error al guardar en nube. Revisa conexión y campos.")
+      throw error
     }
 
     if (returnToHub) {

@@ -4,6 +4,7 @@ import Image from "next/image"
 import Link from "next/link"
 import { ChangeEvent, FormEvent, useMemo, useState } from "react"
 
+import { processImageFiles } from "../../lib/clientImage"
 import { FieldTypeSelector } from "../../components/shared/FieldTypeSelector"
 import { FieldType, readProjectFieldType, saveProjectFieldType } from "../../types/fieldType"
 import { MaterialKind, MaterialRecordDb, PassType, StatusColor } from "../../types/material"
@@ -36,27 +37,6 @@ type MaterialLocalRecord = {
 const MATERIAL_OPTIONS: MaterialKind[] = ["Arena", "Goma"]
 const PASS_OPTIONS: PassType[] = ["Sencilla", "Doble"]
 
-function readLocalRecords(storageKey: string): MaterialLocalRecord[] {
-  if (typeof window === "undefined") return []
-
-  try {
-    const raw = localStorage.getItem(storageKey)
-    if (!raw) return []
-    return JSON.parse(raw) as MaterialLocalRecord[]
-  } catch {
-    return []
-  }
-}
-
-function readAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result ?? ""))
-    reader.onerror = () => reject(new Error("No se pudo leer la imagen"))
-    reader.readAsDataURL(file)
-  })
-}
-
 function getStatusColor(desviacion: number): StatusColor {
   const abs = Math.abs(desviacion)
   if (abs <= 5) return "verde"
@@ -78,8 +58,6 @@ function getStatusStyles(statusColor: StatusColor): string {
 }
 
 export default function MaterialModulePage({ projectId }: MaterialModulePageProps) {
-  const storageKey = `pulse_material_records_${projectId ?? "default"}`
-
   const [step, setStep] = useState<1 | 2>(1)
   const [fieldType, setFieldType] = useState<FieldType>(() =>
     projectId ? readProjectFieldType(projectId) : "football",
@@ -92,7 +70,7 @@ export default function MaterialModulePage({ projectId }: MaterialModulePageProp
   const [observaciones, setObservaciones] = useState("")
   const [photos, setPhotos] = useState<PhotoItem[]>([])
 
-  const [records, setRecords] = useState<MaterialLocalRecord[]>(() => readLocalRecords(storageKey))
+  const [records, setRecords] = useState<MaterialLocalRecord[]>([])
   const [error, setError] = useState("")
   const [saveMessage, setSaveMessage] = useState("")
   const [isUploadingPhotos, setIsUploadingPhotos] = useState(false)
@@ -126,11 +104,11 @@ export default function MaterialModulePage({ projectId }: MaterialModulePageProp
     setError("")
 
     try {
-      const nextPhotos: PhotoItem[] = []
-      for (const file of selectedFiles) {
-        const dataUrl = await readAsDataUrl(file)
-        nextPhotos.push({ dataUrl, fileName: file.name })
-      }
+      const urls = await processImageFiles(selectedFiles)
+      const nextPhotos: PhotoItem[] = urls.map((dataUrl, index) => ({
+        dataUrl,
+        fileName: selectedFiles[index]?.name ?? `photo_${Date.now()}_${index}`,
+      }))
 
       setPhotos((prev) => [...prev, ...nextPhotos])
     } catch {
@@ -168,10 +146,6 @@ export default function MaterialModulePage({ projectId }: MaterialModulePageProp
       timestamp: new Date().toISOString(),
     }
 
-    const nextRecords = [localRecord, ...records]
-    setRecords(nextRecords)
-    localStorage.setItem(storageKey, JSON.stringify(nextRecords))
-
     setIsSubmitting(true)
     setError("")
 
@@ -195,9 +169,17 @@ export default function MaterialModulePage({ projectId }: MaterialModulePageProp
       if (!response.ok) throw new Error("Cloud save failed")
 
       const data = (await response.json()) as MaterialRecordDb
+      console.log("[material] save_success", { id: data.id, projectId, module: "material" })
+      setRecords((prev) => [localRecord, ...prev])
       setSaveMessage(`Guardado en nube. ID: ${data.id}`)
-    } catch {
-      setSaveMessage("Guardado local (sin conexión a nube).")
+    } catch (error) {
+      console.error("[material] save_failed", {
+        projectId,
+        module: "material",
+        error: error instanceof Error ? error.message : "unknown_error",
+      })
+      setSaveMessage("Error al guardar en nube. Verifica campos y conexión.")
+      throw error
     } finally {
       setIsSubmitting(false)
     }
@@ -219,7 +201,11 @@ export default function MaterialModulePage({ projectId }: MaterialModulePageProp
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    await saveMaterial(false)
+    try {
+      await saveMaterial(false)
+    } catch {
+      // error message already set
+    }
   }
 
   if (!projectId) {
@@ -425,7 +411,13 @@ export default function MaterialModulePage({ projectId }: MaterialModulePageProp
               </button>
               <button
                 type="button"
-                onClick={() => void saveMaterial(true)}
+                onClick={async () => {
+                  try {
+                    await saveMaterial(true)
+                  } catch {
+                    // error message already set
+                  }
+                }}
                 disabled={isSubmitting}
                 className="w-full rounded-xl border border-blue-500 py-3 font-semibold text-blue-300 hover:bg-blue-500/10 disabled:opacity-50"
               >

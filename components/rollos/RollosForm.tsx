@@ -3,6 +3,7 @@
 import Image from "next/image"
 import { ChangeEvent, useState } from "react"
 
+import { processImageFiles } from "../../lib/clientImage"
 import { FieldType } from "../../types/fieldType"
 import {
   CompactionType,
@@ -26,15 +27,6 @@ const INITIAL_VALUES: RollosFormValues = {
   rollLengthStatus: "",
   photos: [],
   observations: "",
-}
-
-function readAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result ?? ""))
-    reader.onerror = () => reject(new Error("Could not read image"))
-    reader.readAsDataURL(file)
-  })
 }
 
 type RollosFormProps = {
@@ -62,7 +54,7 @@ export function RollosForm({ fieldType, projectId, defaultZone = "", onSubmitRec
 
     try {
       const selected = Array.from(files)
-      const urls = await Promise.all(selected.map((file) => readAsDataUrl(file)))
+      const urls = await processImageFiles(selected)
       setValues((prev) => ({ ...prev, photos: [...prev.photos, ...urls].slice(0, 3) }))
     } catch {
       setError("No pudimos cargar las fotos.")
