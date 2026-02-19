@@ -1,5 +1,5 @@
 import { FieldType } from "./fieldType"
-import { Zone } from "./zones"
+import { MacroZone } from "./zoneHierarchy"
 
 export enum PhaseStatus {
   COMPACTING = "COMPACTING",
@@ -20,7 +20,9 @@ export enum RollLengthStatus {
 }
 
 export interface RollosFormValues {
-  zone: Zone | ""
+  macroZone: MacroZone | ""
+  microZone: string
+  zone: string
   totalRolls: string
   totalSeams: string
   phaseStatus: PhaseStatus | ""
@@ -37,7 +39,9 @@ export interface RollosRecord {
   id?: string
   projectId: string
   fieldType: FieldType
-  zone: Zone
+  zone: string
+  macro_zone: MacroZone
+  micro_zone: string
   totalRolls: number
   totalSeams: number
   phaseStatus: PhaseStatus
@@ -53,7 +57,7 @@ export interface RollosRecord {
 
 export interface RollosRow {
   id: string
-  zone_id: Zone
+  zone_id: string
   project_id: string | null
   field_type: string | null
   total_rolls: number

@@ -54,6 +54,13 @@ export default function CaptureHubClient({ projectId }: CaptureHubClientProps) {
         >
           Pegada
         </Link>
+
+        <Link
+          href={`/capture/incidencias${q}`}
+          className="rounded-xl bg-red-600 py-4 text-center text-lg font-bold transition hover:bg-red-700"
+        >
+          Incidencias
+        </Link>
       </div>
 
       <Link

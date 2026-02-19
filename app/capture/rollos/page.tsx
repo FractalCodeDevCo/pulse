@@ -11,13 +11,9 @@ import { FieldTypeSelector } from "../../../components/shared/FieldTypeSelector"
 import { saveCloudRecord } from "../../../lib/recordClient"
 import { FieldType, readProjectFieldType, saveProjectFieldType } from "../../../types/fieldType"
 import { RollosRecord } from "../../../types/rollos"
-import { Zone } from "../../../types/zones"
 
-function parseZone(zoneValue: string | null): Zone | "" {
-  if (!zoneValue) return ""
-  const upper = zoneValue.toUpperCase()
-  if (upper in Zone) return Zone[upper as keyof typeof Zone]
-  return ""
+function parseZone(zoneValue: string | null): string {
+  return zoneValue ?? ""
 }
 
 export default function RollosPage() {

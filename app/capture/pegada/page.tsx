@@ -6,21 +6,11 @@ import Image from "next/image"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { ChangeEvent, FormEvent, Suspense, useEffect, useMemo, useState } from "react"
+
 import { processImageFile } from "../../../lib/clientImage"
 import { saveCloudRecord } from "../../../lib/recordClient"
-
-type FieldType = "football" | "soccer" | "beisbol" | "softbol"
-type ZoneKey =
-  | "lineas"
-  | "numeros"
-  | "letras"
-  | "hashmarks"
-  | "logo"
-  | "general"
-  | "batbox"
-  | "coach_base"
-  | "pitcher_mound"
-  | "linea_corredor"
+import { FIELD_TYPE_LABELS, FieldType } from "../../../types/fieldType"
+import { MACRO_ZONE_OPTIONS, MacroZone, getMicroZoneOptions } from "../../../types/zoneHierarchy"
 
 type PhotoField = "prep" | "antes" | "despues"
 
@@ -33,7 +23,9 @@ type PegadaRecord = {
   id: string
   createdAt: string
   fieldType: FieldType
-  zone: ZoneKey
+  zone: string
+  macro_zone: MacroZone
+  micro_zone: string
   ftTotales: number
   botesUsados: number
   clima: string[]
@@ -48,51 +40,6 @@ type PegadaRecord = {
 
 const DEFAULT_FIXED_FT = 10
 
-const FIELD_TYPE_LABELS: Record<FieldType, string> = {
-  football: "Football",
-  soccer: "Soccer",
-  beisbol: "Beisbol",
-  softbol: "Softbol",
-}
-
-const ZONE_LABELS: Record<ZoneKey, string> = {
-  lineas: "Lineas",
-  numeros: "Numeros",
-  letras: "Letras",
-  hashmarks: "Hashmarks",
-  logo: "Logo",
-  general: "General",
-  batbox: "Bat Box",
-  coach_base: "Coach Base",
-  pitcher_mound: "Pitcher Mound",
-  linea_corredor: "Linea del corredor",
-}
-
-const ZONES_BY_FIELD_TYPE: Record<FieldType, ZoneKey[]> = {
-  football: ["lineas", "numeros", "letras", "hashmarks", "logo", "general"],
-  soccer: ["lineas", "general", "logo", "letras"],
-  beisbol: [
-    "batbox",
-    "lineas",
-    "coach_base",
-    "pitcher_mound",
-    "linea_corredor",
-    "logo",
-    "letras",
-    "general",
-  ],
-  softbol: [
-    "batbox",
-    "lineas",
-    "coach_base",
-    "pitcher_mound",
-    "linea_corredor",
-    "logo",
-    "letras",
-    "general",
-  ],
-}
-
 const CLIMATE_OPTIONS = ["Soleado", "Nublado", "Lluvioso", "Viento", "Humedad alta"]
 const CONDITION_OPTIONS = ["Excelente", "Buena", "Regular", "Mala"]
 
@@ -103,7 +50,7 @@ function readStoredFieldType(storageKey: string): FieldType {
     const raw = localStorage.getItem(storageKey)
     if (!raw) return "football"
     const parsed = JSON.parse(raw) as FieldType
-    if (parsed in ZONES_BY_FIELD_TYPE) return parsed
+    if (parsed in FIELD_TYPE_LABELS) return parsed
   } catch {
     // fallback
   }
@@ -135,7 +82,8 @@ function PegadaPageContent() {
   const [step, setStep] = useState<1 | 2 | 3>(1)
 
   const [fieldType, setFieldType] = useState<FieldType>("football")
-  const [zone, setZone] = useState<ZoneKey>("lineas")
+  const [macroZone, setMacroZone] = useState<MacroZone | "">("")
+  const [microZone, setMicroZone] = useState("")
 
   const [prepPhoto, setPrepPhoto] = useState<PhotoState>(emptyPhoto())
   const [antesPhoto, setAntesPhoto] = useState<PhotoState>(emptyPhoto())
@@ -154,11 +102,14 @@ function PegadaPageContent() {
   useEffect(() => {
     const storedFieldType = readStoredFieldType(fieldTypeKey)
     setFieldType(storedFieldType)
-    setZone(ZONES_BY_FIELD_TYPE[storedFieldType][0])
   }, [fieldTypeKey])
 
-  const zoneOptions = useMemo(() => ZONES_BY_FIELD_TYPE[fieldType], [fieldType])
-  const isGeneralZone = zone === "general"
+  const microZoneOptions = useMemo(() => {
+    if (!macroZone) return []
+    return getMicroZoneOptions(fieldType, macroZone)
+  }, [fieldType, macroZone])
+
+  const isGeneralZone = microZone.toLowerCase().includes("general")
 
   const hasAllPhotos = useMemo(() => {
     return Boolean(prepPhoto.dataUrl && antesPhoto.dataUrl && despuesPhoto.dataUrl)
@@ -166,8 +117,9 @@ function PegadaPageContent() {
 
   function handleFieldTypeChange(next: FieldType) {
     setFieldType(next)
-    setZone(ZONES_BY_FIELD_TYPE[next][0])
     localStorage.setItem(fieldTypeKey, JSON.stringify(next))
+    setMacroZone("")
+    setMicroZone("")
     setError("")
   }
 
@@ -210,6 +162,16 @@ function PegadaPageContent() {
   }
 
   async function savePegada(returnToHub: boolean) {
+    if (!macroZone) {
+      setError("MacroZone es requerida.")
+      return false
+    }
+
+    if (!microZone) {
+      setError("MicroZone es requerida.")
+      return false
+    }
+
     if (!condicion) {
       setError("Selecciona una condición.")
       return false
@@ -229,7 +191,9 @@ function PegadaPageContent() {
       id: crypto.randomUUID(),
       createdAt: new Date().toISOString(),
       fieldType,
-      zone,
+      zone: microZone,
+      macro_zone: macroZone,
+      micro_zone: microZone,
       ftTotales: isGeneralZone ? ftTotales : DEFAULT_FIXED_FT,
       botesUsados,
       clima,
@@ -292,7 +256,8 @@ function PegadaPageContent() {
     setPrepPhoto(emptyPhoto())
     setAntesPhoto(emptyPhoto())
     setDespuesPhoto(emptyPhoto())
-    setZone(ZONES_BY_FIELD_TYPE[fieldType][0])
+    setMacroZone("")
+    setMicroZone("")
     setFtTotales(30)
     setBotesUsados(1)
     setClima([])
@@ -402,16 +367,38 @@ function PegadaPageContent() {
             <h2 className="text-xl font-semibold">2) Cuestionario</h2>
 
             <label className="block space-y-2">
-              <span className="text-sm text-neutral-300">Zona</span>
+              <span className="text-sm text-neutral-300">MacroZone</span>
               <select
-                value={zone}
-                onChange={(event) => setZone(event.target.value as ZoneKey)}
+                value={macroZone}
+                onChange={(event) => {
+                  setMacroZone(event.target.value as MacroZone | "")
+                  setMicroZone("")
+                }}
                 className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3"
                 required
               >
-                {zoneOptions.map((item) => (
+                <option value="">Selecciona MacroZone</option>
+                {MACRO_ZONE_OPTIONS.map((macro) => (
+                  <option key={macro.value} value={macro.value}>
+                    {macro.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block space-y-2">
+              <span className="text-sm text-neutral-300">MicroZone</span>
+              <select
+                value={microZone}
+                onChange={(event) => setMicroZone(event.target.value)}
+                className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3"
+                required
+                disabled={!macroZone}
+              >
+                <option value="">Selecciona MicroZone</option>
+                {microZoneOptions.map((item) => (
                   <option key={item} value={item}>
-                    {ZONE_LABELS[item]}
+                    {item}
                   </option>
                 ))}
               </select>

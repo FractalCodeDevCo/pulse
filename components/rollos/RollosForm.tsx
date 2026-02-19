@@ -1,7 +1,7 @@
 "use client"
 
 import Image from "next/image"
-import { ChangeEvent, useState } from "react"
+import { ChangeEvent, useMemo, useState } from "react"
 
 import { processImageFiles } from "../../lib/clientImage"
 import { FieldType } from "../../types/fieldType"
@@ -12,10 +12,11 @@ import {
   RollosFormValues,
   RollosRecord,
 } from "../../types/rollos"
-import { Zone } from "../../types/zones"
-import { ZoneSelect } from "../shared/ZoneSelect"
+import { MACRO_ZONE_OPTIONS, MacroZone, getMicroZoneOptions } from "../../types/zoneHierarchy"
 
 const INITIAL_VALUES: RollosFormValues = {
+  macroZone: "",
+  microZone: "",
   zone: "",
   totalRolls: "",
   totalSeams: "",
@@ -32,18 +33,22 @@ const INITIAL_VALUES: RollosFormValues = {
 type RollosFormProps = {
   fieldType: FieldType
   projectId: string
-  defaultZone?: Zone | ""
+  defaultZone?: string
   onSubmitRecord: (record: RollosRecord, returnToHub: boolean) => Promise<void> | void
 }
 
 export function RollosForm({ fieldType, projectId, defaultZone = "", onSubmitRecord }: RollosFormProps) {
   const [step, setStep] = useState<1 | 2>(1)
-  const [values, setValues] = useState<RollosFormValues>({ ...INITIAL_VALUES, zone: defaultZone })
+  const [values, setValues] = useState<RollosFormValues>({ ...INITIAL_VALUES, microZone: defaultZone, zone: defaultZone })
   const [error, setError] = useState("")
   const [isReadingPhoto, setIsReadingPhoto] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const canContinue = values.photos.length >= 1
+  const microOptions = useMemo(() => {
+    if (!values.macroZone) return []
+    return getMicroZoneOptions(fieldType, values.macroZone as MacroZone)
+  }, [fieldType, values.macroZone])
 
   async function handlePhotosChange(event: ChangeEvent<HTMLInputElement>) {
     const files = event.target.files
@@ -68,7 +73,8 @@ export function RollosForm({ fieldType, projectId, defaultZone = "", onSubmitRec
   }
 
   async function saveRollos(returnToHub: boolean) {
-    if (!values.zone) return setError("Zona requerida.")
+    if (!values.macroZone) return setError("MacroZone requerida.")
+    if (!values.microZone) return setError("MicroZone requerida.")
     if (!values.totalRolls || Number(values.totalRolls) < 0) return setError("Total de rollos requerido.")
     if (!values.totalSeams || Number(values.totalSeams) < 0) return setError("Total de costuras requerido.")
     if (!values.phaseStatus) return setError("Estado de fase requerido.")
@@ -79,7 +85,9 @@ export function RollosForm({ fieldType, projectId, defaultZone = "", onSubmitRec
     const record: RollosRecord = {
       projectId,
       fieldType,
-      zone: values.zone as Zone,
+      zone: values.microZone,
+      macro_zone: values.macroZone as MacroZone,
+      micro_zone: values.microZone,
       totalRolls: Number(values.totalRolls),
       totalSeams: Number(values.totalSeams),
       phaseStatus: values.phaseStatus as PhaseStatus,
@@ -99,7 +107,7 @@ export function RollosForm({ fieldType, projectId, defaultZone = "", onSubmitRec
     try {
       await onSubmitRecord(record, returnToHub)
       if (!returnToHub) {
-        setValues({ ...INITIAL_VALUES, zone: defaultZone })
+        setValues({ ...INITIAL_VALUES })
         setStep(1)
       }
     } catch {
@@ -163,7 +171,42 @@ export function RollosForm({ fieldType, projectId, defaultZone = "", onSubmitRec
 
       {step === 2 ? (
         <div className="space-y-4">
-          <ZoneSelect label="Zona" value={values.zone} onChange={(zone) => setValues((prev) => ({ ...prev, zone }))} />
+          <label className="block space-y-2">
+            <span className="text-sm text-neutral-300">MacroZone</span>
+            <select
+              value={values.macroZone}
+              onChange={(event) =>
+                setValues((prev) => ({ ...prev, macroZone: event.target.value as MacroZone | "", microZone: "", zone: "" }))
+              }
+              className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
+            >
+              <option value="">Selecciona MacroZone</option>
+              {MACRO_ZONE_OPTIONS.map((macro) => (
+                <option key={macro.value} value={macro.value}>
+                  {macro.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="block space-y-2">
+            <span className="text-sm text-neutral-300">MicroZone</span>
+            <select
+              value={values.microZone}
+              onChange={(event) =>
+                setValues((prev) => ({ ...prev, microZone: event.target.value, zone: event.target.value }))
+              }
+              className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
+              disabled={!values.macroZone}
+            >
+              <option value="">Selecciona MicroZone</option>
+              {microOptions.map((micro) => (
+                <option key={micro} value={micro}>
+                  {micro}
+                </option>
+              ))}
+            </select>
+          </label>
 
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block space-y-2">
