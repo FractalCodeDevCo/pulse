@@ -18,10 +18,20 @@ const INITIAL_VALUES: RollosFormValues = {
   macroZone: "",
   microZone: "",
   zone: "",
+  rollColor: "",
+  rollFeetTotal: "",
+  rollLotId: "",
   totalRolls: "",
   totalSeams: "",
+  plannedFeetNeeded: "",
+  preCutCalculated: null,
   phaseStatus: "",
   compactionType: "",
+  actualFeetUsed: "",
+  remainingFeet: "",
+  materialShortage: null,
+  reworkRequired: null,
+  criticalEvent: "",
   surfaceFirm: true,
   moistureOk: true,
   doubleCompaction: false,
@@ -75,10 +85,18 @@ export function RollosForm({ fieldType, projectId, defaultZone = "", onSubmitRec
   async function saveRollos(returnToHub: boolean) {
     if (!values.macroZone) return setError("MacroZone requerida.")
     if (!values.microZone) return setError("MicroZone requerida.")
+    if (!values.rollColor.trim()) return setError("Color del rollo requerido.")
+    if (!values.rollFeetTotal || Number(values.rollFeetTotal) <= 0) return setError("Pies totales del rollo requeridos.")
     if (!values.totalRolls || Number(values.totalRolls) < 0) return setError("Total de rollos requerido.")
     if (!values.totalSeams || Number(values.totalSeams) < 0) return setError("Total de costuras requerido.")
+    if (!values.plannedFeetNeeded || Number(values.plannedFeetNeeded) <= 0) return setError("Pies planeados requeridos.")
+    if (values.preCutCalculated === null) return setError("Indica si se calculó antes de traer/cortar.")
     if (!values.phaseStatus) return setError("Estado de fase requerido.")
     if (!values.compactionType) return setError("Tipo de compactación requerido.")
+    if (!values.actualFeetUsed || Number(values.actualFeetUsed) < 0) return setError("Pies usados requeridos.")
+    if (!values.remainingFeet || Number(values.remainingFeet) < 0) return setError("Pies sobrantes requeridos.")
+    if (values.materialShortage === null) return setError("Indica si faltó material.")
+    if (values.reworkRequired === null) return setError("Indica si hubo retrabajo.")
     if (!values.rollLengthStatus) return setError("Semáforo requerido.")
     if (values.photos.length < 1 || values.photos.length > 3) return setError("Sube 1 a 3 fotos.")
 
@@ -88,10 +106,20 @@ export function RollosForm({ fieldType, projectId, defaultZone = "", onSubmitRec
       zone: values.microZone,
       macro_zone: values.macroZone as MacroZone,
       micro_zone: values.microZone,
+      rollColor: values.rollColor.trim(),
+      rollFeetTotal: Number(values.rollFeetTotal),
+      rollLotId: values.rollLotId.trim() || undefined,
       totalRolls: Number(values.totalRolls),
       totalSeams: Number(values.totalSeams),
+      plannedFeetNeeded: Number(values.plannedFeetNeeded),
+      preCutCalculated: values.preCutCalculated,
       phaseStatus: values.phaseStatus as PhaseStatus,
       compactionType: values.compactionType as CompactionType,
+      actualFeetUsed: Number(values.actualFeetUsed),
+      remainingFeet: Number(values.remainingFeet),
+      materialShortage: values.materialShortage,
+      reworkRequired: values.reworkRequired,
+      criticalEvent: values.criticalEvent.trim() || undefined,
       surfaceFirm: values.surfaceFirm,
       moistureOk: values.moistureOk,
       doubleCompaction: values.doubleCompaction,
@@ -210,6 +238,37 @@ export function RollosForm({ fieldType, projectId, defaultZone = "", onSubmitRec
 
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block space-y-2">
+              <span className="text-sm text-neutral-300">Color del rollo</span>
+              <input
+                type="text"
+                value={values.rollColor}
+                onChange={(event) => setValues((prev) => ({ ...prev, rollColor: event.target.value }))}
+                className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
+              />
+            </label>
+
+            <label className="block space-y-2">
+              <span className="text-sm text-neutral-300">Pies totales del rollo</span>
+              <input
+                type="number"
+                min={0}
+                value={values.rollFeetTotal}
+                onChange={(event) => setValues((prev) => ({ ...prev, rollFeetTotal: event.target.value }))}
+                className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
+              />
+            </label>
+
+            <label className="block space-y-2 sm:col-span-2">
+              <span className="text-sm text-neutral-300">Lote / ID del rollo (opcional)</span>
+              <input
+                type="text"
+                value={values.rollLotId}
+                onChange={(event) => setValues((prev) => ({ ...prev, rollLotId: event.target.value }))}
+                className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
+              />
+            </label>
+
+            <label className="block space-y-2">
               <span className="text-sm text-neutral-300">Total de rollos instalados</span>
               <input
                 type="number"
@@ -231,6 +290,49 @@ export function RollosForm({ fieldType, projectId, defaultZone = "", onSubmitRec
               />
             </label>
           </div>
+
+          <section className="space-y-3 rounded-xl border border-neutral-800 bg-neutral-950/40 p-4">
+            <h3 className="text-sm font-semibold text-neutral-200">Verificación previa</h3>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block space-y-2">
+                <span className="text-sm text-neutral-300">Pies que se necesitan</span>
+                <input
+                  type="number"
+                  min={0}
+                  value={values.plannedFeetNeeded}
+                  onChange={(event) => setValues((prev) => ({ ...prev, plannedFeetNeeded: event.target.value }))}
+                  className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
+                />
+              </label>
+            </div>
+            <div className="space-y-2">
+              <p className="text-sm text-neutral-300">¿Se calculó antes de traer/cortar?</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setValues((prev) => ({ ...prev, preCutCalculated: true }))}
+                  className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
+                    values.preCutCalculated === true
+                      ? "border-emerald-500 bg-emerald-500/20 text-emerald-200"
+                      : "border-neutral-700"
+                  }`}
+                >
+                  Sí
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setValues((prev) => ({ ...prev, preCutCalculated: false }))}
+                  className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
+                    values.preCutCalculated === false
+                      ? "border-red-500 bg-red-500/20 text-red-200"
+                      : "border-neutral-700"
+                  }`}
+                >
+                  No
+                </button>
+              </div>
+            </div>
+          </section>
 
           <fieldset className="space-y-2">
             <legend className="text-sm text-neutral-300">Estado de la fase</legend>
@@ -272,6 +374,105 @@ export function RollosForm({ fieldType, projectId, defaultZone = "", onSubmitRec
               <option value={CompactionType.MANUAL}>Manual</option>
             </select>
           </label>
+
+          <section className="space-y-3 rounded-xl border border-neutral-800 bg-neutral-950/40 p-4">
+            <h3 className="text-sm font-semibold text-neutral-200">Resultado real</h3>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block space-y-2">
+                <span className="text-sm text-neutral-300">Pies usados</span>
+                <input
+                  type="number"
+                  min={0}
+                  value={values.actualFeetUsed}
+                  onChange={(event) => setValues((prev) => ({ ...prev, actualFeetUsed: event.target.value }))}
+                  className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
+                />
+              </label>
+              <label className="block space-y-2">
+                <span className="text-sm text-neutral-300">Pies sobrantes</span>
+                <input
+                  type="number"
+                  min={0}
+                  value={values.remainingFeet}
+                  onChange={(event) => setValues((prev) => ({ ...prev, remainingFeet: event.target.value }))}
+                  className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
+                />
+              </label>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <p className="text-sm text-neutral-300">¿Faltó material?</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setValues((prev) => ({ ...prev, materialShortage: true }))}
+                    className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
+                      values.materialShortage === true
+                        ? "border-amber-500 bg-amber-500/20 text-amber-200"
+                        : "border-neutral-700"
+                    }`}
+                  >
+                    Sí
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setValues((prev) => ({ ...prev, materialShortage: false }))}
+                    className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
+                      values.materialShortage === false
+                        ? "border-emerald-500 bg-emerald-500/20 text-emerald-200"
+                        : "border-neutral-700"
+                    }`}
+                  >
+                    No
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm text-neutral-300">¿Hubo retrabajo?</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setValues((prev) => ({ ...prev, reworkRequired: true }))}
+                    className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
+                      values.reworkRequired === true
+                        ? "border-amber-500 bg-amber-500/20 text-amber-200"
+                        : "border-neutral-700"
+                    }`}
+                  >
+                    Sí
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setValues((prev) => ({ ...prev, reworkRequired: false }))}
+                    className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
+                      values.reworkRequired === false
+                        ? "border-emerald-500 bg-emerald-500/20 text-emerald-200"
+                        : "border-neutral-700"
+                    }`}
+                  >
+                    No
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <label className="block space-y-2">
+              <span className="text-sm text-neutral-300">Evento crítico (opcional)</span>
+              <select
+                value={values.criticalEvent}
+                onChange={(event) => setValues((prev) => ({ ...prev, criticalEvent: event.target.value }))}
+                className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
+              >
+                <option value="">Sin evento</option>
+                <option value="MIS_CUT">Se cortó mal</option>
+                <option value="WRONG_ROLL">Rollo incorrecto</option>
+                <option value="REWORK_SEAM">Retrabajo por costura</option>
+                <option value="OTHER">Otro</option>
+              </select>
+            </label>
+          </section>
 
           <div className="grid gap-2 sm:grid-cols-3">
             <button

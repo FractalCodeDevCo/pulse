@@ -23,10 +23,20 @@ export interface RollosFormValues {
   macroZone: MacroZone | ""
   microZone: string
   zone: string
+  rollColor: string
+  rollFeetTotal: string
+  rollLotId: string
   totalRolls: string
   totalSeams: string
+  plannedFeetNeeded: string
+  preCutCalculated: boolean | null
   phaseStatus: PhaseStatus | ""
   compactionType: CompactionType | ""
+  actualFeetUsed: string
+  remainingFeet: string
+  materialShortage: boolean | null
+  reworkRequired: boolean | null
+  criticalEvent: string
   surfaceFirm: boolean
   moistureOk: boolean
   doubleCompaction: boolean
@@ -42,10 +52,20 @@ export interface RollosRecord {
   zone: string
   macro_zone: MacroZone
   micro_zone: string
+  rollColor: string
+  rollFeetTotal: number
+  rollLotId?: string
   totalRolls: number
   totalSeams: number
+  plannedFeetNeeded: number
+  preCutCalculated: boolean
   phaseStatus: PhaseStatus
   compactionType: CompactionType
+  actualFeetUsed: number
+  remainingFeet: number
+  materialShortage: boolean
+  reworkRequired: boolean
+  criticalEvent?: string
   surfaceFirm: boolean
   moistureOk: boolean
   doubleCompaction: boolean
