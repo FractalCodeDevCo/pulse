@@ -138,8 +138,9 @@ export function RollosForm({ fieldType, projectId, defaultZone = "", onSubmitRec
         setValues({ ...INITIAL_VALUES })
         setStep(1)
       }
-    } catch {
-      setError("No se pudo guardar en nube. Queda respaldo local.")
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "No se pudo guardar en nube."
+      setError(message)
     } finally {
       setIsSubmitting(false)
     }

@@ -41,6 +41,14 @@ export async function saveCloudRecord(
   const text = await response.text()
 
   if (!response.ok) {
+    let errorMessage = text || "Cloud save failed"
+    try {
+      const parsedError = JSON.parse(text) as { error?: string }
+      if (parsedError?.error) errorMessage = parsedError.error
+    } catch {
+      // keep raw response text
+    }
+
     console.error("[capture-client] save_failed", {
       status: response.status,
       body: text,
@@ -48,7 +56,7 @@ export async function saveCloudRecord(
       projectId: params.projectId,
     })
 
-    throw new Error(text || "Cloud save failed")
+    throw new Error(errorMessage)
   }
 
   const parsed = JSON.parse(text) as SaveCloudRecordResponse

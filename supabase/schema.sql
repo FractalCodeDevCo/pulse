@@ -59,6 +59,27 @@ create index if not exists idx_incidences_project on public.incidences(project_i
 create index if not exists idx_incidences_created_at on public.incidences(created_at desc);
 create index if not exists idx_incidences_type on public.incidences(type_of_incidence);
 
+-- Roll verification table (control before installation)
+create table if not exists public.roll_verifications (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  project_id text not null,
+  field_type text not null,
+  macro_zone text not null,
+  micro_zone text not null,
+  roll_color text not null,
+  roll_feet_total numeric not null,
+  roll_lot_id text,
+  label_photo_url text not null,
+  status text not null check (status in ('pending', 'confirmed', 'rejected')),
+  rejection_reason text,
+  payload jsonb not null default '{}'::jsonb
+);
+
+create index if not exists idx_roll_verifications_project on public.roll_verifications(project_id);
+create index if not exists idx_roll_verifications_zone on public.roll_verifications(project_id, macro_zone, micro_zone);
+create index if not exists idx_roll_verifications_created_at on public.roll_verifications(created_at desc);
+
 -- Zones catalog
 create table if not exists public.zones (
   id text primary key,
