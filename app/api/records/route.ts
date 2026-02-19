@@ -5,7 +5,7 @@ import { getSupabaseAdminClient } from "../../../lib/supabase/server"
 export const runtime = "nodejs"
 
 type RequestBody = {
-  module?: "compactacion" | "rollos" | "pegada" | "material"
+  module?: "compactacion" | "rollos" | "pegada"
   projectId?: string
   fieldType?: string
   payload?: Record<string, unknown>
@@ -117,9 +117,13 @@ async function uploadDataUrl(
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as RequestBody
+    const allowedModules = new Set(["compactacion", "rollos", "pegada"])
 
     if (!body.module || !body.projectId || !body.payload || typeof body.payload !== "object") {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
+    }
+    if (!allowedModules.has(body.module)) {
+      return NextResponse.json({ error: "Invalid module for production records" }, { status: 400 })
     }
 
     const supabase = getSupabaseAdminClient()
@@ -141,6 +145,20 @@ export async function POST(request: Request) {
       createdAt: new Date().toISOString(),
     }
 
+    const macroZone =
+      typeof body.payload.macro_zone === "string"
+        ? body.payload.macro_zone
+        : typeof unifiedPayload.metadata.macro_zone === "string"
+          ? (unifiedPayload.metadata.macro_zone as string)
+          : null
+
+    const microZone =
+      typeof body.payload.micro_zone === "string"
+        ? body.payload.micro_zone
+        : typeof unifiedPayload.metadata.micro_zone === "string"
+          ? (unifiedPayload.metadata.micro_zone as string)
+          : null
+
     log("insert_attempt", {
       module: body.module,
       projectId: body.projectId,
@@ -154,6 +172,8 @@ export async function POST(request: Request) {
         project_id: body.projectId,
         module: body.module,
         field_type: body.fieldType ?? null,
+        macro_zone: macroZone,
+        micro_zone: microZone,
         payload: unifiedPayload,
       })
       .select("id, project_id, module, field_type, payload, created_at")

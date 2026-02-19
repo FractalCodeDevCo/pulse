@@ -6,10 +6,14 @@ create table if not exists public.field_records (
   project_id text not null,
   module text not null,
   field_type text,
+  macro_zone text,
+  micro_zone text,
   payload jsonb not null,
   created_at timestamptz not null default now()
 );
 
+alter table if exists public.field_records add column if not exists macro_zone text;
+alter table if exists public.field_records add column if not exists micro_zone text;
 create index if not exists idx_field_records_project on public.field_records(project_id);
 create index if not exists idx_field_records_module on public.field_records(module);
 create index if not exists idx_field_records_created_at on public.field_records(created_at desc);
@@ -34,6 +38,26 @@ create table if not exists public.material_records (
 
 create index if not exists idx_material_records_project on public.material_records(project_id);
 create index if not exists idx_material_records_created_at on public.material_records(created_at desc);
+
+-- Independent incidence log table (separate from production records)
+create table if not exists public.incidences (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  project_id text not null,
+  field_type text,
+  macro_zone text not null,
+  micro_zone text not null,
+  type_of_incidence text not null,
+  priority_level text not null,
+  impact_level text,
+  photos jsonb not null default '[]'::jsonb,
+  note text,
+  payload jsonb not null default '{}'::jsonb
+);
+
+create index if not exists idx_incidences_project on public.incidences(project_id);
+create index if not exists idx_incidences_created_at on public.incidences(created_at desc);
+create index if not exists idx_incidences_type on public.incidences(type_of_incidence);
 
 -- Zones catalog
 create table if not exists public.zones (
