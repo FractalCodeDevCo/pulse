@@ -4,9 +4,10 @@ export type ProcessImageOptions = {
   quality?: number
 }
 
-const DEFAULT_MAX_FILE_SIZE = 8 * 1024 * 1024
+const DEFAULT_MAX_FILE_SIZE = 25 * 1024 * 1024
 const DEFAULT_MAX_DIMENSION = 1600
 const DEFAULT_QUALITY = 0.78
+const FALLBACK_IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".heic", ".heif", ".webp"]
 
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -49,7 +50,11 @@ export async function processImageFile(file: File, options: ProcessImageOptions 
   const maxDimension = options.maxDimension ?? DEFAULT_MAX_DIMENSION
   const quality = options.quality ?? DEFAULT_QUALITY
 
-  if (!file.type.startsWith("image/")) {
+  const lowerName = file.name.toLowerCase()
+  const hasImageExtension = FALLBACK_IMAGE_EXTENSIONS.some((ext) => lowerName.endsWith(ext))
+  const isImageByMime = file.type.startsWith("image/")
+
+  if (!isImageByMime && !hasImageExtension) {
     throw new Error("Only image files are allowed")
   }
 
@@ -57,7 +62,13 @@ export async function processImageFile(file: File, options: ProcessImageOptions 
     throw new Error(`Image too large: ${Math.round(file.size / 1024 / 1024)}MB`) }
 
   const source = await fileToDataUrl(file)
-  return compressDataUrl(source, maxDimension, quality)
+  try {
+    return await compressDataUrl(source, maxDimension, quality)
+  } catch {
+    // Some devices/codecs (e.g. HEIC/HEIF) may fail canvas decoding.
+    // Keep original data URL so upload flow still works instead of failing capture.
+    return source
+  }
 }
 
 export async function processImageFiles(files: File[], options: ProcessImageOptions = {}): Promise<string[]> {
