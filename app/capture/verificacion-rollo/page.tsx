@@ -10,7 +10,7 @@ import { ChangeEvent, Suspense, useMemo, useState } from "react"
 import { FieldTypeSelector } from "../../../components/shared/FieldTypeSelector"
 import { processImageFile } from "../../../lib/clientImage"
 import { FieldType, readProjectFieldType, saveProjectFieldType } from "../../../types/fieldType"
-import { MACRO_ZONE_OPTIONS, MacroZone, getMicroZoneOptions } from "../../../types/zoneHierarchy"
+import { MacroZone, getMacroZoneOptions, getMicroZoneOptions } from "../../../types/zoneHierarchy"
 
 type VerificationStatus = "pending" | "confirmed" | "rejected"
 
@@ -44,6 +44,7 @@ function RollVerificationPageContent() {
     if (!macroZone) return []
     return getMicroZoneOptions(fieldType, macroZone)
   }, [fieldType, macroZone])
+  const macroZoneOptions = useMemo(() => getMacroZoneOptions(fieldType), [fieldType])
 
   async function handlePhotoChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
@@ -162,7 +163,7 @@ function RollVerificationPageContent() {
               className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3"
             >
               <option value="">Selecciona MacroZone</option>
-              {MACRO_ZONE_OPTIONS.map((macro) => (
+              {macroZoneOptions.map((macro) => (
                 <option key={macro.value} value={macro.value}>
                   {macro.label}
                 </option>

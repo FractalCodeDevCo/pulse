@@ -10,7 +10,7 @@ import { ChangeEvent, FormEvent, Suspense, useEffect, useMemo, useState } from "
 import { processImageFile } from "../../../lib/clientImage"
 import { saveCloudRecord } from "../../../lib/recordClient"
 import { FIELD_TYPE_LABELS, FieldType } from "../../../types/fieldType"
-import { MACRO_ZONE_OPTIONS, MacroZone, getMicroZoneOptions } from "../../../types/zoneHierarchy"
+import { MacroZone, getMacroZoneOptions, getMicroZoneOptions } from "../../../types/zoneHierarchy"
 
 type PhotoField = "prep" | "antes" | "despues"
 
@@ -108,6 +108,7 @@ function PegadaPageContent() {
     if (!macroZone) return []
     return getMicroZoneOptions(fieldType, macroZone)
   }, [fieldType, macroZone])
+  const macroZoneOptions = useMemo(() => getMacroZoneOptions(fieldType), [fieldType])
 
   const isGeneralZone = microZone.toLowerCase().includes("general")
 
@@ -378,7 +379,7 @@ function PegadaPageContent() {
                 required
               >
                 <option value="">Selecciona MacroZone</option>
-                {MACRO_ZONE_OPTIONS.map((macro) => (
+                {macroZoneOptions.map((macro) => (
                   <option key={macro.value} value={macro.value}>
                     {macro.label}
                   </option>

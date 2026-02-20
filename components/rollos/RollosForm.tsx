@@ -12,7 +12,7 @@ import {
   RollosFormValues,
   RollosRecord,
 } from "../../types/rollos"
-import { MACRO_ZONE_OPTIONS, MacroZone, getMicroZoneOptions } from "../../types/zoneHierarchy"
+import { MacroZone, getMacroZoneOptions, getMicroZoneOptions } from "../../types/zoneHierarchy"
 
 const INITIAL_VALUES: RollosFormValues = {
   macroZone: "",
@@ -59,6 +59,7 @@ export function RollosForm({ fieldType, projectId, defaultZone = "", onSubmitRec
     if (!values.macroZone) return []
     return getMicroZoneOptions(fieldType, values.macroZone as MacroZone)
   }, [fieldType, values.macroZone])
+  const macroZoneOptions = useMemo(() => getMacroZoneOptions(fieldType), [fieldType])
 
   async function handlePhotosChange(event: ChangeEvent<HTMLInputElement>) {
     const files = event.target.files
@@ -210,7 +211,7 @@ export function RollosForm({ fieldType, projectId, defaultZone = "", onSubmitRec
               className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
             >
               <option value="">Selecciona MacroZone</option>
-              {MACRO_ZONE_OPTIONS.map((macro) => (
+              {macroZoneOptions.map((macro) => (
                 <option key={macro.value} value={macro.value}>
                   {macro.label}
                 </option>

@@ -1,46 +1,71 @@
 import { FieldType } from "./fieldType"
 
-export type MacroZone = "CENTRAL" | "LATERAL" | "PERIMETRAL" | "CRITICA" | "TRANSICION"
+export type MacroZone =
+  | "Infield"
+  | "Outfield"
+  | "Foul Territory"
+  | "Warning Track"
+  | "Borders"
+  | "End Zones"
+  | "Field Interior"
+  | "Numbers / Logos"
+  | "Goals"
+  | "Sidelines"
 
-export const MACRO_ZONE_OPTIONS: Array<{ value: MacroZone; label: string }> = [
-  { value: "CENTRAL", label: "Central" },
-  { value: "LATERAL", label: "Lateral" },
-  { value: "PERIMETRAL", label: "Perimetral" },
-  { value: "CRITICA", label: "Crítica" },
-  { value: "TRANSICION", label: "Transición" },
-]
+type MacroMap = Record<string, string[]>
 
-const MICRO_ZONES_BY_FIELD_AND_MACRO: Record<FieldType, Record<MacroZone, string[]>> = {
-  football: {
-    CENTRAL: ["Central field", "Logo"],
-    LATERAL: ["Hash left", "Hash right", "Sidelines"],
-    PERIMETRAL: ["Sidelines"],
-    CRITICA: ["Red zone", "End zone"],
-    TRANSICION: ["Hash left", "Hash right"],
-  },
-  soccer: {
-    CENTRAL: ["Central strip", "Logo"],
-    LATERAL: ["Left wing", "Right wing", "Sidelines"],
-    PERIMETRAL: ["Corners", "Sidelines"],
-    CRITICA: ["Goal box left", "Goal box right", "Penalty area"],
-    TRANSICION: ["Left wing", "Right wing"],
-  },
+export const ZONE_HIERARCHY_BY_SPORT: Record<FieldType, MacroMap> = {
   beisbol: {
-    CENTRAL: ["Infield", "Outfield", "Logo area"],
-    LATERAL: ["Foul territory", "Sideline (gradas)"],
-    PERIMETRAL: ["Warning track", "Foul territory"],
-    CRITICA: ["Batter box", "Pitcher mound"],
-    TRANSICION: ["Outfield", "Warning track"],
+    Infield: [
+      "Pitcher's Mound",
+      "Circle interior pitch",
+      "Batters Box (Left)",
+      "Batters Box (Right)",
+      "Home Plate area",
+      "Base Path - 1st Base",
+      "Base Path - 2nd Base",
+      "Base Path - 3rd Base",
+      "Shortstop area",
+    ],
+    Outfield: ["Center Field", "Left Field", "Right Field"],
+    "Foul Territory": ["Foul Left", "Foul Right", "On-Deck Circles", "Dugouts"],
+    "Warning Track": ["Warning Track - Left", "Warning Track - Center", "Warning Track - Right"],
+    Borders: ["Perimeter Turf Strip", "Sidelines adjacentes"],
   },
   softbol: {
-    CENTRAL: ["Infield", "Outfield", "Logo area"],
-    LATERAL: ["Foul territory", "Sideline (gradas)"],
-    PERIMETRAL: ["Warning track", "Foul territory"],
-    CRITICA: ["Batter box", "Pitcher mound"],
-    TRANSICION: ["Outfield", "Warning track"],
+    Infield: [
+      "Circle interior - Pitcher",
+      "Batters Box (Left)",
+      "Batters Box (Right)",
+      "Base Path - 1st Base",
+      "Base Path - 2nd Base",
+      "Base Path - 3rd Base",
+      "Home Plate complex",
+    ],
+    Outfield: ["Left Field", "Center Field", "Right Field"],
+    "Foul Territory": ["Foul Left", "Foul Right"],
+    "Warning Track": ["Warning Track"],
+    Borders: ["Perimeter adjacent", "Sidelines"],
+  },
+  football: {
+    "End Zones": ["Left End Zone", "Right End Zone"],
+    "Field Interior": ["Hash Marks Inside", "Flank (Sideline) Left", "Flank (Sideline) Right", "Center Stripes"],
+    "Numbers / Logos": ["Field Numbers", "Midfield Logo", "Yardage Markings"],
+    Borders: ["Sideline buffer", "Team area / bench zones"],
+  },
+  soccer: {
+    "Field Interior": ["Left Half", "Right Half", "Center Circle", "Penalty Box Left", "Penalty Box Right"],
+    Goals: ["Goal Box Left", "Goal Box Right"],
+    Sidelines: ["Touchline Left", "Touchline Right"],
+    Borders: ["Endline Left", "Endline Right", "Technical Area"],
   },
 }
 
-export function getMicroZoneOptions(fieldType: FieldType, macroZone: MacroZone): string[] {
-  return MICRO_ZONES_BY_FIELD_AND_MACRO[fieldType]?.[macroZone] ?? []
+export function getMacroZoneOptions(fieldType: FieldType): Array<{ value: MacroZone; label: string }> {
+  const map = ZONE_HIERARCHY_BY_SPORT[fieldType]
+  return Object.keys(map).map((macro) => ({ value: macro as MacroZone, label: macro }))
+}
+
+export function getMicroZoneOptions(fieldType: FieldType, macroZone: string): string[] {
+  return ZONE_HIERARCHY_BY_SPORT[fieldType]?.[macroZone] ?? []
 }

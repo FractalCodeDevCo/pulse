@@ -9,7 +9,7 @@ import { ChangeEvent, Suspense, useMemo, useState } from "react"
 
 import { processImageFiles } from "../../../lib/clientImage"
 import { FIELD_TYPE_LABELS, FieldType, readProjectFieldType, saveProjectFieldType } from "../../../types/fieldType"
-import { MACRO_ZONE_OPTIONS, MacroZone, getMicroZoneOptions } from "../../../types/zoneHierarchy"
+import { MacroZone, getMacroZoneOptions, getMicroZoneOptions } from "../../../types/zoneHierarchy"
 
 const INCIDENT_OPTIONS = [
   "Longitud de rollo incorrecta",
@@ -55,6 +55,7 @@ function IncidenciasPageContent() {
     if (!macroZone) return []
     return getMicroZoneOptions(fieldType, macroZone)
   }, [fieldType, macroZone])
+  const macroZoneOptions = useMemo(() => getMacroZoneOptions(fieldType), [fieldType])
 
   async function handlePhotosChange(event: ChangeEvent<HTMLInputElement>) {
     const files = event.target.files
@@ -215,7 +216,7 @@ function IncidenciasPageContent() {
               className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3"
             >
               <option value="">Selecciona MacroZone</option>
-              {MACRO_ZONE_OPTIONS.map((macro) => (
+              {macroZoneOptions.map((macro) => (
                 <option key={macro.value} value={macro.value}>
                   {macro.label}
                 </option>
