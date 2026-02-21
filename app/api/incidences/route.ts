@@ -6,9 +6,11 @@ export const runtime = "nodejs"
 
 type IncidenceRequestBody = {
   project_id?: string
+  project_zone_id?: string
   field_type?: string
   macro_zone?: string
   micro_zone?: string
+  zone_type?: string
   type_of_incidence?: string
   impact_level?: string
   priority_level?: string
@@ -86,9 +88,11 @@ export async function POST(request: Request) {
 
     const payload = {
       project_id: body.project_id,
+      project_zone_id: body.project_zone_id ?? null,
       module: "incidence",
       macro_zone: body.macro_zone,
       micro_zone: body.micro_zone,
+      zone_type: body.zone_type ?? null,
       type_of_incidence: body.type_of_incidence,
       impact_level: body.impact_level ?? body.priority_level,
       photos: photoUrls,
@@ -107,9 +111,11 @@ export async function POST(request: Request) {
       .from("incidences")
       .insert({
         project_id: body.project_id,
+        project_zone_id: body.project_zone_id ?? null,
         field_type: body.field_type ?? null,
         macro_zone: body.macro_zone,
         micro_zone: body.micro_zone,
+        zone_type: body.zone_type ?? null,
         type_of_incidence: body.type_of_incidence,
         priority_level: body.priority_level,
         impact_level: body.impact_level ?? body.priority_level,

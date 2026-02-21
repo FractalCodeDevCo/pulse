@@ -9,9 +9,21 @@ import { PULSE_ZONE_OPTIONS, PulseZone } from "../../types/pulseZones"
 
 type RollVerificationPageClientProps = {
   projectId: string | null
+  projectZoneId: string | null
+  fieldType: string | null
+  macroZone: string | null
+  microZone: string | null
+  zoneType: string | null
 }
 
-export default function RollVerificationPageClient({ projectId }: RollVerificationPageClientProps) {
+export default function RollVerificationPageClient({
+  projectId,
+  projectZoneId,
+  fieldType,
+  macroZone,
+  microZone,
+  zoneType,
+}: RollVerificationPageClientProps) {
   const [zone, setZone] = useState<PulseZone | "">("")
   const [lengthFt, setLengthFt] = useState("")
   const [colorLetter, setColorLetter] = useState("")
@@ -53,6 +65,12 @@ export default function RollVerificationPageClient({ projectId }: RollVerificati
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          project_id: projectId,
+          project_zone_id: projectZoneId,
+          field_type: fieldType,
+          macro_zone: macroZone,
+          micro_zone: microZone,
+          zone_type: zoneType,
           zone,
           length_ft: lengthFt ? Number(lengthFt) : null,
           color_letter: colorLetter.trim() || null,
@@ -89,6 +107,11 @@ export default function RollVerificationPageClient({ projectId }: RollVerificati
         <header className="space-y-2">
           <p className="text-sm text-neutral-400">Pulse / Roll Verification / {projectId}</p>
           <h1 className="text-3xl font-bold">Roll Verification</h1>
+          {projectZoneId ? (
+            <p className="text-sm text-neutral-400">
+              Zona activa: {macroZone} / {microZone}
+            </p>
+          ) : null}
         </header>
 
         <section className="space-y-4 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">

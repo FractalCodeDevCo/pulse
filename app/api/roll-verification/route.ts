@@ -6,6 +6,12 @@ import { getSupabaseAdminClient } from "../../../lib/supabase/server"
 export const runtime = "nodejs"
 
 type RequestBody = {
+  project_id?: string | null
+  project_zone_id?: string | null
+  field_type?: string | null
+  macro_zone?: string | null
+  micro_zone?: string | null
+  zone_type?: string | null
   zone?: string
   length_ft?: number | null
   color_letter?: string | null
@@ -56,6 +62,12 @@ export async function POST(request: Request) {
       .from("roll_verification")
       .insert({
         id,
+        project_id: body.project_id ?? null,
+        project_zone_id: body.project_zone_id ?? null,
+        field_type: body.field_type ?? null,
+        macro_zone: body.macro_zone ?? null,
+        micro_zone: body.micro_zone ?? null,
+        zone_type: body.zone_type ?? null,
         zone: body.zone,
         length_ft: typeof body.length_ft === "number" ? body.length_ft : null,
         color_letter: body.color_letter?.trim() || null,

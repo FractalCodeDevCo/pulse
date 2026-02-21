@@ -9,6 +9,12 @@ type PhotoType = "compacting" | "in_progress" | "completed"
 type IncomingPhotos = Record<PhotoType, string | undefined>
 
 type RequestBody = {
+  project_id?: string | null
+  project_zone_id?: string | null
+  field_type?: string | null
+  macro_zone?: string | null
+  micro_zone?: string | null
+  zone_type?: string | null
   zone?: string
   roll_length_fit?: string
   total_rolls_used?: number
@@ -84,6 +90,12 @@ export async function POST(request: Request) {
       .from("roll_installation")
       .insert({
         id,
+        project_id: body.project_id ?? null,
+        project_zone_id: body.project_zone_id ?? null,
+        field_type: body.field_type ?? null,
+        macro_zone: body.macro_zone ?? null,
+        micro_zone: body.micro_zone ?? null,
+        zone_type: body.zone_type ?? null,
         zone: body.zone,
         roll_length_fit: body.roll_length_fit,
         total_rolls_used: body.total_rolls_used,

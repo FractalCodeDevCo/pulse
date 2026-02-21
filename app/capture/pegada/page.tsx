@@ -76,14 +76,18 @@ export default function PegadaPage() {
 function PegadaPageContent() {
   const searchParams = useSearchParams()
   const projectId = searchParams.get("project")
+  const projectZoneId = searchParams.get("projectZoneId")
+  const presetMacroZone = searchParams.get("macroZone")
+  const presetMicroZone = searchParams.get("microZone")
+  const presetZoneType = searchParams.get("zoneType")
 
   const fieldTypeKey = `pulse_project_field_type_${projectId ?? "default"}`
 
   const [step, setStep] = useState<1 | 2 | 3>(1)
 
   const [fieldType, setFieldType] = useState<FieldType>("football")
-  const [macroZone, setMacroZone] = useState<MacroZone | "">("")
-  const [microZone, setMicroZone] = useState("")
+  const [macroZone, setMacroZone] = useState<MacroZone | "">((presetMacroZone as MacroZone | null) ?? "")
+  const [microZone, setMicroZone] = useState(presetMicroZone ?? "")
 
   const [prepPhoto, setPrepPhoto] = useState<PhotoState>(emptyPhoto())
   const [antesPhoto, setAntesPhoto] = useState<PhotoState>(emptyPhoto())
@@ -215,6 +219,8 @@ function PegadaPageContent() {
           fieldType,
           payload: {
             ...record,
+            project_zone_id: projectZoneId,
+            zone_type: presetZoneType,
             evidencePhotos: {
               prep: prepPhoto.dataUrl,
               antes: antesPhoto.dataUrl,

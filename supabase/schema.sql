@@ -44,9 +44,11 @@ create table if not exists public.incidences (
   id uuid primary key default gen_random_uuid(),
   created_at timestamptz not null default now(),
   project_id text not null,
+  project_zone_id text,
   field_type text,
   macro_zone text not null,
   micro_zone text not null,
+  zone_type text,
   type_of_incidence text not null,
   priority_level text not null,
   impact_level text,
@@ -58,6 +60,8 @@ create table if not exists public.incidences (
 create index if not exists idx_incidences_project on public.incidences(project_id);
 create index if not exists idx_incidences_created_at on public.incidences(created_at desc);
 create index if not exists idx_incidences_type on public.incidences(type_of_incidence);
+alter table if exists public.incidences add column if not exists project_zone_id text;
+alter table if exists public.incidences add column if not exists zone_type text;
 
 -- Roll installation (rolls + compaction simplified)
 create table if not exists public.roll_installation (
@@ -91,6 +95,95 @@ create table if not exists public.roll_verification (
 
 create index if not exists idx_roll_verification_created_at on public.roll_verification(created_at desc);
 create index if not exists idx_roll_verification_zone on public.roll_verification(zone);
+alter table if exists public.roll_installation add column if not exists project_id text;
+alter table if exists public.roll_installation add column if not exists project_zone_id text;
+alter table if exists public.roll_installation add column if not exists field_type text;
+alter table if exists public.roll_installation add column if not exists macro_zone text;
+alter table if exists public.roll_installation add column if not exists micro_zone text;
+alter table if exists public.roll_installation add column if not exists zone_type text;
+alter table if exists public.roll_verification add column if not exists project_id text;
+alter table if exists public.roll_verification add column if not exists project_zone_id text;
+alter table if exists public.roll_verification add column if not exists field_type text;
+alter table if exists public.roll_verification add column if not exists macro_zone text;
+alter table if exists public.roll_verification add column if not exists micro_zone text;
+alter table if exists public.roll_verification add column if not exists zone_type text;
+
+-- Zone-first architecture
+create table if not exists public.projects (
+  id uuid primary key default gen_random_uuid(),
+  code text unique,
+  name text not null,
+  sport text not null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.zone_templates (
+  id uuid primary key default gen_random_uuid(),
+  sport text not null,
+  macro_zone text not null,
+  micro_zone text not null,
+  zone_type text not null,
+  unique (sport, macro_zone, micro_zone)
+);
+
+create table if not exists public.project_zones (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects(id) on delete cascade,
+  zone_template_id uuid not null references public.zone_templates(id),
+  status text not null default 'pending',
+  progress integer not null default 0,
+  created_at timestamptz not null default now(),
+  unique (project_id, zone_template_id)
+);
+
+create table if not exists public.zone_step_templates (
+  id uuid primary key default gen_random_uuid(),
+  zone_type text not null,
+  step_key text not null,
+  step_label text not null,
+  step_order integer not null,
+  required_photos integer not null default 0,
+  unique (zone_type, step_key)
+);
+
+create table if not exists public.zone_metrics (
+  id uuid primary key default gen_random_uuid(),
+  project_zone_id uuid not null references public.project_zones(id) on delete cascade,
+  step_key text not null,
+  payload jsonb not null default '{}'::jsonb,
+  photos jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_projects_sport on public.projects(sport);
+create index if not exists idx_project_zones_project on public.project_zones(project_id);
+create index if not exists idx_zone_metrics_project_zone on public.zone_metrics(project_zone_id);
+
+insert into public.zone_step_templates (zone_type, step_key, step_label, step_order, required_photos)
+values
+  ('PRECISION', 'ROLL_PLACEMENT', 'Roll Placement', 1, 1),
+  ('PRECISION', 'ALIGNMENT', 'Alignment', 2, 1),
+  ('PRECISION', 'SEWING', 'Sewing', 3, 1),
+  ('PRECISION', 'CUT', 'Cut', 4, 1),
+  ('PRECISION', 'INSERT', 'Insert', 5, 1),
+  ('PRECISION', 'ADHESIVE', 'Adhesive', 6, 3),
+  ('PRECISION', 'COMPACT', 'Compact', 7, 1),
+  ('STANDARD', 'ROLL_PLACEMENT', 'Roll Placement', 1, 1),
+  ('STANDARD', 'ALIGNMENT', 'Alignment', 2, 1),
+  ('STANDARD', 'SEWING', 'Sewing', 3, 1),
+  ('STANDARD', 'ADHESIVE', 'Adhesive', 4, 3),
+  ('STANDARD', 'COMPACT', 'Compact', 5, 1),
+  ('PERIMETER', 'ROLL_PLACEMENT', 'Roll Placement', 1, 1),
+  ('PERIMETER', 'ALIGNMENT', 'Alignment', 2, 1),
+  ('PERIMETER', 'CUT', 'Cut', 3, 1),
+  ('PERIMETER', 'ADHESIVE', 'Adhesive', 4, 3),
+  ('PERIMETER', 'COMPACT', 'Compact', 5, 1),
+  ('MARKINGS', 'ALIGNMENT', 'Alignment', 1, 1),
+  ('MARKINGS', 'CUT', 'Cut', 2, 1),
+  ('MARKINGS', 'INSERT', 'Insert', 3, 1),
+  ('MARKINGS', 'ADHESIVE', 'Adhesive', 4, 3),
+  ('MARKINGS', 'COMPACT', 'Compact', 5, 1)
+on conflict (zone_type, step_key) do nothing;
 
 -- Sports hierarchical zone catalog (sport -> macro -> micro)
 create table if not exists public.sport_zone_catalog (
@@ -165,6 +258,20 @@ values
 on conflict (sport, macro_zone, micro_zone) do nothing;
 
 create index if not exists idx_sport_zone_catalog_sport on public.sport_zone_catalog(sport);
+
+insert into public.zone_templates (sport, macro_zone, micro_zone, zone_type)
+select
+  sport,
+  macro_zone,
+  micro_zone,
+  case
+    when lower(macro_zone) like '%warning%' or lower(macro_zone) like '%border%' or lower(macro_zone) like '%sideline%' then 'PERIMETER'
+    when lower(macro_zone) like '%numbers%' or lower(macro_zone) like '%logo%' or lower(micro_zone) like '%logo%' or lower(micro_zone) like '%mark%' then 'MARKINGS'
+    when lower(macro_zone) like '%infield%' or lower(macro_zone) like '%end zone%' or lower(micro_zone) like '%box%' or lower(micro_zone) like '%mound%' or lower(micro_zone) like '%plate%' then 'PRECISION'
+    else 'STANDARD'
+  end as zone_type
+from public.sport_zone_catalog
+on conflict (sport, macro_zone, micro_zone) do nothing;
 
 -- Roll verification table (control before installation)
 create table if not exists public.roll_verifications (

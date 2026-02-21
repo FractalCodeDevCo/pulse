@@ -13,6 +13,11 @@ type PhotoType = "compacting" | "in_progress" | "completed"
 
 type RollInstallationPageClientProps = {
   projectId: string | null
+  projectZoneId: string | null
+  fieldType: string | null
+  macroZone: string | null
+  microZone: string | null
+  zoneType: string | null
 }
 
 type PhotoState = Record<PhotoType, string | null>
@@ -29,7 +34,14 @@ const INITIAL_PHOTOS: PhotoState = {
   completed: null,
 }
 
-export default function RollInstallationPageClient({ projectId }: RollInstallationPageClientProps) {
+export default function RollInstallationPageClient({
+  projectId,
+  projectZoneId,
+  fieldType,
+  macroZone,
+  microZone,
+  zoneType,
+}: RollInstallationPageClientProps) {
   const [step, setStep] = useState<1 | 2 | 3>(1)
   const [photos, setPhotos] = useState<PhotoState>(INITIAL_PHOTOS)
   const [zone, setZone] = useState<PulseZone | "">("")
@@ -83,6 +95,11 @@ export default function RollInstallationPageClient({ projectId }: RollInstallati
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           project_id: projectId,
+          project_zone_id: projectZoneId,
+          field_type: fieldType,
+          macro_zone: macroZone,
+          micro_zone: microZone,
+          zone_type: zoneType,
           zone,
           roll_length_fit: fit,
           total_rolls_used: Number(totalRollsUsed),
@@ -123,6 +140,11 @@ export default function RollInstallationPageClient({ projectId }: RollInstallati
         <header className="space-y-2">
           <p className="text-sm text-neutral-400">Pulse / Roll Installation / {projectId}</p>
           <h1 className="text-3xl font-bold">Roll Installation</h1>
+          {projectZoneId ? (
+            <p className="text-sm text-neutral-400">
+              Zona activa: {macroZone} / {microZone}
+            </p>
+          ) : null}
         </header>
 
         <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4 text-sm text-neutral-300">

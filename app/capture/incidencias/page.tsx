@@ -35,13 +35,17 @@ export default function IncidenciasPage() {
 function IncidenciasPageContent() {
   const searchParams = useSearchParams()
   const projectId = searchParams.get("project")
+  const projectZoneId = searchParams.get("projectZoneId")
+  const presetMacroZone = searchParams.get("macroZone")
+  const presetMicroZone = searchParams.get("microZone")
+  const presetZoneType = searchParams.get("zoneType")
 
   const [fieldType, setFieldType] = useState<FieldType>(() =>
     projectId ? readProjectFieldType(projectId) : "football",
   )
   const [typeOfIncidence, setTypeOfIncidence] = useState<string>("")
-  const [macroZone, setMacroZone] = useState<MacroZone | "">("")
-  const [microZone, setMicroZone] = useState("")
+  const [macroZone, setMacroZone] = useState<MacroZone | "">((presetMacroZone as MacroZone | null) ?? "")
+  const [microZone, setMicroZone] = useState(presetMicroZone ?? "")
   const [impactLevel, setImpactLevel] = useState<string>("")
   const [note, setNote] = useState("")
   const [photos, setPhotos] = useState<string[]>([])
@@ -101,6 +105,8 @@ function IncidenciasPageContent() {
           type_of_incidence: typeOfIncidence,
           impact_level: impactLevel,
           priority_level: impactLevel,
+          project_zone_id: projectZoneId,
+          zone_type: presetZoneType,
           photos,
           note: note.trim(),
           timestamp: new Date().toISOString(),

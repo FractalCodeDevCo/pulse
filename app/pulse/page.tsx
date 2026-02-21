@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic"
 
-import CaptureHubClient from "../../components/capture/CaptureHubClient"
+import ZoneHubClient from "../../components/pulse/ZoneHubClient"
 
 type PulsePageProps = {
   searchParams: Promise<{
@@ -10,5 +10,5 @@ type PulsePageProps = {
 
 export default async function PulsePage({ searchParams }: PulsePageProps) {
   const params = await searchParams
-  return <CaptureHubClient projectId={params.project ?? null} />
+  return <ZoneHubClient projectId={params.project ?? null} />
 }
