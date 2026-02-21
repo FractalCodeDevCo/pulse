@@ -635,6 +635,12 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
         <section className="space-y-3 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
           <h2 className="text-xl font-semibold">Registro adicional</h2>
           <Link
+            href={`/pulse/history?project=${encodeURIComponent(project.id)}&macroZone=${encodeURIComponent(zone.macroZone)}&microZone=${encodeURIComponent(zone.microZone)}`}
+            className="block rounded-xl border border-amber-500 py-3 text-center font-semibold text-amber-300 hover:bg-amber-500/10"
+          >
+            Ver historial de esta zona
+          </Link>
+          <Link
             href={`/capture/incidencias?${query}`}
             className="block rounded-xl border border-red-500 py-3 text-center font-semibold text-red-300 hover:bg-red-500/10"
           >

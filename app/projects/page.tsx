@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic"
 
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Suspense, useMemo, useState } from "react"
+import { Suspense, useEffect, useMemo, useState } from "react"
 
 import { FIELD_TYPE_LABELS, FieldType, saveProjectFieldType } from "../../types/fieldType"
 import {
@@ -20,6 +20,19 @@ import {
 } from "../../lib/projects"
 
 type FlowMode = "new" | "load"
+
+function mergeProjects(localProjects: AppProject[], remoteProjects: AppProject[]): AppProject[] {
+  const map = new Map<string, AppProject>()
+
+  for (const project of remoteProjects) {
+    map.set(project.id, project)
+  }
+  for (const project of localProjects) {
+    if (!map.has(project.id)) map.set(project.id, project)
+  }
+
+  return [...map.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+}
 
 export default function ProjectsPage() {
   return (
@@ -42,10 +55,52 @@ function ProjectsPageContent() {
   const [newProjectName, setNewProjectName] = useState("")
   const [newProjectSport, setNewProjectSport] = useState<FieldType>("football")
 
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadCloudProjects() {
+      try {
+        const response = await fetch("/api/projects", { cache: "no-store" })
+        const data = (await response.json()) as { projects?: AppProject[] }
+        if (!response.ok || !Array.isArray(data.projects)) return
+        if (cancelled) return
+
+        setProjects((prev) => {
+          const merged = mergeProjects(prev, data.projects ?? [])
+          saveProjects(merged)
+          return merged
+        })
+      } catch {
+        // keep local projects
+      }
+    }
+
+    void loadCloudProjects()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const canContinue = useMemo(() => {
     if (flow === "load") return Boolean(selectedProjectId)
     return Boolean(newProjectName.trim() || selectedProjectId)
   }, [flow, newProjectName, selectedProjectId])
+
+  async function syncProjectToCloud(project: AppProject) {
+    try {
+      await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: project.id,
+          name: project.name,
+          fieldType: project.fieldType,
+        }),
+      })
+    } catch {
+      // local project remains available even without cloud sync
+    }
+  }
 
   function continueToZones() {
     if (!canContinue) return
@@ -62,6 +117,7 @@ function ProjectsPageContent() {
       })
       nextProjects = [targetProject, ...projects.filter((project) => project.id !== createdId)]
       setProjects(nextProjects)
+      void syncProjectToCloud(targetProject)
     }
 
     if (!targetProject && selectedProjectId) {
@@ -84,6 +140,9 @@ function ProjectsPageContent() {
           <p className="text-sm text-neutral-400">Pulse / Projects</p>
           <h1 className="text-3xl font-bold">{flow === "new" ? "Nuevo proyecto" : "Cargar proyecto"}</h1>
           <p className="text-neutral-300">Configura proyecto y deporte para generar zonas automáticamente.</p>
+          <Link href="/projects/admin" className="inline-block text-sm font-semibold text-amber-300 hover:underline">
+            Admin: agregar proyecto manual
+          </Link>
         </header>
 
         <section className="space-y-4 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
