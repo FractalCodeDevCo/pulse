@@ -27,6 +27,7 @@ type PegadaRecord = {
   macro_zone: MacroZone
   micro_zone: string
   critical_infield_area?: string
+  critical_infield_areas?: string[]
   markbox?: string
   ftTotales: number
   botesUsados: number
@@ -104,7 +105,8 @@ function PegadaPageContent() {
 
   const [ftTotales, setFtTotales] = useState<number>(30)
   const [botesUsados, setBotesUsados] = useState<number>(1)
-  const [criticalInfieldArea, setCriticalInfieldArea] = useState("")
+  const [criticalInfieldAreas, setCriticalInfieldAreas] = useState<string[]>([])
+  const [lineasMarkbox, setLineasMarkbox] = useState(false)
   const [clima, setClima] = useState<string[]>([])
   const [condicion, setCondicion] = useState<string>("")
   const [observaciones, setObservaciones] = useState<string>("")
@@ -130,16 +132,9 @@ function PegadaPageContent() {
 
   const isBeisSoft = fieldType === "beisbol" || fieldType === "softbol"
   const isBeisSoftInfield = isBeisSoft && macroZone === "Infield"
-  const isCriticalInfieldSelection =
-    isBeisSoftInfield &&
-    (BEIS_SOFT_CRITICAL_AREAS as readonly string[]).includes(criticalInfieldArea)
-  const markboxOptions = useMemo(() => {
-    if (isBeisSoftInfield) return [...BEIS_SOFT_CRITICAL_AREAS, LINEAS_MARKBOX]
-    if (fieldType === "soccer" || fieldType === "football" || fieldType === "beisbol" || fieldType === "softbol") {
-      return [LINEAS_MARKBOX]
-    }
-    return [] as string[]
-  }, [fieldType, isBeisSoftInfield])
+  const isCriticalInfieldSelection = isBeisSoftInfield && criticalInfieldAreas.length > 0
+  const canShowLineasMarkbox =
+    fieldType === "soccer" || fieldType === "football" || fieldType === "beisbol" || fieldType === "softbol"
 
   const hasAllPhotos = useMemo(() => {
     return Boolean(prepPhoto.dataUrl && antesPhoto.dataUrl && despuesPhoto.dataUrl)
@@ -150,8 +145,16 @@ function PegadaPageContent() {
     localStorage.setItem(fieldTypeKey, JSON.stringify(next))
     setMacroZone("")
     setMicroZone("")
-    setCriticalInfieldArea("")
+    setCriticalInfieldAreas([])
+    setLineasMarkbox(false)
     setError("")
+  }
+
+  function toggleCriticalInfieldArea(item: string) {
+    setCriticalInfieldAreas((current) => {
+      if (current.includes(item)) return current.filter((value) => value !== item)
+      return [...current, item]
+    })
   }
 
   async function handlePhotoChange(field: PhotoField, event: ChangeEvent<HTMLInputElement>) {
@@ -225,8 +228,9 @@ function PegadaPageContent() {
       zone: microZone,
       macro_zone: macroZone,
       micro_zone: microZone,
-      critical_infield_area: isCriticalInfieldSelection ? criticalInfieldArea : undefined,
-      markbox: criticalInfieldArea || undefined,
+      critical_infield_area: isCriticalInfieldSelection ? criticalInfieldAreas[0] : undefined,
+      critical_infield_areas: isCriticalInfieldSelection ? criticalInfieldAreas : undefined,
+      markbox: lineasMarkbox ? LINEAS_MARKBOX : undefined,
       ftTotales: isCriticalInfieldSelection ? DEFAULT_FIXED_FT : ftTotales,
       botesUsados,
       clima,
@@ -293,7 +297,8 @@ function PegadaPageContent() {
     setDespuesPhoto(emptyPhoto())
     setMacroZone("")
     setMicroZone("")
-    setCriticalInfieldArea("")
+    setCriticalInfieldAreas([])
+    setLineasMarkbox(false)
     setFtTotales(30)
     setBotesUsados(1)
     setClima([])
@@ -409,7 +414,8 @@ function PegadaPageContent() {
                 onChange={(event) => {
                   setMacroZone(event.target.value as MacroZone | "")
                   setMicroZone("")
-                  setCriticalInfieldArea("")
+                  setCriticalInfieldAreas([])
+                  setLineasMarkbox(false)
                 }}
                 className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3"
                 required
@@ -441,17 +447,17 @@ function PegadaPageContent() {
               </select>
             </label>
 
-            {markboxOptions.length > 0 ? (
+            {isBeisSoftInfield ? (
               <fieldset className="space-y-2">
-                <legend className="text-sm text-neutral-300">Markbox</legend>
+                <legend className="text-sm text-neutral-300">Zona crítica (opción múltiple)</legend>
                 <div className="grid gap-2 sm:grid-cols-2">
-                  {markboxOptions.map((item) => {
-                    const active = criticalInfieldArea === item
+                  {BEIS_SOFT_CRITICAL_AREAS.map((item) => {
+                    const active = criticalInfieldAreas.includes(item)
                     return (
                       <button
                         key={item}
                         type="button"
-                        onClick={() => setCriticalInfieldArea((prev) => (prev === item ? "" : item))}
+                        onClick={() => toggleCriticalInfieldArea(item)}
                         className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
                           active ? "border-amber-500 bg-amber-500/20 text-amber-200" : "border-neutral-700 bg-neutral-950"
                         }`}
@@ -461,11 +467,9 @@ function PegadaPageContent() {
                     )
                   })}
                 </div>
-                {isBeisSoftInfield ? (
-                  <p className="text-xs text-neutral-400">
-                    Si seleccionas zona crítica, Ft Totales se desactiva.
-                  </p>
-                ) : null}
+                <p className="text-xs text-neutral-400">
+                  Puedes seleccionar varias. Si eliges al menos una, Ft Totales se desactiva.
+                </p>
               </fieldset>
             ) : null}
 
@@ -496,6 +500,22 @@ function PegadaPageContent() {
                 required
               />
             </label>
+
+            {canShowLineasMarkbox ? (
+              <fieldset className="space-y-2">
+                <legend className="text-sm text-neutral-300">Markbox adicional</legend>
+                <button
+                  type="button"
+                  onClick={() => setLineasMarkbox((prev) => !prev)}
+                  className={`w-full rounded-xl border px-3 py-3 text-sm font-semibold ${
+                    lineasMarkbox ? "border-blue-500 bg-blue-500/20 text-blue-200" : "border-neutral-700 bg-neutral-950"
+                  }`}
+                >
+                  {LINEAS_MARKBOX}
+                </button>
+                <p className="text-xs text-neutral-400">Este botón no modifica Ft Totales.</p>
+              </fieldset>
+            ) : null}
 
             <fieldset className="space-y-3">
               <legend className="text-sm text-neutral-300">Clima (selección múltiple)</legend>

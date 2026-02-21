@@ -51,7 +51,8 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
 
   // Adhesive/Pegada inline metadata
   const [adhesiveFt, setAdhesiveFt] = useState("")
-  const [adhesiveCriticalInfieldArea, setAdhesiveCriticalInfieldArea] = useState("")
+  const [adhesiveCriticalInfieldAreas, setAdhesiveCriticalInfieldAreas] = useState<string[]>([])
+  const [adhesiveLineasMarkbox, setAdhesiveLineasMarkbox] = useState(false)
   const [adhesiveBotes, setAdhesiveBotes] = useState("")
   const [adhesiveCondicion, setAdhesiveCondicion] = useState("")
   const [adhesiveClima, setAdhesiveClima] = useState<string[]>([])
@@ -70,15 +71,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
     zone?.fieldType === "softbol" ||
     zone?.fieldType === "football" ||
     zone?.fieldType === "soccer"
-  const isCriticalInfieldSelection =
-    isBeisSoftInfield &&
-    (BEIS_SOFT_CRITICAL_AREAS as readonly string[]).includes(adhesiveCriticalInfieldArea)
-  const adhesiveMarkboxOptions = useMemo(() => {
-    if (!zone) return [] as string[]
-    if (isBeisSoftInfield) return [...BEIS_SOFT_CRITICAL_AREAS, LINEAS_MARKBOX]
-    if (canShowLineasMarkbox) return [LINEAS_MARKBOX]
-    return [] as string[]
-  }, [canShowLineasMarkbox, isBeisSoftInfield, zone])
+  const isCriticalInfieldSelection = isBeisSoftInfield && adhesiveCriticalInfieldAreas.length > 0
 
   function toggleStep(stepKey: ZoneStepKey) {
     if (!projectId || !zone) return
@@ -105,6 +98,13 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
 
   function toggleAdhesiveClimate(option: string) {
     setAdhesiveClima((current) => (current.includes(option) ? current.filter((item) => item !== option) : [...current, option]))
+  }
+
+  function toggleAdhesiveCriticalInfieldArea(item: string) {
+    setAdhesiveCriticalInfieldAreas((current) => {
+      if (current.includes(item)) return current.filter((value) => value !== item)
+      return [...current, item]
+    })
   }
 
   async function submitRollPlacementInline() {
@@ -197,8 +197,9 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
             micro_zone: zone.microZone,
             project_zone_id: zone.id,
             zone_type: zone.zoneType,
-            critical_infield_area: isCriticalInfieldSelection ? adhesiveCriticalInfieldArea : undefined,
-            markbox: adhesiveCriticalInfieldArea || undefined,
+            critical_infield_area: isCriticalInfieldSelection ? adhesiveCriticalInfieldAreas[0] : undefined,
+            critical_infield_areas: isCriticalInfieldSelection ? adhesiveCriticalInfieldAreas : undefined,
+            markbox: adhesiveLineasMarkbox ? LINEAS_MARKBOX : undefined,
             ftTotales: isCriticalInfieldSelection ? 10 : Number(adhesiveFt),
             botesUsados: Number(adhesiveBotes),
             condicion: adhesiveCondicion,
@@ -285,13 +286,6 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
               ))}
             </div>
           ) : null}
-
-          <Link
-            href={`/capture/material?${query}`}
-            className="block rounded-xl bg-blue-600 py-3 text-center font-semibold hover:bg-blue-700"
-          >
-            Material (proceso aparte)
-          </Link>
 
           <p className="rounded-xl border border-neutral-700 px-3 py-3 text-sm text-neutral-300">
             {canOpenProcesses ? "Procesos desbloqueados." : "Sube al menos 1 foto para desbloquear procesos."}
@@ -458,17 +452,17 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                         <>
                           <p className="text-sm text-neutral-300">Metadata de Adhesive (Pegada) inline.</p>
 
-                          {adhesiveMarkboxOptions.length > 0 ? (
+                          {isBeisSoftInfield ? (
                             <fieldset className="space-y-2">
-                              <legend className="text-sm text-neutral-300">Markbox</legend>
+                              <legend className="text-sm text-neutral-300">Zona crítica (opción múltiple)</legend>
                               <div className="grid gap-2 sm:grid-cols-2">
-                                {adhesiveMarkboxOptions.map((item) => {
-                                  const active = adhesiveCriticalInfieldArea === item
+                                {BEIS_SOFT_CRITICAL_AREAS.map((item) => {
+                                  const active = adhesiveCriticalInfieldAreas.includes(item)
                                   return (
                                     <button
                                       key={item}
                                       type="button"
-                                      onClick={() => setAdhesiveCriticalInfieldArea((prev) => (prev === item ? "" : item))}
+                                      onClick={() => toggleAdhesiveCriticalInfieldArea(item)}
                                       className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
                                         active
                                           ? "border-amber-500 bg-amber-500/20 text-amber-200"
@@ -480,9 +474,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                                   )
                                 })}
                               </div>
-                              {isBeisSoftInfield ? (
-                                <p className="text-xs text-neutral-400">Si seleccionas zona crítica, Ft Totales se desactiva.</p>
-                              ) : null}
+                              <p className="text-xs text-neutral-400">Puedes seleccionar varias. Si eliges al menos una, Ft Totales se desactiva.</p>
                             </fieldset>
                           ) : null}
 
@@ -513,6 +505,24 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                               />
                             </label>
                           </div>
+
+                          {canShowLineasMarkbox ? (
+                            <fieldset className="space-y-2">
+                              <legend className="text-sm text-neutral-300">Markbox adicional</legend>
+                              <button
+                                type="button"
+                                onClick={() => setAdhesiveLineasMarkbox((prev) => !prev)}
+                                className={`w-full rounded-xl border px-3 py-3 text-sm font-semibold ${
+                                  adhesiveLineasMarkbox
+                                    ? "border-blue-500 bg-blue-500/20 text-blue-200"
+                                    : "border-neutral-700 bg-neutral-900"
+                                }`}
+                              >
+                                {LINEAS_MARKBOX}
+                              </button>
+                              <p className="text-xs text-neutral-400">Este botón no modifica Ft Totales.</p>
+                            </fieldset>
+                          ) : null}
 
                           <label className="block space-y-2">
                             <span className="text-sm text-neutral-300">Condición</span>
