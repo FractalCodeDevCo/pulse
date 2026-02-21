@@ -102,6 +102,10 @@ function PegadaPageContent() {
   const [isReadingPhoto, setIsReadingPhoto] = useState(false)
   const [error, setError] = useState("")
   const [saveMessage, setSaveMessage] = useState("")
+  const backToZoneOrHub =
+    projectId && projectZoneId
+      ? `/pulse/zones/${encodeURIComponent(projectZoneId)}?project=${encodeURIComponent(projectId)}`
+      : `/pulse?project=${encodeURIComponent(projectId ?? "")}`
 
   useEffect(() => {
     const storedFieldType = readStoredFieldType(fieldTypeKey)
@@ -246,7 +250,7 @@ function PegadaPageContent() {
 
     setError("")
     if (returnToHub && projectId) {
-      window.location.href = `/capture?project=${encodeURIComponent(projectId)}`
+      window.location.href = backToZoneOrHub
       return true
     }
 
@@ -294,10 +298,10 @@ function PegadaPageContent() {
           <h1 className="text-3xl font-bold">Captura de Pegada</h1>
           <p className="text-neutral-300">Flujo simple: fotos, cuestionario y guardado.</p>
           <Link
-            href={`/capture?project=${encodeURIComponent(projectId)}`}
+            href={backToZoneOrHub}
             className="inline-block rounded-xl border border-neutral-600 px-3 py-2 text-sm font-semibold hover:bg-neutral-800"
           >
-            Volver al Hub
+            Volver
           </Link>
         </header>
 
@@ -508,7 +512,7 @@ function PegadaPageContent() {
                 onClick={() => void savePegada(true)}
                 className="w-full rounded-xl border border-blue-500 px-4 py-4 text-lg font-semibold text-blue-300 hover:bg-blue-500/10"
               >
-                Save & Return to Hub
+                {projectZoneId ? "Save & Return to Zone" : "Save & Return to Hub"}
               </button>
             </div>
           </form>

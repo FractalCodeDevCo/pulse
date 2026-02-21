@@ -56,6 +56,10 @@ export default function RollInstallationPageClient({
   const [success, setSuccess] = useState("")
   const [isReadingPhoto, setIsReadingPhoto] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const backToZoneOrHub =
+    projectId && projectZoneId
+      ? `/pulse/zones/${encodeURIComponent(projectZoneId)}?project=${encodeURIComponent(projectId)}`
+      : `/pulse?project=${encodeURIComponent(projectId ?? "")}`
 
   async function handlePhotoChange(type: PhotoType, event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
@@ -306,10 +310,10 @@ export default function RollInstallationPageClient({
           <section className="space-y-3 rounded-2xl border border-emerald-600/60 bg-emerald-500/10 p-5">
             <p className="font-semibold text-emerald-200">{success}</p>
             <Link
-              href={`/pulse?project=${encodeURIComponent(projectId)}`}
+              href={backToZoneOrHub}
               className="block w-full rounded-xl bg-blue-600 py-3 text-center font-semibold hover:bg-blue-700"
             >
-              Back to Hub
+              Back
             </Link>
           </section>
         ) : null}

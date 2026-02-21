@@ -34,6 +34,10 @@ export default function RollVerificationPageClient({
   const [success, setSuccess] = useState("")
   const [isReadingPhoto, setIsReadingPhoto] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const backToZoneOrHub =
+    projectId && projectZoneId
+      ? `/pulse/zones/${encodeURIComponent(projectZoneId)}?project=${encodeURIComponent(projectId)}`
+      : `/pulse?project=${encodeURIComponent(projectId ?? "")}`
 
   async function handlePhotoChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
@@ -209,10 +213,10 @@ export default function RollVerificationPageClient({
 
           {success ? (
             <Link
-              href={`/pulse?project=${encodeURIComponent(projectId)}`}
+              href={backToZoneOrHub}
               className="block w-full rounded-xl border border-emerald-500 py-3 text-center font-semibold text-emerald-200 hover:bg-emerald-500/10"
             >
-              Back to Hub
+              Back
             </Link>
           ) : null}
 

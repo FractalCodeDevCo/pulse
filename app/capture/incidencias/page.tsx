@@ -54,6 +54,10 @@ function IncidenciasPageContent() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState("")
   const [saveMessage, setSaveMessage] = useState("")
+  const backToZoneOrHub =
+    projectId && projectZoneId
+      ? `/pulse/zones/${encodeURIComponent(projectZoneId)}?project=${encodeURIComponent(projectId)}`
+      : `/pulse?project=${encodeURIComponent(projectId ?? "")}`
 
   const microOptions = useMemo(() => {
     if (!macroZone) return []
@@ -123,7 +127,7 @@ function IncidenciasPageContent() {
       setSaveMessage("Incidencia guardada en nube.")
 
       if (returnToHub) {
-        window.location.href = `/capture?project=${encodeURIComponent(projectId)}`
+        window.location.href = backToZoneOrHub
         return
       }
 
@@ -326,10 +330,10 @@ function IncidenciasPageContent() {
               disabled={isSubmitting || isReadingPhoto}
               className="rounded-xl border border-blue-500 px-4 py-3 font-semibold text-blue-300 hover:bg-blue-500/10 disabled:opacity-50"
             >
-              Save & Return Hub
+              {projectZoneId ? "Save & Return Zone" : "Save & Return Hub"}
             </button>
             <Link
-              href={`/capture?project=${encodeURIComponent(projectId)}`}
+              href={backToZoneOrHub}
               className="rounded-xl border border-neutral-600 px-4 py-3 text-center font-semibold hover:bg-neutral-800"
             >
               Cancelar

@@ -11,6 +11,7 @@ import { MaterialKind, MaterialRecordDb, PassType, StatusColor } from "../../typ
 
 type MaterialModulePageProps = {
   projectId: string | null
+  projectZoneId?: string | null
 }
 
 type PhotoItem = {
@@ -57,7 +58,7 @@ function getStatusStyles(statusColor: StatusColor): string {
   return "border-red-500 bg-red-500/15 text-red-200"
 }
 
-export default function MaterialModulePage({ projectId }: MaterialModulePageProps) {
+export default function MaterialModulePage({ projectId, projectZoneId = null }: MaterialModulePageProps) {
   const [step, setStep] = useState<1 | 2>(1)
   const [fieldType, setFieldType] = useState<FieldType>(() =>
     projectId ? readProjectFieldType(projectId) : "football",
@@ -185,7 +186,11 @@ export default function MaterialModulePage({ projectId }: MaterialModulePageProp
     }
 
     if (returnToHub) {
-      window.location.href = `/capture?project=${encodeURIComponent(projectId)}`
+      if (projectZoneId) {
+        window.location.href = `/pulse/zones/${encodeURIComponent(projectZoneId)}?project=${encodeURIComponent(projectId)}`
+      } else {
+        window.location.href = `/pulse?project=${encodeURIComponent(projectId)}`
+      }
       return
     }
 
@@ -421,7 +426,7 @@ export default function MaterialModulePage({ projectId }: MaterialModulePageProp
                 disabled={isSubmitting}
                 className="w-full rounded-xl border border-blue-500 py-3 font-semibold text-blue-300 hover:bg-blue-500/10 disabled:opacity-50"
               >
-                Save & Return to Hub
+                {projectZoneId ? "Save & Return to Zone" : "Save & Return to Hub"}
               </button>
             </div>
           </form>
