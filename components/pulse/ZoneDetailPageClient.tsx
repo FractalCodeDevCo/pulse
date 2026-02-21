@@ -300,14 +300,21 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
             {stepTemplates.map((step) => {
               const completed = zone.completedStepKeys.includes(step.key)
               const expanded = openStep === step.key
+              const shouldAutoExpand = step.key === "ROLL_PLACEMENT" || step.key === "ADHESIVE"
 
               return (
                 <div key={step.key} className="rounded-xl border border-neutral-700 bg-neutral-950">
                   <div className="flex items-center justify-between gap-2 px-4 py-3">
-                    <div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (shouldAutoExpand) setOpenStep(step.key)
+                      }}
+                      className={`text-left ${shouldAutoExpand ? "cursor-pointer" : "cursor-default"}`}
+                    >
                       <p className="font-medium">{step.label}</p>
                       <p className="text-xs text-neutral-400">{step.key}</p>
-                    </div>
+                    </button>
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
@@ -318,7 +325,10 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                       </button>
                       <button
                         type="button"
-                        onClick={() => toggleStep(step.key)}
+                        onClick={() => {
+                          toggleStep(step.key)
+                          if (shouldAutoExpand) setOpenStep(step.key)
+                        }}
                         className={`rounded-lg px-3 py-2 text-xs font-semibold ${
                           completed ? "bg-emerald-600 hover:bg-emerald-700" : "bg-neutral-700 hover:bg-neutral-600"
                         }`}
