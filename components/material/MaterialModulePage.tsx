@@ -4,7 +4,7 @@ import Image from "next/image"
 import Link from "next/link"
 import { ChangeEvent, FormEvent, useMemo, useState } from "react"
 
-import { processImageFiles } from "../../lib/clientImage"
+import { IMAGE_INPUT_ACCEPT, processImageFiles } from "../../lib/clientImage"
 import { FieldTypeSelector } from "../../components/shared/FieldTypeSelector"
 import { FieldType, readProjectFieldType, saveProjectFieldType } from "../../types/fieldType"
 import { MaterialKind, MaterialRecordDb, PassType, StatusColor } from "../../types/material"
@@ -246,7 +246,7 @@ export default function MaterialModulePage({ projectId, projectZoneId = null }: 
               <span className="text-sm text-neutral-300">Fotos de la capa aplicada (sin mínimo)</span>
               <input
                 type="file"
-                accept="image/*"
+                accept={IMAGE_INPUT_ACCEPT}
                 multiple
                 onChange={handlePhotoChange}
                 className="block w-full rounded-xl border border-neutral-700 bg-neutral-950 p-2 text-sm"

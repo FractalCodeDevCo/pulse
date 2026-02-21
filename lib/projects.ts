@@ -161,6 +161,18 @@ function buildProjectZoneId(projectId: string, macroZone: string, microZone: str
   return `${projectId}__${slugifyProjectName(`${macroZone}-${microZone}-${index + 1}`)}`
 }
 
+function buildZoneTemplateKey(zone: Pick<ProjectZone, "macroZone" | "microZone">): string {
+  return `${zone.macroZone}::${zone.microZone}`
+}
+
+function areZoneTemplatesAligned(existing: ProjectZone[], generated: ProjectZone[]): boolean {
+  if (existing.length !== generated.length) return false
+
+  const existingKeys = existing.map(buildZoneTemplateKey).sort()
+  const generatedKeys = generated.map(buildZoneTemplateKey).sort()
+  return existingKeys.every((value, index) => value === generatedKeys[index])
+}
+
 export function slugifyProjectName(name: string): string {
   return name
     .toLowerCase()
@@ -236,9 +248,27 @@ export function generateProjectZones(projectId: string, fieldType: FieldType): P
 export function ensureProjectZones(projectId: string, fieldType: FieldType): ProjectZone[] {
   const zonesMap = readZonesMap()
   const existing = zonesMap[projectId]
-  if (Array.isArray(existing) && existing.length > 0) return existing
-
   const generated = generateProjectZones(projectId, fieldType)
+
+  if (Array.isArray(existing) && existing.length > 0) {
+    if (areZoneTemplatesAligned(existing, generated)) return existing
+
+    const existingByTemplate = new Map(existing.map((zone) => [buildZoneTemplateKey(zone), zone]))
+    const migrated = generated.map((zone) => {
+      const previous = existingByTemplate.get(buildZoneTemplateKey(zone))
+      if (!previous) return zone
+
+      return {
+        ...zone,
+        completedStepKeys: previous.completedStepKeys.filter((key) => zone.stepKeys.includes(key)),
+      }
+    })
+
+    zonesMap[projectId] = migrated
+    saveZonesMap(zonesMap)
+    return migrated
+  }
+
   zonesMap[projectId] = generated
   saveZonesMap(zonesMap)
   return generated

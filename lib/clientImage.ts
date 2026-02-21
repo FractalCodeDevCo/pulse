@@ -4,6 +4,8 @@ export type ProcessImageOptions = {
   quality?: number
 }
 
+export const IMAGE_INPUT_ACCEPT = "image/*,.heic,.heif,.jpg,.jpeg,.png,.webp,.gif,.bmp,.tiff,.tif"
+
 const DEFAULT_MAX_FILE_SIZE = 25 * 1024 * 1024
 const DEFAULT_MAX_DIMENSION = 1600
 const DEFAULT_QUALITY = 0.78

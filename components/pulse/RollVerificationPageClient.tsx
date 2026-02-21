@@ -4,7 +4,7 @@ import Image from "next/image"
 import Link from "next/link"
 import { ChangeEvent, useState } from "react"
 
-import { processImageFile } from "../../lib/clientImage"
+import { IMAGE_INPUT_ACCEPT, processImageFile } from "../../lib/clientImage"
 import { PULSE_ZONE_OPTIONS, PulseZone } from "../../types/pulseZones"
 
 type RollVerificationPageClientProps = {
@@ -123,8 +123,7 @@ export default function RollVerificationPageClient({
             <span className="text-sm text-neutral-300">Label Photo</span>
             <input
               type="file"
-              accept="image/*"
-              capture="environment"
+              accept={IMAGE_INPUT_ACCEPT}
               onChange={(event) => void handlePhotoChange(event)}
               className="block w-full rounded-xl border border-neutral-700 bg-neutral-950 p-2 text-sm"
             />

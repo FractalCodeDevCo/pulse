@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useMemo } from "react"
 
-import { getProjectById, getZoneProgress, readProjectZones } from "../../lib/projects"
+import { ensureProjectZones, getProjectById, getZoneProgress } from "../../lib/projects"
 
 type ZoneHubClientProps = {
   projectId: string | null
@@ -11,7 +11,10 @@ type ZoneHubClientProps = {
 
 export default function ZoneHubClient({ projectId }: ZoneHubClientProps) {
   const project = useMemo(() => (projectId ? getProjectById(projectId) : null), [projectId])
-  const zones = useMemo(() => (projectId ? readProjectZones(projectId) : []), [projectId])
+  const zones = useMemo(() => {
+    if (!projectId || !project) return []
+    return ensureProjectZones(projectId, project.fieldType)
+  }, [projectId, project])
 
   const grouped = useMemo(() => {
     const map: Record<string, typeof zones> = {}
@@ -78,6 +81,12 @@ export default function ZoneHubClient({ projectId }: ZoneHubClientProps) {
             className="w-full rounded-xl border border-neutral-600 px-4 py-3 text-center font-semibold hover:bg-neutral-800"
           >
             Cambiar proyecto
+          </Link>
+          <Link
+            href={`/capture/material?project=${encodeURIComponent(project.id)}`}
+            className="w-full rounded-xl border border-emerald-500 px-4 py-3 text-center font-semibold text-emerald-300 hover:bg-emerald-500/10"
+          >
+            Ir a fase de material
           </Link>
           <Link
             href={`/capture?project=${encodeURIComponent(project.id)}`}

@@ -3,7 +3,7 @@
 import Image from "next/image"
 import { ChangeEvent, useMemo, useState } from "react"
 
-import { processImageFiles } from "../../lib/clientImage"
+import { IMAGE_INPUT_ACCEPT, processImageFiles } from "../../lib/clientImage"
 import { FieldType } from "../../types/fieldType"
 import {
   CompactionType,
@@ -158,7 +158,7 @@ export function RollosForm({ fieldType, projectId, defaultZone = "", onSubmitRec
 
           <input
             type="file"
-            accept="image/*"
+            accept={IMAGE_INPUT_ACCEPT}
             multiple
             onChange={handlePhotosChange}
             className="block w-full rounded-xl border border-neutral-700 bg-neutral-900 p-2 text-sm"

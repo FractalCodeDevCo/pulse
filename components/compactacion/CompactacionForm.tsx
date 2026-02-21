@@ -9,6 +9,7 @@ import {
   CompactacionType,
   TrafficLightStatus,
 } from "../../types/compactacion"
+import { IMAGE_INPUT_ACCEPT } from "../../lib/clientImage"
 import { FieldType } from "../../types/fieldType"
 import { Zone } from "../../types/zones"
 import { ZoneSelect } from "../shared/ZoneSelect"
@@ -207,8 +208,7 @@ export function CompactacionForm({
         <span className="text-sm text-neutral-300">Fotos (1 a 2)</span>
         <input
           type="file"
-          accept="image/*"
-          capture="environment"
+          accept={IMAGE_INPUT_ACCEPT}
           multiple
           onChange={handlePhotosChange}
           className="block w-full rounded-xl border border-neutral-700 bg-neutral-900 p-2 text-sm"

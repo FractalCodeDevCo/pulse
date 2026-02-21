@@ -3,12 +3,11 @@ import { FieldType } from "./fieldType"
 export type MacroZone =
   | "Infield"
   | "Outfield"
-  | "Sidelines/Foul/Warning Track"
+  | "Sidelines"
   | "Central"
   | "Endzones"
-  | "Sidelines"
-  | "Area Izq"
-  | "Area Der"
+  | "Areas de Portero"
+  | "Midfield"
 
 type MacroMap = Record<string, string[]>
 
@@ -16,23 +15,22 @@ export const ZONE_HIERARCHY_BY_SPORT: Record<FieldType, MacroMap> = {
   beisbol: {
     Infield: ["Infield"],
     Outfield: ["Outfield"],
-    "Sidelines/Foul/Warning Track": ["Sidelines/Foul/Warning Track"],
+    Sidelines: ["Sidelines"],
   },
   softbol: {
     Infield: ["Infield"],
     Outfield: ["Outfield"],
-    "Sidelines/Foul/Warning Track": ["Sidelines/Foul/Warning Track"],
+    Sidelines: ["Sidelines"],
   },
   football: {
     Central: ["Central"],
     Endzones: ["Endzones"],
-    Outfield: ["Outfield"],
     Sidelines: ["Sidelines"],
   },
   soccer: {
-    Central: ["Central"],
-    "Area Izq": ["Area Izq"],
-    "Area Der": ["Area Der"],
+    "Areas de Portero": ["Areas de Portero"],
+    Midfield: ["Midfield"],
+    Outfield: ["Outfield"],
   },
 }
 

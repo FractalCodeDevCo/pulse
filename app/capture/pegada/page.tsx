@@ -7,7 +7,7 @@ import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { ChangeEvent, FormEvent, Suspense, useEffect, useMemo, useState } from "react"
 
-import { processImageFile } from "../../../lib/clientImage"
+import { IMAGE_INPUT_ACCEPT, processImageFile } from "../../../lib/clientImage"
 import { saveCloudRecord } from "../../../lib/recordClient"
 import { FIELD_TYPE_LABELS, FieldType } from "../../../types/fieldType"
 import { MacroZone, getMacroZoneOptions, getMicroZoneOptions } from "../../../types/zoneHierarchy"
@@ -26,6 +26,8 @@ type PegadaRecord = {
   zone: string
   macro_zone: MacroZone
   micro_zone: string
+  critical_infield_area?: string
+  markbox?: string
   ftTotales: number
   botesUsados: number
   clima: string[]
@@ -42,6 +44,13 @@ const DEFAULT_FIXED_FT = 10
 
 const CLIMATE_OPTIONS = ["Soleado", "Nublado", "Lluvioso", "Viento", "Humedad alta"]
 const CONDITION_OPTIONS = ["Excelente", "Buena", "Regular", "Mala"]
+const BEIS_SOFT_CRITICAL_AREAS = [
+  "Batter Box",
+  "Pitcher Mound",
+  "Coach Zones",
+  "Línea del corredor",
+] as const
+const LINEAS_MARKBOX = "Lineas"
 
 function readStoredFieldType(storageKey: string): FieldType {
   if (typeof window === "undefined") return "football"
@@ -95,6 +104,7 @@ function PegadaPageContent() {
 
   const [ftTotales, setFtTotales] = useState<number>(30)
   const [botesUsados, setBotesUsados] = useState<number>(1)
+  const [criticalInfieldArea, setCriticalInfieldArea] = useState("")
   const [clima, setClima] = useState<string[]>([])
   const [condicion, setCondicion] = useState<string>("")
   const [observaciones, setObservaciones] = useState<string>("")
@@ -118,7 +128,18 @@ function PegadaPageContent() {
   }, [fieldType, macroZone])
   const macroZoneOptions = useMemo(() => getMacroZoneOptions(fieldType), [fieldType])
 
-  const isGeneralZone = microZone.toLowerCase().includes("general")
+  const isBeisSoft = fieldType === "beisbol" || fieldType === "softbol"
+  const isBeisSoftInfield = isBeisSoft && macroZone === "Infield"
+  const isCriticalInfieldSelection =
+    isBeisSoftInfield &&
+    (BEIS_SOFT_CRITICAL_AREAS as readonly string[]).includes(criticalInfieldArea)
+  const markboxOptions = useMemo(() => {
+    if (isBeisSoftInfield) return [...BEIS_SOFT_CRITICAL_AREAS, LINEAS_MARKBOX]
+    if (fieldType === "soccer" || fieldType === "football" || fieldType === "beisbol" || fieldType === "softbol") {
+      return [LINEAS_MARKBOX]
+    }
+    return [] as string[]
+  }, [fieldType, isBeisSoftInfield])
 
   const hasAllPhotos = useMemo(() => {
     return Boolean(prepPhoto.dataUrl && antesPhoto.dataUrl && despuesPhoto.dataUrl)
@@ -129,6 +150,7 @@ function PegadaPageContent() {
     localStorage.setItem(fieldTypeKey, JSON.stringify(next))
     setMacroZone("")
     setMicroZone("")
+    setCriticalInfieldArea("")
     setError("")
   }
 
@@ -191,8 +213,8 @@ function PegadaPageContent() {
       return false
     }
 
-    if (isGeneralZone && ftTotales <= 0) {
-      setError("Ft totales debe ser mayor a 0 en zona General.")
+    if (!isCriticalInfieldSelection && ftTotales <= 0) {
+      setError("Ft totales debe ser mayor a 0.")
       return false
     }
 
@@ -203,7 +225,9 @@ function PegadaPageContent() {
       zone: microZone,
       macro_zone: macroZone,
       micro_zone: microZone,
-      ftTotales: isGeneralZone ? ftTotales : DEFAULT_FIXED_FT,
+      critical_infield_area: isCriticalInfieldSelection ? criticalInfieldArea : undefined,
+      markbox: criticalInfieldArea || undefined,
+      ftTotales: isCriticalInfieldSelection ? DEFAULT_FIXED_FT : ftTotales,
       botesUsados,
       clima,
       condicion,
@@ -269,6 +293,7 @@ function PegadaPageContent() {
     setDespuesPhoto(emptyPhoto())
     setMacroZone("")
     setMicroZone("")
+    setCriticalInfieldArea("")
     setFtTotales(30)
     setBotesUsados(1)
     setClima([])
@@ -384,6 +409,7 @@ function PegadaPageContent() {
                 onChange={(event) => {
                   setMacroZone(event.target.value as MacroZone | "")
                   setMicroZone("")
+                  setCriticalInfieldArea("")
                 }}
                 className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3"
                 required
@@ -415,9 +441,37 @@ function PegadaPageContent() {
               </select>
             </label>
 
+            {markboxOptions.length > 0 ? (
+              <fieldset className="space-y-2">
+                <legend className="text-sm text-neutral-300">Markbox</legend>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {markboxOptions.map((item) => {
+                    const active = criticalInfieldArea === item
+                    return (
+                      <button
+                        key={item}
+                        type="button"
+                        onClick={() => setCriticalInfieldArea((prev) => (prev === item ? "" : item))}
+                        className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
+                          active ? "border-amber-500 bg-amber-500/20 text-amber-200" : "border-neutral-700 bg-neutral-950"
+                        }`}
+                      >
+                        {item}
+                      </button>
+                    )
+                  })}
+                </div>
+                {isBeisSoftInfield ? (
+                  <p className="text-xs text-neutral-400">
+                    Si seleccionas zona crítica, Ft Totales se desactiva.
+                  </p>
+                ) : null}
+              </fieldset>
+            ) : null}
+
             <label className="block space-y-2">
               <span className="text-sm text-neutral-300">
-                Ft Totales {isGeneralZone ? `(${ftTotales})` : "(fijo por plantilla)"}
+                Ft Totales ({isCriticalInfieldSelection ? "fijo por zona crítica" : ftTotales})
               </span>
               <input
                 type="range"
@@ -425,7 +479,7 @@ function PegadaPageContent() {
                 max={500}
                 value={ftTotales}
                 onChange={(event) => setFtTotales(Number(event.target.value))}
-                disabled={!isGeneralZone}
+                disabled={isCriticalInfieldSelection}
                 className="w-full disabled:cursor-not-allowed disabled:opacity-40"
               />
             </label>
@@ -554,7 +608,7 @@ function PhotoInputCard({ title, photo, onChange }: PhotoInputCardProps) {
 
       <input
         type="file"
-        accept="image/*"
+        accept={IMAGE_INPUT_ACCEPT}
         onChange={onChange}
         className="block w-full rounded-lg border border-neutral-700 bg-neutral-900 p-2 text-sm"
       />

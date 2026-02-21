@@ -4,7 +4,7 @@ import Image from "next/image"
 import Link from "next/link"
 import { ChangeEvent, useMemo, useState } from "react"
 
-import { processImageFile, processImageFiles } from "../../lib/clientImage"
+import { IMAGE_INPUT_ACCEPT, processImageFiles } from "../../lib/clientImage"
 import {
   getProjectById,
   getProjectZoneById,
@@ -19,11 +19,15 @@ type ZoneDetailPageClientProps = {
   projectZoneId: string
 }
 
-type InstallationPhotoType = "compacting" | "in_progress" | "completed"
-type InstallationPhotosState = Record<InstallationPhotoType, string | null>
-
 const CONDITION_OPTIONS = ["Excelente", "Buena", "Regular", "Mala"]
 const CLIMATE_OPTIONS = ["Soleado", "Nublado", "Lluvioso", "Viento", "Humedad alta"]
+const BEIS_SOFT_CRITICAL_AREAS = [
+  "Batter Box",
+  "Pitcher Mound",
+  "Coach Zones",
+  "Línea del corredor",
+] as const
+const LINEAS_MARKBOX = "Lineas"
 
 export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneDetailPageClientProps) {
   const project = useMemo(() => (projectId ? getProjectById(projectId) : null), [projectId])
@@ -41,17 +45,13 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   const [surfaceFirm, setSurfaceFirm] = useState(true)
   const [moistureOk, setMoistureOk] = useState(true)
   const [doubleCompaction, setDoubleCompaction] = useState(false)
-  const [installationPhotos, setInstallationPhotos] = useState<InstallationPhotosState>({
-    compacting: null,
-    in_progress: null,
-    completed: null,
-  })
   const [isSavingRollPlacement, setIsSavingRollPlacement] = useState(false)
   const [rollPlacementMessage, setRollPlacementMessage] = useState("")
   const [rollPlacementError, setRollPlacementError] = useState("")
 
   // Adhesive/Pegada inline metadata
   const [adhesiveFt, setAdhesiveFt] = useState("")
+  const [adhesiveCriticalInfieldArea, setAdhesiveCriticalInfieldArea] = useState("")
   const [adhesiveBotes, setAdhesiveBotes] = useState("")
   const [adhesiveCondicion, setAdhesiveCondicion] = useState("")
   const [adhesiveClima, setAdhesiveClima] = useState<string[]>([])
@@ -63,6 +63,22 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   const stepTemplates = useMemo(() => (zone ? getZoneStepTemplates(zone.zoneType) : []), [zone])
   const progress = zone ? getZoneProgress(zone) : 0
   const canOpenProcesses = zonePhotos.length > 0
+  const isBeisSoftInfield =
+    zone?.macroZone === "Infield" && (zone.fieldType === "beisbol" || zone.fieldType === "softbol")
+  const canShowLineasMarkbox =
+    zone?.fieldType === "beisbol" ||
+    zone?.fieldType === "softbol" ||
+    zone?.fieldType === "football" ||
+    zone?.fieldType === "soccer"
+  const isCriticalInfieldSelection =
+    isBeisSoftInfield &&
+    (BEIS_SOFT_CRITICAL_AREAS as readonly string[]).includes(adhesiveCriticalInfieldArea)
+  const adhesiveMarkboxOptions = useMemo(() => {
+    if (!zone) return [] as string[]
+    if (isBeisSoftInfield) return [...BEIS_SOFT_CRITICAL_AREAS, LINEAS_MARKBOX]
+    if (canShowLineasMarkbox) return [LINEAS_MARKBOX]
+    return [] as string[]
+  }, [canShowLineasMarkbox, isBeisSoftInfield, zone])
 
   function toggleStep(stepKey: ZoneStepKey) {
     if (!projectId || !zone) return
@@ -83,13 +99,6 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
     }
   }
 
-  async function handleInstallationPhoto(type: InstallationPhotoType, event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0]
-    if (!file) return
-    const dataUrl = await processImageFile(file)
-    setInstallationPhotos((prev) => ({ ...prev, [type]: dataUrl }))
-  }
-
   function removeZonePhoto(index: number) {
     setZonePhotos((prev) => prev.filter((_, i) => i !== index))
   }
@@ -105,12 +114,12 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
     if (!totalSeams || Number(totalSeams) < 0) return setRollPlacementError("Total seams es requerido.")
     if (!compactionMethod) return setRollPlacementError("Compaction method es requerido.")
 
-    const compactingPhoto = installationPhotos.compacting ?? zonePhotos[0] ?? null
-    const inProgressPhoto = installationPhotos.in_progress ?? zonePhotos[1] ?? null
-    const completedPhoto = installationPhotos.completed ?? zonePhotos[2] ?? null
+    const compactingPhoto = zonePhotos[0] ?? null
+    const inProgressPhoto = zonePhotos[1] ?? null
+    const completedPhoto = zonePhotos[2] ?? null
 
     if (!compactingPhoto || !inProgressPhoto || !completedPhoto) {
-      return setRollPlacementError("Necesitas 3 fotos para Roll Placement (pueden venir de fotos de zona o subirlas aquí).")
+      return setRollPlacementError("Necesitas 3 fotos de zona para Roll Placement.")
     }
 
     setRollPlacementError("")
@@ -159,6 +168,9 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
     if (!projectId || !zone) return
     if (!adhesiveBotes || Number(adhesiveBotes) <= 0) return setAdhesiveError("Botes usados debe ser mayor a 0.")
     if (!adhesiveCondicion) return setAdhesiveError("Condición es requerida.")
+    if (!isCriticalInfieldSelection && (!adhesiveFt || Number(adhesiveFt) <= 0)) {
+      return setAdhesiveError("Ft Totales debe ser mayor a 0.")
+    }
 
     const prep = zonePhotos[0] ?? null
     const antes = zonePhotos[1] ?? null
@@ -185,7 +197,9 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
             micro_zone: zone.microZone,
             project_zone_id: zone.id,
             zone_type: zone.zoneType,
-            ftTotales: adhesiveFt ? Number(adhesiveFt) : 0,
+            critical_infield_area: isCriticalInfieldSelection ? adhesiveCriticalInfieldArea : undefined,
+            markbox: adhesiveCriticalInfieldArea || undefined,
+            ftTotales: isCriticalInfieldSelection ? 10 : Number(adhesiveFt),
             botesUsados: Number(adhesiveBotes),
             condicion: adhesiveCondicion,
             clima: adhesiveClima,
@@ -242,8 +256,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
           <p className="text-sm text-neutral-400">Primero toma evidencia de la zona. Después se desbloquea el menú de procesos.</p>
           <input
             type="file"
-            accept="image/*"
-            capture="environment"
+            accept={IMAGE_INPUT_ACCEPT}
             multiple
             onChange={(event) => void handleZonePhotos(event)}
             className="block w-full rounded-xl border border-neutral-700 bg-neutral-950 p-2 text-sm"
@@ -408,21 +421,9 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                               Double: {doubleCompaction ? "Yes" : "No"}
                             </button>
                           </div>
-
-                          <div className="grid gap-3 sm:grid-cols-3">
-                            {(["compacting", "in_progress", "completed"] as InstallationPhotoType[]).map((type) => (
-                              <label key={type} className="block space-y-2">
-                                <span className="text-sm text-neutral-300">{type}</span>
-                                <input
-                                  type="file"
-                                  accept="image/*"
-                                  capture="environment"
-                                  onChange={(event) => void handleInstallationPhoto(type, event)}
-                                  className="block w-full rounded-xl border border-neutral-700 bg-neutral-900 p-2 text-xs"
-                                />
-                              </label>
-                            ))}
-                          </div>
+                          <p className="text-xs text-neutral-400">
+                            Usa las primeras 3 fotos de zona (Compacting, In Progress y Completed).
+                          </p>
 
                           <div className="grid gap-2 sm:grid-cols-2">
                             <button
@@ -456,15 +457,48 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                       {step.key === "ADHESIVE" ? (
                         <>
                           <p className="text-sm text-neutral-300">Metadata de Adhesive (Pegada) inline.</p>
+
+                          {adhesiveMarkboxOptions.length > 0 ? (
+                            <fieldset className="space-y-2">
+                              <legend className="text-sm text-neutral-300">Markbox</legend>
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                {adhesiveMarkboxOptions.map((item) => {
+                                  const active = adhesiveCriticalInfieldArea === item
+                                  return (
+                                    <button
+                                      key={item}
+                                      type="button"
+                                      onClick={() => setAdhesiveCriticalInfieldArea((prev) => (prev === item ? "" : item))}
+                                      className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
+                                        active
+                                          ? "border-amber-500 bg-amber-500/20 text-amber-200"
+                                          : "border-neutral-700 bg-neutral-900"
+                                      }`}
+                                    >
+                                      {item}
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                              {isBeisSoftInfield ? (
+                                <p className="text-xs text-neutral-400">Si seleccionas zona crítica, Ft Totales se desactiva.</p>
+                              ) : null}
+                            </fieldset>
+                          ) : null}
+
                           <div className="grid gap-3 sm:grid-cols-2">
                             <label className="block space-y-2">
-                              <span className="text-sm text-neutral-300">Ft Totales</span>
+                              <span className="text-sm text-neutral-300">
+                                Ft Totales ({isCriticalInfieldSelection ? "fijo por zona crítica" : adhesiveFt || 0})
+                              </span>
                               <input
-                                type="number"
-                                min={0}
+                                type="range"
+                                min={1}
+                                max={500}
                                 value={adhesiveFt}
                                 onChange={(event) => setAdhesiveFt(event.target.value)}
-                                className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
+                                disabled={isCriticalInfieldSelection}
+                                className="w-full disabled:cursor-not-allowed disabled:opacity-40"
                               />
                             </label>
                             <label className="block space-y-2">

@@ -7,7 +7,7 @@ import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { ChangeEvent, Suspense, useMemo, useState } from "react"
 
-import { processImageFiles } from "../../../lib/clientImage"
+import { IMAGE_INPUT_ACCEPT, processImageFiles } from "../../../lib/clientImage"
 import { FIELD_TYPE_LABELS, FieldType, readProjectFieldType, saveProjectFieldType } from "../../../types/fieldType"
 import { MacroZone, getMacroZoneOptions, getMicroZoneOptions } from "../../../types/zoneHierarchy"
 
@@ -271,7 +271,7 @@ function IncidenciasPageContent() {
             <span className="text-sm text-neutral-300">Fotos (1–3)</span>
             <input
               type="file"
-              accept="image/*"
+              accept={IMAGE_INPUT_ACCEPT}
               multiple
               onChange={handlePhotosChange}
               className="block w-full rounded-xl border border-neutral-700 bg-neutral-950 p-2 text-sm"
