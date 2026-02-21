@@ -3,13 +3,11 @@ import { ZONE_HIERARCHY_BY_SPORT } from "../types/zoneHierarchy"
 
 export type ZoneType = "PRECISION" | "STANDARD" | "PERIMETER" | "MARKINGS"
 export type ZoneStepKey =
+  | "COMPACT"
   | "ROLL_PLACEMENT"
-  | "ALIGNMENT"
   | "SEWING"
   | "CUT"
-  | "INSERT"
   | "ADHESIVE"
-  | "COMPACT"
 
 export type ZoneStepTemplate = {
   key: ZoneStepKey
@@ -47,34 +45,29 @@ export const MOCK_PROJECTS: AppProject[] = [
 
 const STEP_TEMPLATES_BY_ZONE_TYPE: Record<ZoneType, ZoneStepTemplate[]> = {
   PRECISION: [
+    { key: "COMPACT", label: "Compaction" },
     { key: "ROLL_PLACEMENT", label: "Roll Placement" },
-    { key: "ALIGNMENT", label: "Alignment" },
     { key: "SEWING", label: "Sewing" },
     { key: "CUT", label: "Cut" },
-    { key: "INSERT", label: "Insert" },
     { key: "ADHESIVE", label: "Adhesive" },
-    { key: "COMPACT", label: "Compact" },
   ],
   STANDARD: [
+    { key: "COMPACT", label: "Compaction" },
     { key: "ROLL_PLACEMENT", label: "Roll Placement" },
-    { key: "ALIGNMENT", label: "Alignment" },
     { key: "SEWING", label: "Sewing" },
     { key: "ADHESIVE", label: "Adhesive" },
-    { key: "COMPACT", label: "Compact" },
   ],
   PERIMETER: [
+    { key: "COMPACT", label: "Compaction" },
     { key: "ROLL_PLACEMENT", label: "Roll Placement" },
-    { key: "ALIGNMENT", label: "Alignment" },
     { key: "CUT", label: "Cut" },
     { key: "ADHESIVE", label: "Adhesive" },
-    { key: "COMPACT", label: "Compact" },
   ],
   MARKINGS: [
-    { key: "ALIGNMENT", label: "Alignment" },
+    { key: "COMPACT", label: "Compaction" },
+    { key: "ROLL_PLACEMENT", label: "Roll Placement" },
     { key: "CUT", label: "Cut" },
-    { key: "INSERT", label: "Insert" },
     { key: "ADHESIVE", label: "Adhesive" },
-    { key: "COMPACT", label: "Compact" },
   ],
 }
 
@@ -147,13 +140,13 @@ function inferZoneType(macroZone: string, microZone: string): ZoneType {
   const macro = macroZone.toLowerCase()
   const micro = microZone.toLowerCase()
 
-  if (macro.includes("warning") || macro.includes("border") || macro.includes("sideline")) return "PERIMETER"
-  if (macro.includes("numbers") || macro.includes("logo") || micro.includes("logo") || micro.includes("mark")) {
+  if (macro.includes("warning") || macro.includes("sideline") || macro.includes("foul")) return "PERIMETER"
+  if (macro.includes("logo") || micro.includes("logo") || micro.includes("mark")) {
     return "MARKINGS"
   }
   if (
     macro.includes("infield") ||
-    macro.includes("end zone") ||
+    macro.includes("endzone") ||
     micro.includes("box") ||
     micro.includes("mound") ||
     micro.includes("plate")

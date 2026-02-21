@@ -44,7 +44,7 @@ export default function RollInstallationPageClient({
 }: RollInstallationPageClientProps) {
   const [step, setStep] = useState<1 | 2 | 3>(1)
   const [photos, setPhotos] = useState<PhotoState>(INITIAL_PHOTOS)
-  const [zone, setZone] = useState<PulseZone | "">("")
+  const [zone, setZone] = useState<PulseZone | "">((microZone as PulseZone | null) ?? "")
   const [fit, setFit] = useState<FitStatus | "">("")
   const [totalRollsUsed, setTotalRollsUsed] = useState("")
   const [totalSeams, setTotalSeams] = useState("")

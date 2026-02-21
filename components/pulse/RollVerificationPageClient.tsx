@@ -24,7 +24,7 @@ export default function RollVerificationPageClient({
   microZone,
   zoneType,
 }: RollVerificationPageClientProps) {
-  const [zone, setZone] = useState<PulseZone | "">("")
+  const [zone, setZone] = useState<PulseZone | "">((microZone as PulseZone | null) ?? "")
   const [lengthFt, setLengthFt] = useState("")
   const [colorLetter, setColorLetter] = useState("")
   const [status, setStatus] = useState<"Verified" | "Mismatch" | "">("")

@@ -161,29 +161,27 @@ create index if not exists idx_zone_metrics_project_zone on public.zone_metrics(
 
 insert into public.zone_step_templates (zone_type, step_key, step_label, step_order, required_photos)
 values
-  ('PRECISION', 'ROLL_PLACEMENT', 'Roll Placement', 1, 1),
-  ('PRECISION', 'ALIGNMENT', 'Alignment', 2, 1),
+  ('PRECISION', 'COMPACT', 'Compaction', 1, 1),
+  ('PRECISION', 'ROLL_PLACEMENT', 'Roll Placement', 2, 1),
   ('PRECISION', 'SEWING', 'Sewing', 3, 1),
   ('PRECISION', 'CUT', 'Cut', 4, 1),
-  ('PRECISION', 'INSERT', 'Insert', 5, 1),
-  ('PRECISION', 'ADHESIVE', 'Adhesive', 6, 3),
-  ('PRECISION', 'COMPACT', 'Compact', 7, 1),
-  ('STANDARD', 'ROLL_PLACEMENT', 'Roll Placement', 1, 1),
-  ('STANDARD', 'ALIGNMENT', 'Alignment', 2, 1),
+  ('PRECISION', 'ADHESIVE', 'Adhesive', 5, 3),
+  ('STANDARD', 'COMPACT', 'Compaction', 1, 1),
+  ('STANDARD', 'ROLL_PLACEMENT', 'Roll Placement', 2, 1),
   ('STANDARD', 'SEWING', 'Sewing', 3, 1),
   ('STANDARD', 'ADHESIVE', 'Adhesive', 4, 3),
-  ('STANDARD', 'COMPACT', 'Compact', 5, 1),
-  ('PERIMETER', 'ROLL_PLACEMENT', 'Roll Placement', 1, 1),
-  ('PERIMETER', 'ALIGNMENT', 'Alignment', 2, 1),
+  ('PERIMETER', 'COMPACT', 'Compaction', 1, 1),
+  ('PERIMETER', 'ROLL_PLACEMENT', 'Roll Placement', 2, 1),
   ('PERIMETER', 'CUT', 'Cut', 3, 1),
   ('PERIMETER', 'ADHESIVE', 'Adhesive', 4, 3),
-  ('PERIMETER', 'COMPACT', 'Compact', 5, 1),
-  ('MARKINGS', 'ALIGNMENT', 'Alignment', 1, 1),
-  ('MARKINGS', 'CUT', 'Cut', 2, 1),
-  ('MARKINGS', 'INSERT', 'Insert', 3, 1),
-  ('MARKINGS', 'ADHESIVE', 'Adhesive', 4, 3),
-  ('MARKINGS', 'COMPACT', 'Compact', 5, 1)
+  ('MARKINGS', 'COMPACT', 'Compaction', 1, 1),
+  ('MARKINGS', 'ROLL_PLACEMENT', 'Roll Placement', 2, 1),
+  ('MARKINGS', 'CUT', 'Cut', 3, 1),
+  ('MARKINGS', 'ADHESIVE', 'Adhesive', 4, 3)
 on conflict (zone_type, step_key) do nothing;
+
+delete from public.zone_step_templates
+where step_key in ('ALIGNMENT', 'INSERT');
 
 -- Sports hierarchical zone catalog (sport -> macro -> micro)
 create table if not exists public.sport_zone_catalog (
@@ -196,65 +194,19 @@ create table if not exists public.sport_zone_catalog (
 
 insert into public.sport_zone_catalog (sport, macro_zone, micro_zone)
 values
-  ('baseball', 'Infield', 'Pitcher''s Mound'),
-  ('baseball', 'Infield', 'Circle interior pitch'),
-  ('baseball', 'Infield', 'Batters Box (Left)'),
-  ('baseball', 'Infield', 'Batters Box (Right)'),
-  ('baseball', 'Infield', 'Home Plate area'),
-  ('baseball', 'Infield', 'Base Path - 1st Base'),
-  ('baseball', 'Infield', 'Base Path - 2nd Base'),
-  ('baseball', 'Infield', 'Base Path - 3rd Base'),
-  ('baseball', 'Infield', 'Shortstop area'),
-  ('baseball', 'Outfield', 'Center Field'),
-  ('baseball', 'Outfield', 'Left Field'),
-  ('baseball', 'Outfield', 'Right Field'),
-  ('baseball', 'Foul Territory', 'Foul Left'),
-  ('baseball', 'Foul Territory', 'Foul Right'),
-  ('baseball', 'Foul Territory', 'On-Deck Circles'),
-  ('baseball', 'Foul Territory', 'Dugouts'),
-  ('baseball', 'Warning Track', 'Warning Track - Left'),
-  ('baseball', 'Warning Track', 'Warning Track - Center'),
-  ('baseball', 'Warning Track', 'Warning Track - Right'),
-  ('baseball', 'Borders', 'Perimeter Turf Strip'),
-  ('baseball', 'Borders', 'Sidelines adjacentes'),
-  ('softball', 'Infield', 'Circle interior - Pitcher'),
-  ('softball', 'Infield', 'Batters Box (Left)'),
-  ('softball', 'Infield', 'Batters Box (Right)'),
-  ('softball', 'Infield', 'Base Path - 1st Base'),
-  ('softball', 'Infield', 'Base Path - 2nd Base'),
-  ('softball', 'Infield', 'Base Path - 3rd Base'),
-  ('softball', 'Infield', 'Home Plate complex'),
-  ('softball', 'Outfield', 'Left Field'),
-  ('softball', 'Outfield', 'Center Field'),
-  ('softball', 'Outfield', 'Right Field'),
-  ('softball', 'Foul Territory', 'Foul Left'),
-  ('softball', 'Foul Territory', 'Foul Right'),
-  ('softball', 'Warning Track', 'Warning Track'),
-  ('softball', 'Borders', 'Perimeter adjacent'),
-  ('softball', 'Borders', 'Sidelines'),
-  ('football', 'End Zones', 'Left End Zone'),
-  ('football', 'End Zones', 'Right End Zone'),
-  ('football', 'Field Interior', 'Hash Marks Inside'),
-  ('football', 'Field Interior', 'Flank (Sideline) Left'),
-  ('football', 'Field Interior', 'Flank (Sideline) Right'),
-  ('football', 'Field Interior', 'Center Stripes'),
-  ('football', 'Numbers / Logos', 'Field Numbers'),
-  ('football', 'Numbers / Logos', 'Midfield Logo'),
-  ('football', 'Numbers / Logos', 'Yardage Markings'),
-  ('football', 'Borders', 'Sideline buffer'),
-  ('football', 'Borders', 'Team area / bench zones'),
-  ('soccer', 'Field Interior', 'Left Half'),
-  ('soccer', 'Field Interior', 'Right Half'),
-  ('soccer', 'Field Interior', 'Center Circle'),
-  ('soccer', 'Field Interior', 'Penalty Box Left'),
-  ('soccer', 'Field Interior', 'Penalty Box Right'),
-  ('soccer', 'Goals', 'Goal Box Left'),
-  ('soccer', 'Goals', 'Goal Box Right'),
-  ('soccer', 'Sidelines', 'Touchline Left'),
-  ('soccer', 'Sidelines', 'Touchline Right'),
-  ('soccer', 'Borders', 'Endline Left'),
-  ('soccer', 'Borders', 'Endline Right'),
-  ('soccer', 'Borders', 'Technical Area')
+  ('baseball', 'Infield', 'Infield'),
+  ('baseball', 'Outfield', 'Outfield'),
+  ('baseball', 'Sidelines/Foul/Warning Track', 'Sidelines/Foul/Warning Track'),
+  ('softball', 'Infield', 'Infield'),
+  ('softball', 'Outfield', 'Outfield'),
+  ('softball', 'Sidelines/Foul/Warning Track', 'Sidelines/Foul/Warning Track'),
+  ('football', 'Central', 'Central'),
+  ('football', 'Endzones', 'Endzones'),
+  ('football', 'Outfield', 'Outfield'),
+  ('football', 'Sidelines', 'Sidelines'),
+  ('soccer', 'Central', 'Central'),
+  ('soccer', 'Area Izq', 'Area Izq'),
+  ('soccer', 'Area Der', 'Area Der')
 on conflict (sport, macro_zone, micro_zone) do nothing;
 
 create index if not exists idx_sport_zone_catalog_sport on public.sport_zone_catalog(sport);
@@ -265,9 +217,9 @@ select
   macro_zone,
   micro_zone,
   case
-    when lower(macro_zone) like '%warning%' or lower(macro_zone) like '%border%' or lower(macro_zone) like '%sideline%' then 'PERIMETER'
+    when lower(macro_zone) like '%warning%' or lower(macro_zone) like '%sideline%' or lower(macro_zone) like '%foul%' then 'PERIMETER'
     when lower(macro_zone) like '%numbers%' or lower(macro_zone) like '%logo%' or lower(micro_zone) like '%logo%' or lower(micro_zone) like '%mark%' then 'MARKINGS'
-    when lower(macro_zone) like '%infield%' or lower(macro_zone) like '%end zone%' or lower(micro_zone) like '%box%' or lower(micro_zone) like '%mound%' or lower(micro_zone) like '%plate%' then 'PRECISION'
+    when lower(macro_zone) like '%infield%' or lower(macro_zone) like '%endzone%' or lower(micro_zone) like '%box%' or lower(micro_zone) like '%mound%' or lower(micro_zone) like '%plate%' then 'PRECISION'
     else 'STANDARD'
   end as zone_type
 from public.sport_zone_catalog
