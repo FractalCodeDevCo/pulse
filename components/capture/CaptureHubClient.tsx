@@ -35,17 +35,17 @@ export default function CaptureHubClient({ projectId }: CaptureHubClientProps) {
 
       <div className="flex w-80 flex-col gap-4">
         <Link
-          href={`/capture/verificacion-rollo${q}`}
+          href={`/pulse/roll-verification${q}`}
           className="rounded-xl bg-cyan-600 py-4 text-center text-lg font-bold transition hover:bg-cyan-700"
         >
-          Verificación Rollo
+          Roll Verification
         </Link>
 
         <Link
-          href={`/capture/rollos${q}`}
+          href={`/pulse/roll-installation${q}`}
           className="rounded-xl bg-orange-600 py-4 text-center text-lg font-bold transition hover:bg-orange-700"
         >
-          Instalación Rollos
+          Roll Installation
         </Link>
 
         <Link

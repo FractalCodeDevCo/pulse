@@ -13,7 +13,7 @@ function getInitialLoadHref(): string {
     if (!raw) return "/projects?flow=load"
     const projectId = JSON.parse(raw) as string
     if (!projectId) return "/projects?flow=load"
-    return `/capture?project=${encodeURIComponent(projectId)}`
+    return `/pulse?project=${encodeURIComponent(projectId)}`
   } catch {
     return "/projects?flow=load"
   }

@@ -96,7 +96,7 @@ function ProjectsPageContent() {
     }
 
     saveLastProject(targetProjectId)
-    router.push(`/capture?project=${encodeURIComponent(targetProjectId)}`)
+    router.push(`/pulse?project=${encodeURIComponent(targetProjectId)}`)
   }
 
   return (
