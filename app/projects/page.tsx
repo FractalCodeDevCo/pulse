@@ -34,6 +34,14 @@ function mergeProjects(localProjects: AppProject[], remoteProjects: AppProject[]
   return [...map.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 }
 
+function formatDate(value: string): string {
+  try {
+    return new Date(value).toLocaleDateString()
+  } catch {
+    return value
+  }
+}
+
 export default function ProjectsPage() {
   return (
     <Suspense fallback={<main className="flex min-h-screen items-center justify-center bg-neutral-950 text-white">Cargando proyectos...</main>}>
@@ -85,6 +93,10 @@ function ProjectsPageContent() {
     if (flow === "load") return Boolean(selectedProjectId)
     return Boolean(newProjectName.trim() || selectedProjectId)
   }, [flow, newProjectName, selectedProjectId])
+  const selectedProject = useMemo(
+    () => projects.find((project) => project.id === selectedProjectId) ?? null,
+    [projects, selectedProjectId],
+  )
 
   async function syncProjectToCloud(project: AppProject) {
     try {
@@ -160,6 +172,9 @@ function ProjectsPageContent() {
               ))}
             </select>
           </label>
+          {selectedProject ? (
+            <p className="text-xs text-neutral-400">Fecha alta: {formatDate(selectedProject.createdAt)}</p>
+          ) : null}
 
           {flow === "new" ? (
             <>

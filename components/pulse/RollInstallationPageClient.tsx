@@ -2,9 +2,10 @@
 
 import Image from "next/image"
 import Link from "next/link"
-import { ChangeEvent, useState } from "react"
+import { ChangeEvent, useEffect, useState } from "react"
 
 import { IMAGE_INPUT_ACCEPT, processImageFile } from "../../lib/clientImage"
+import { readZonePhotosCache } from "../../lib/zonePhotoCache"
 import { PULSE_ZONE_OPTIONS, PulseZone } from "../../types/pulseZones"
 
 type FitStatus = "green" | "yellow" | "red"
@@ -18,6 +19,7 @@ type RollInstallationPageClientProps = {
   macroZone: string | null
   microZone: string | null
   zoneType: string | null
+  prefillFromZone: boolean
 }
 
 type PhotoState = Record<PhotoType, string | null>
@@ -41,6 +43,7 @@ export default function RollInstallationPageClient({
   macroZone,
   microZone,
   zoneType,
+  prefillFromZone,
 }: RollInstallationPageClientProps) {
   const [step, setStep] = useState<1 | 2 | 3>(1)
   const [photos, setPhotos] = useState<PhotoState>(INITIAL_PHOTOS)
@@ -60,6 +63,23 @@ export default function RollInstallationPageClient({
     projectId && projectZoneId
       ? `/pulse/zones/${encodeURIComponent(projectZoneId)}?project=${encodeURIComponent(projectId)}`
       : `/pulse?project=${encodeURIComponent(projectId ?? "")}`
+
+  useEffect(() => {
+    if (!prefillFromZone || !projectId || !projectZoneId) return
+
+    const cached = readZonePhotosCache(projectId, projectZoneId)
+    if (cached.length < 3) {
+      setError("No encontramos fotos de zona en caché. Vuelve a Paso 1 de la zona y sube fotos.")
+      return
+    }
+
+    setPhotos({
+      compacting: cached[0] ?? null,
+      in_progress: cached[1] ?? null,
+      completed: cached[2] ?? null,
+    })
+    setStep(2)
+  }, [prefillFromZone, projectId, projectZoneId])
 
   async function handlePhotoChange(type: PhotoType, event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
@@ -193,6 +213,12 @@ export default function RollInstallationPageClient({
 
         {step === 2 ? (
           <section className="space-y-4 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
+            {prefillFromZone ? (
+              <p className="rounded-xl border border-emerald-500/70 bg-emerald-500/10 p-3 text-sm text-emerald-200">
+                Fotos cargadas desde Paso 1 de la zona.
+              </p>
+            ) : null}
+
             <label className="block space-y-2">
               <span className="text-sm text-neutral-300">Zone</span>
               <select
@@ -285,14 +311,16 @@ export default function RollInstallationPageClient({
               </button>
             </div>
 
-            <div className="grid gap-2 sm:grid-cols-2">
-              <button
-                type="button"
-                onClick={() => setStep(1)}
-                className="w-full rounded-xl border border-neutral-600 py-3 font-semibold hover:bg-neutral-800"
-              >
-                Back to Photos
-              </button>
+            <div className={`grid gap-2 ${prefillFromZone ? "" : "sm:grid-cols-2"}`}>
+              {!prefillFromZone ? (
+                <button
+                  type="button"
+                  onClick={() => setStep(1)}
+                  className="w-full rounded-xl border border-neutral-600 py-3 font-semibold hover:bg-neutral-800"
+                >
+                  Back to Photos
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => void submit()}

@@ -10,6 +10,7 @@ type RollInstallationPageProps = {
     macroZone?: string
     microZone?: string
     zoneType?: string
+    prefill?: string
   }>
 }
 
@@ -23,6 +24,7 @@ export default async function RollInstallationPage({ searchParams }: RollInstall
       macroZone={params.macroZone ?? null}
       microZone={params.microZone ?? null}
       zoneType={params.zoneType ?? null}
+      prefillFromZone={params.prefill === "1"}
     />
   )
 }

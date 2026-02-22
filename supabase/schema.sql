@@ -117,6 +117,14 @@ create table if not exists public.projects (
   created_at timestamptz not null default now()
 );
 
+alter table if exists public.projects add column if not exists total_sqft numeric;
+alter table if exists public.projects add column if not exists start_date date;
+alter table if exists public.projects add column if not exists crew_name text;
+alter table if exists public.projects add column if not exists setup_notes text;
+alter table if exists public.projects add column if not exists plan_files jsonb not null default '[]'::jsonb;
+alter table if exists public.projects add column if not exists zone_targets jsonb not null default '[]'::jsonb;
+alter table if exists public.projects add column if not exists setup_completed boolean not null default false;
+
 create table if not exists public.zone_templates (
   id uuid primary key default gen_random_uuid(),
   sport text not null,

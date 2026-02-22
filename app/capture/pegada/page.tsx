@@ -9,6 +9,7 @@ import { ChangeEvent, FormEvent, Suspense, useEffect, useMemo, useState } from "
 
 import { IMAGE_INPUT_ACCEPT, processImageFile } from "../../../lib/clientImage"
 import { saveCloudRecord } from "../../../lib/recordClient"
+import { readZonePhotosCache } from "../../../lib/zonePhotoCache"
 import { FIELD_TYPE_LABELS, FieldType } from "../../../types/fieldType"
 import { MacroZone, getMacroZoneOptions, getMicroZoneOptions } from "../../../types/zoneHierarchy"
 
@@ -90,6 +91,7 @@ function PegadaPageContent() {
   const presetMacroZone = searchParams.get("macroZone")
   const presetMicroZone = searchParams.get("microZone")
   const presetZoneType = searchParams.get("zoneType")
+  const prefillFromZone = searchParams.get("prefill") === "1"
 
   const fieldTypeKey = `pulse_project_field_type_${projectId ?? "default"}`
 
@@ -114,6 +116,7 @@ function PegadaPageContent() {
   const [isReadingPhoto, setIsReadingPhoto] = useState(false)
   const [error, setError] = useState("")
   const [saveMessage, setSaveMessage] = useState("")
+  const [prefillApplied, setPrefillApplied] = useState(false)
   const backToZoneOrHub =
     projectId && projectZoneId
       ? `/pulse/zones/${encodeURIComponent(projectZoneId)}?project=${encodeURIComponent(projectId)}`
@@ -123,6 +126,25 @@ function PegadaPageContent() {
     const storedFieldType = readStoredFieldType(fieldTypeKey)
     setFieldType(storedFieldType)
   }, [fieldTypeKey])
+
+  useEffect(() => {
+    if (prefillApplied) return
+    if (!prefillFromZone || !projectId || !projectZoneId) return
+
+    const cached = readZonePhotosCache(projectId, projectZoneId)
+    setPrefillApplied(true)
+
+    if (cached.length < 3) {
+      setError("No encontramos fotos de zona en caché. Vuelve a Paso 1 de la zona y sube fotos.")
+      return
+    }
+
+    setPrepPhoto({ dataUrl: cached[0] ?? null, fileName: "prep-zone.jpg" })
+    setAntesPhoto({ dataUrl: cached[1] ?? null, fileName: "antes-zone.jpg" })
+    setDespuesPhoto({ dataUrl: cached[2] ?? null, fileName: "despues-zone.jpg" })
+    setStep(2)
+    setError("")
+  }, [prefillApplied, prefillFromZone, projectId, projectZoneId])
 
   const microZoneOptions = useMemo(() => {
     if (!macroZone) return []
@@ -139,6 +161,8 @@ function PegadaPageContent() {
   const hasAllPhotos = useMemo(() => {
     return Boolean(prepPhoto.dataUrl && antesPhoto.dataUrl && despuesPhoto.dataUrl)
   }, [prepPhoto.dataUrl, antesPhoto.dataUrl, despuesPhoto.dataUrl])
+  const totalSteps = prefillFromZone ? 2 : 3
+  const displayStep = prefillFromZone ? (step === 3 ? 2 : step) : step
 
   function handleFieldTypeChange(next: FieldType) {
     setFieldType(next)
@@ -359,7 +383,7 @@ function PegadaPageContent() {
         </section>
 
         <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4 text-sm text-neutral-300">
-          Paso {step} de 3
+          Paso {displayStep} de {totalSteps}
         </div>
 
         {error ? (
@@ -406,6 +430,11 @@ function PegadaPageContent() {
             className="space-y-5 rounded-2xl border border-neutral-800 bg-neutral-900 p-5"
           >
             <h2 className="text-xl font-semibold">2) Cuestionario</h2>
+            {prefillFromZone ? (
+              <p className="rounded-xl border border-emerald-500/70 bg-emerald-500/10 p-3 text-sm text-emerald-200">
+                Fotos cargadas desde Paso 1 de la zona.
+              </p>
+            ) : null}
 
             <label className="block space-y-2">
               <span className="text-sm text-neutral-300">MacroZone</span>
@@ -568,13 +597,15 @@ function PegadaPageContent() {
             </label>
 
             <div className="flex flex-col gap-3 sm:flex-row">
-              <button
-                type="button"
-                onClick={() => setStep(1)}
-                className="w-full rounded-xl border border-neutral-600 px-4 py-4 text-lg font-semibold hover:bg-neutral-800"
-              >
-                Volver a fotos
-              </button>
+              {!prefillFromZone ? (
+                <button
+                  type="button"
+                  onClick={() => setStep(1)}
+                  className="w-full rounded-xl border border-neutral-600 px-4 py-4 text-lg font-semibold hover:bg-neutral-800"
+                >
+                  Volver a fotos
+                </button>
+              ) : null}
               <button
                 type="submit"
                 className="w-full rounded-xl bg-emerald-600 px-4 py-4 text-lg font-semibold hover:bg-emerald-700"

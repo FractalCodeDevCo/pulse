@@ -2,9 +2,10 @@
 
 import Image from "next/image"
 import Link from "next/link"
-import { ChangeEvent, useMemo, useState } from "react"
+import { ChangeEvent, useEffect, useMemo, useState } from "react"
 
 import { IMAGE_INPUT_ACCEPT, processImageFiles } from "../../lib/clientImage"
+import { saveZonePhotosCache } from "../../lib/zonePhotoCache"
 import {
   getProjectById,
   getProjectZoneById,
@@ -72,6 +73,11 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
     zone?.fieldType === "football" ||
     zone?.fieldType === "soccer"
   const isCriticalInfieldSelection = isBeisSoftInfield && adhesiveCriticalInfieldAreas.length > 0
+
+  useEffect(() => {
+    if (!projectId || !zone) return
+    saveZonePhotosCache(projectId, zone.id, zonePhotos)
+  }, [projectId, zone, zonePhotos])
 
   function toggleStep(stepKey: ZoneStepKey) {
     if (!projectId || !zone) return
@@ -447,7 +453,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                           </div>
 
                           <Link
-                            href={`/pulse/roll-installation?${query}`}
+                            href={`/pulse/roll-installation?${query}&prefill=1`}
                             className="block rounded-xl border border-neutral-600 py-3 text-center text-sm font-semibold hover:bg-neutral-800"
                           >
                             Abrir pantalla completa
@@ -591,7 +597,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                           </button>
 
                           <Link
-                            href={`/capture/pegada?${query}`}
+                            href={`/capture/pegada?${query}&prefill=1`}
                             className="block rounded-xl border border-neutral-600 py-3 text-center text-sm font-semibold hover:bg-neutral-800"
                           >
                             Abrir pantalla completa de Pegada
