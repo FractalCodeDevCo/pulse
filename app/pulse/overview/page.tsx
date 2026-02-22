@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic"
 
 import Link from "next/link"
 
+import DataSciencePanel from "../../../components/pulse/DataSciencePanel"
 import { normalizeZoneTargets, ZoneTarget } from "../../../lib/projectSetup"
 import { getSupabaseAdminClient } from "../../../lib/supabase/server"
 import { FieldType } from "../../../types/fieldType"
@@ -440,6 +441,8 @@ export default async function ProjectOverviewPage({ searchParams }: OverviewPage
             </div>
           )}
         </section>
+
+        <DataSciencePanel projectId={projectId} />
 
         <div className="flex flex-col gap-3 sm:flex-row">
           <Link

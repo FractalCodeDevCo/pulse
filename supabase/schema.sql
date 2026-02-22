@@ -194,6 +194,29 @@ create index if not exists idx_projects_sport on public.projects(sport);
 create index if not exists idx_project_zones_project on public.project_zones(project_id);
 create index if not exists idx_zone_metrics_project_zone on public.zone_metrics(project_zone_id);
 
+-- Data science snapshots (daily cumulative per zone)
+create table if not exists public.zone_daily_snapshots (
+  id uuid primary key default gen_random_uuid(),
+  project_id text not null,
+  snapshot_date date not null,
+  zone_key text not null,
+  macro_zone text,
+  micro_zone text,
+  cumulative_ft numeric not null default 0,
+  cumulative_botes numeric not null default 0,
+  cumulative_rolls integer not null default 0,
+  cumulative_seams integer not null default 0,
+  captures_count integer not null default 0,
+  last_capture_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create unique index if not exists uq_zone_daily_snapshots_unique
+  on public.zone_daily_snapshots(project_id, snapshot_date, zone_key);
+create index if not exists idx_zone_daily_snapshots_project on public.zone_daily_snapshots(project_id);
+create index if not exists idx_zone_daily_snapshots_date on public.zone_daily_snapshots(snapshot_date);
+
 insert into public.zone_step_templates (zone_type, step_key, step_label, step_order, required_photos)
 values
   ('PRECISION', 'COMPACT', 'Compaction', 1, 1),
