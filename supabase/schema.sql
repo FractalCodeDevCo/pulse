@@ -99,6 +99,10 @@ create table if not exists public.roll_installation (
   photos jsonb not null
 );
 
+alter table if exists public.roll_installation add column if not exists project_id text;
+alter table if exists public.roll_installation add column if not exists project_zone_id text;
+alter table if exists public.roll_installation add column if not exists capture_session_id text;
+alter table if exists public.roll_installation add column if not exists capture_status text not null default 'complete';
 create index if not exists idx_roll_installation_created_at on public.roll_installation(created_at desc);
 create index if not exists idx_roll_installation_zone on public.roll_installation(zone);
 create unique index if not exists uq_roll_installation_capture_session
