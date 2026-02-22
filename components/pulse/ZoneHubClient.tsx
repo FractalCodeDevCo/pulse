@@ -83,6 +83,12 @@ export default function ZoneHubClient({ projectId }: ZoneHubClientProps) {
             Cambiar proyecto
           </Link>
           <Link
+            href={`/pulse/overview?project=${encodeURIComponent(project.id)}`}
+            className="w-full rounded-xl border border-cyan-500 px-4 py-3 text-center font-semibold text-cyan-300 hover:bg-cyan-500/10"
+          >
+            Project Overview
+          </Link>
+          <Link
             href={`/capture/material?project=${encodeURIComponent(project.id)}`}
             className="w-full rounded-xl border border-emerald-500 px-4 py-3 text-center font-semibold text-emerald-300 hover:bg-emerald-500/10"
           >
