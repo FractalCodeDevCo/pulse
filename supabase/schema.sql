@@ -5,6 +5,9 @@ create table if not exists public.field_records (
   id uuid primary key default gen_random_uuid(),
   project_id text not null,
   module text not null,
+  project_zone_id text,
+  capture_session_id text,
+  capture_status text not null default 'complete',
   field_type text,
   macro_zone text,
   micro_zone text,
@@ -14,15 +17,24 @@ create table if not exists public.field_records (
 
 alter table if exists public.field_records add column if not exists macro_zone text;
 alter table if exists public.field_records add column if not exists micro_zone text;
+alter table if exists public.field_records add column if not exists project_zone_id text;
+alter table if exists public.field_records add column if not exists capture_session_id text;
+alter table if exists public.field_records add column if not exists capture_status text not null default 'complete';
 create index if not exists idx_field_records_project on public.field_records(project_id);
 create index if not exists idx_field_records_module on public.field_records(module);
+create index if not exists idx_field_records_project_zone on public.field_records(project_zone_id);
 create index if not exists idx_field_records_created_at on public.field_records(created_at desc);
+create unique index if not exists uq_field_records_capture_session
+  on public.field_records(project_id, module, project_zone_id, capture_session_id);
 
 -- Material module table
 create table if not exists public.material_records (
   id uuid primary key default gen_random_uuid(),
   created_at timestamptz not null default now(),
   project_id text not null,
+  project_zone_id text,
+  capture_session_id text,
+  capture_status text not null default 'complete',
   field_type text,
   tipo_material text not null,
   tipo_pasada text not null,
@@ -38,6 +50,11 @@ create table if not exists public.material_records (
 
 create index if not exists idx_material_records_project on public.material_records(project_id);
 create index if not exists idx_material_records_created_at on public.material_records(created_at desc);
+alter table if exists public.material_records add column if not exists project_zone_id text;
+alter table if exists public.material_records add column if not exists capture_session_id text;
+alter table if exists public.material_records add column if not exists capture_status text not null default 'complete';
+create unique index if not exists uq_material_records_capture_session
+  on public.material_records(project_id, capture_session_id);
 
 -- Independent incidence log table (separate from production records)
 create table if not exists public.incidences (
@@ -67,6 +84,10 @@ alter table if exists public.incidences add column if not exists zone_type text;
 create table if not exists public.roll_installation (
   id uuid primary key default gen_random_uuid(),
   created_at timestamptz not null default now(),
+  project_id text,
+  project_zone_id text,
+  capture_session_id text,
+  capture_status text not null default 'complete',
   zone text not null,
   roll_length_fit text not null,
   total_rolls_used integer not null,
@@ -80,6 +101,8 @@ create table if not exists public.roll_installation (
 
 create index if not exists idx_roll_installation_created_at on public.roll_installation(created_at desc);
 create index if not exists idx_roll_installation_zone on public.roll_installation(zone);
+create unique index if not exists uq_roll_installation_capture_session
+  on public.roll_installation(project_id, project_zone_id, capture_session_id);
 
 -- Roll verification module
 create table if not exists public.roll_verification (

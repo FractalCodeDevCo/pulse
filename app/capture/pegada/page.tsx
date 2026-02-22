@@ -7,6 +7,7 @@ import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { ChangeEvent, FormEvent, Suspense, useEffect, useMemo, useState } from "react"
 
+import { createCaptureSessionId } from "../../../lib/captureSession"
 import { IMAGE_INPUT_ACCEPT, processImageFile } from "../../../lib/clientImage"
 import { saveCloudRecord } from "../../../lib/recordClient"
 import { readZonePhotosCache } from "../../../lib/zonePhotoCache"
@@ -112,6 +113,7 @@ function PegadaPageContent() {
   const [clima, setClima] = useState<string[]>([])
   const [condicion, setCondicion] = useState<string>("")
   const [observaciones, setObservaciones] = useState<string>("")
+  const [captureSessionId, setCaptureSessionId] = useState(() => createCaptureSessionId())
 
   const [isReadingPhoto, setIsReadingPhoto] = useState(false)
   const [error, setError] = useState("")
@@ -277,6 +279,8 @@ function PegadaPageContent() {
             ...record,
             project_zone_id: projectZoneId,
             zone_type: presetZoneType,
+            capture_session_id: captureSessionId,
+            capture_status: "complete",
             evidencePhotos: {
               prep: prepPhoto.dataUrl,
               antes: antesPhoto.dataUrl,
@@ -299,6 +303,8 @@ function PegadaPageContent() {
       setSaveMessage("Proyecto inválido para guardado.")
       return false
     }
+
+    setCaptureSessionId(createCaptureSessionId())
 
     setError("")
     if (returnToHub && projectId) {

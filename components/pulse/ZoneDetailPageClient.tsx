@@ -4,6 +4,7 @@ import Image from "next/image"
 import Link from "next/link"
 import { ChangeEvent, useEffect, useMemo, useState } from "react"
 
+import { createCaptureSessionId } from "../../lib/captureSession"
 import { IMAGE_INPUT_ACCEPT, processImageFiles } from "../../lib/clientImage"
 import { saveZonePhotosCache } from "../../lib/zonePhotoCache"
 import {
@@ -46,6 +47,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   const [surfaceFirm, setSurfaceFirm] = useState(true)
   const [moistureOk, setMoistureOk] = useState(true)
   const [doubleCompaction, setDoubleCompaction] = useState(false)
+  const [rollPlacementSessionId, setRollPlacementSessionId] = useState(() => createCaptureSessionId())
   const [isSavingRollPlacement, setIsSavingRollPlacement] = useState(false)
   const [rollPlacementMessage, setRollPlacementMessage] = useState("")
   const [rollPlacementError, setRollPlacementError] = useState("")
@@ -58,6 +60,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   const [adhesiveCondicion, setAdhesiveCondicion] = useState("")
   const [adhesiveClima, setAdhesiveClima] = useState<string[]>([])
   const [adhesiveObservaciones, setAdhesiveObservaciones] = useState("")
+  const [adhesiveSessionId, setAdhesiveSessionId] = useState(() => createCaptureSessionId())
   const [isSavingAdhesive, setIsSavingAdhesive] = useState(false)
   const [adhesiveMessage, setAdhesiveMessage] = useState("")
   const [adhesiveError, setAdhesiveError] = useState("")
@@ -151,6 +154,8 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
           compaction_moisture_ok: moistureOk,
           compaction_double: doubleCompaction,
           compaction_method: compactionMethod,
+          capture_session_id: rollPlacementSessionId,
+          capture_status: "complete",
           photos: {
             compacting: compactingPhoto,
             in_progress: inProgressPhoto,
@@ -162,6 +167,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
       if (!response.ok) throw new Error(data?.error ?? "No se pudo guardar Roll Placement")
 
       setRollPlacementMessage("Roll Placement guardado.")
+      setRollPlacementSessionId(createCaptureSessionId())
       if (!zone.completedStepKeys.includes("ROLL_PLACEMENT")) toggleStep("ROLL_PLACEMENT")
     } catch (err) {
       setRollPlacementError(err instanceof Error ? err.message : "Error al guardar Roll Placement.")
@@ -211,6 +217,8 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
             condicion: adhesiveCondicion,
             clima: adhesiveClima,
             observaciones: adhesiveObservaciones.trim(),
+            capture_session_id: adhesiveSessionId,
+            capture_status: "complete",
             evidencePhotos: { prep, antes, despues },
           },
         }),
@@ -219,6 +227,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
       if (!response.ok) throw new Error(data?.error ?? "No se pudo guardar Adhesive")
 
       setAdhesiveMessage("Adhesive (Pegada) guardado.")
+      setAdhesiveSessionId(createCaptureSessionId())
       if (!zone.completedStepKeys.includes("ADHESIVE")) toggleStep("ADHESIVE")
     } catch (err) {
       setAdhesiveError(err instanceof Error ? err.message : "Error al guardar Adhesive.")

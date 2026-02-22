@@ -6,6 +6,9 @@ export const runtime = "nodejs"
 
 type RequestBody = {
   projectId?: string
+  projectZoneId?: string | null
+  captureSessionId?: string
+  captureStatus?: "incomplete" | "complete"
   fieldType?: string
   tipoMaterial?: "Arena" | "Goma"
   tipoPasada?: "Sencilla" | "Doble"
@@ -15,6 +18,8 @@ type RequestBody = {
   observaciones?: string
   fotos?: string[]
 }
+
+type CaptureStatus = "incomplete" | "complete"
 
 function parseDataUrl(dataUrl: string): { mimeType: string; bytes: Uint8Array } | null {
   const match = dataUrl.match(/^data:(.*?);base64,(.*)$/)
@@ -70,12 +75,22 @@ function computeSuggestion(desviacion: number, status: "verde" | "amarillo" | "r
   return ""
 }
 
+function normalizeCaptureStatus(value: unknown): CaptureStatus {
+  return value === "incomplete" ? "incomplete" : "complete"
+}
+
+function isMissingColumnError(message: string): boolean {
+  const lower = message.toLowerCase()
+  return lower.includes("column") && lower.includes("does not exist")
+}
+
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as RequestBody
 
     if (
       !body.projectId ||
+      !body.captureSessionId ||
       !body.tipoMaterial ||
       !body.tipoPasada ||
       !body.valvula ||
@@ -94,6 +109,19 @@ export async function POST(request: Request) {
     }
 
     const supabase = getSupabaseAdminClient()
+    const existingRecord = await supabase
+      .from("material_records")
+      .select("*")
+      .eq("project_id", body.projectId)
+      .eq("capture_session_id", body.captureSessionId)
+      .maybeSingle()
+
+    if (!existingRecord.error && existingRecord.data) {
+      return NextResponse.json(existingRecord.data)
+    }
+    if (existingRecord.error && !isMissingColumnError(existingRecord.error.message)) {
+      return NextResponse.json({ error: existingRecord.error.message }, { status: 500 })
+    }
 
     const inputPhotos = body.fotos ?? []
     const fotoUrls: string[] = []
@@ -104,11 +132,15 @@ export async function POST(request: Request) {
     const desviacion = computeDeviation(body.bolsasEsperadas, body.bolsasUtilizadas)
     const statusColor = computeStatusColor(desviacion)
     const sugerencia = computeSuggestion(desviacion, statusColor)
+    const captureStatus = normalizeCaptureStatus(body.captureStatus)
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from("material_records")
       .insert({
         project_id: body.projectId,
+        project_zone_id: body.projectZoneId ?? null,
+        capture_session_id: body.captureSessionId,
+        capture_status: captureStatus,
         field_type: body.fieldType ?? null,
         tipo_material: body.tipoMaterial,
         tipo_pasada: body.tipoPasada,
@@ -123,6 +155,29 @@ export async function POST(request: Request) {
       })
       .select("*")
       .single()
+
+    if (error && isMissingColumnError(error.message)) {
+      const fallback = await supabase
+        .from("material_records")
+        .insert({
+          project_id: body.projectId,
+          field_type: body.fieldType ?? null,
+          tipo_material: body.tipoMaterial,
+          tipo_pasada: body.tipoPasada,
+          valvula: body.valvula,
+          bolsas_esperadas: body.bolsasEsperadas,
+          bolsas_utilizadas: body.bolsasUtilizadas,
+          desviacion,
+          status_color: statusColor,
+          sugerencia: sugerencia || null,
+          fotos: fotoUrls,
+          observaciones: body.observaciones?.trim() || null,
+        })
+        .select("*")
+        .single()
+      data = fallback.data
+      error = fallback.error
+    }
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })

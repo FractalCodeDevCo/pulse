@@ -7,6 +7,7 @@ import { useSearchParams } from "next/navigation"
 import { Suspense, useState } from "react"
 
 import { RollosForm } from "../../../components/rollos/RollosForm"
+import { createCaptureSessionId } from "../../../lib/captureSession"
 import { FieldTypeSelector } from "../../../components/shared/FieldTypeSelector"
 import { saveCloudRecord } from "../../../lib/recordClient"
 import { FieldType, readProjectFieldType, saveProjectFieldType } from "../../../types/fieldType"
@@ -33,6 +34,7 @@ export default function RollosPage() {
 function RollosPageContent() {
   const searchParams = useSearchParams()
   const projectId = searchParams.get("project")
+  const projectZoneId = searchParams.get("projectZoneId")
   const defaultZone = parseZone(searchParams.get("zone"))
 
   const [records, setRecords] = useState<RollosRecord[]>([])
@@ -40,6 +42,7 @@ function RollosPageContent() {
     projectId ? readProjectFieldType(projectId) : "football",
   )
   const [saveMessage, setSaveMessage] = useState("")
+  const [captureSessionId, setCaptureSessionId] = useState(() => createCaptureSessionId())
 
   function handleFieldTypeChange(next: FieldType) {
     if (!projectId) return
@@ -55,10 +58,16 @@ function RollosPageContent() {
         module: "rollos",
         projectId,
         fieldType,
-        payload: record as unknown as Record<string, unknown>,
+        payload: {
+          ...(record as unknown as Record<string, unknown>),
+          project_zone_id: projectZoneId,
+          capture_session_id: captureSessionId,
+          capture_status: "complete",
+        },
       })
       console.log("[rollos] save_success", { id: response.id, projectId, module: "rollos" })
       setRecords((prev) => [record, ...prev])
+      setCaptureSessionId(createCaptureSessionId())
       setSaveMessage("Guardado en nube.")
     } catch (error) {
       console.error("[rollos] save_failed", {

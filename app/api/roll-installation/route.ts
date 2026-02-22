@@ -23,8 +23,12 @@ type RequestBody = {
   compaction_moisture_ok?: boolean
   compaction_double?: boolean
   compaction_method?: string
+  capture_session_id?: string | null
+  capture_status?: "incomplete" | "complete" | null
   photos?: IncomingPhotos
 }
+
+type CaptureStatus = "incomplete" | "complete"
 
 function parseDataUrl(dataUrl: string): { mimeType: string; bytes: Uint8Array } | null {
   const match = dataUrl.match(/^data:(.*?);base64,(.*)$/)
@@ -53,12 +57,24 @@ async function uploadPhoto(projectRecordId: string, type: PhotoType, source: str
   return supabase.storage.from(bucket).getPublicUrl(filePath).data.publicUrl
 }
 
+function normalizeCaptureStatus(value: unknown): CaptureStatus {
+  return value === "incomplete" ? "incomplete" : "complete"
+}
+
+function isMissingColumnError(message: string): boolean {
+  const lower = message.toLowerCase()
+  return lower.includes("column") && lower.includes("does not exist")
+}
+
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as RequestBody
 
     const requiredPhotoTypes: PhotoType[] = ["compacting", "in_progress", "completed"]
     if (
+      !body.project_id ||
+      !body.project_zone_id ||
+      !body.capture_session_id ||
       !body.zone ||
       !body.roll_length_fit ||
       typeof body.total_rolls_used !== "number" ||
@@ -71,11 +87,33 @@ export async function POST(request: Request) {
     ) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
+    if (body.total_rolls_used < 0 || !Number.isInteger(body.total_rolls_used)) {
+      return NextResponse.json({ error: "total_rolls_used must be an integer >= 0" }, { status: 400 })
+    }
+    if (body.total_seams < 0 || !Number.isInteger(body.total_seams)) {
+      return NextResponse.json({ error: "total_seams must be an integer >= 0" }, { status: 400 })
+    }
 
     for (const type of requiredPhotoTypes) {
       if (!body.photos[type]) {
         return NextResponse.json({ error: `Missing required photo: ${type}` }, { status: 400 })
       }
+    }
+
+    const supabase = getSupabaseAdminClient()
+    const existingRecord = await supabase
+      .from("roll_installation")
+      .select("*")
+      .eq("project_id", body.project_id)
+      .eq("project_zone_id", body.project_zone_id)
+      .eq("capture_session_id", body.capture_session_id)
+      .maybeSingle()
+
+    if (!existingRecord.error && existingRecord.data) {
+      return NextResponse.json(existingRecord.data)
+    }
+    if (existingRecord.error && !isMissingColumnError(existingRecord.error.message)) {
+      return NextResponse.json({ error: existingRecord.error.message }, { status: 500 })
     }
 
     const id = randomUUID()
@@ -85,29 +123,60 @@ export async function POST(request: Request) {
       uploadedPhotos.push({ type, url })
     }
 
-    const supabase = getSupabaseAdminClient()
-    const { data, error } = await supabase
+    const captureStatus = normalizeCaptureStatus(body.capture_status)
+    const row = {
+      id,
+      project_id: body.project_id,
+      project_zone_id: body.project_zone_id,
+      field_type: body.field_type ?? null,
+      macro_zone: body.macro_zone ?? null,
+      micro_zone: body.micro_zone ?? null,
+      zone_type: body.zone_type ?? null,
+      zone: body.zone,
+      roll_length_fit: body.roll_length_fit,
+      total_rolls_used: body.total_rolls_used,
+      total_seams: body.total_seams,
+      compaction_surface_firm: body.compaction_surface_firm,
+      compaction_moisture_ok: body.compaction_moisture_ok,
+      compaction_double: body.compaction_double,
+      compaction_method: body.compaction_method,
+      capture_session_id: body.capture_session_id,
+      capture_status: captureStatus,
+      photos: uploadedPhotos,
+    }
+
+    let { data, error } = await supabase
       .from("roll_installation")
-      .insert({
-        id,
-        project_id: body.project_id ?? null,
-        project_zone_id: body.project_zone_id ?? null,
-        field_type: body.field_type ?? null,
-        macro_zone: body.macro_zone ?? null,
-        micro_zone: body.micro_zone ?? null,
-        zone_type: body.zone_type ?? null,
-        zone: body.zone,
-        roll_length_fit: body.roll_length_fit,
-        total_rolls_used: body.total_rolls_used,
-        total_seams: body.total_seams,
-        compaction_surface_firm: body.compaction_surface_firm,
-        compaction_moisture_ok: body.compaction_moisture_ok,
-        compaction_double: body.compaction_double,
-        compaction_method: body.compaction_method,
-        photos: uploadedPhotos,
-      })
+      .insert(row)
       .select("*")
       .single()
+
+    if (error && isMissingColumnError(error.message)) {
+      const fallback = await supabase
+        .from("roll_installation")
+        .insert({
+          id,
+          project_id: body.project_id,
+          project_zone_id: body.project_zone_id,
+          field_type: body.field_type ?? null,
+          macro_zone: body.macro_zone ?? null,
+          micro_zone: body.micro_zone ?? null,
+          zone_type: body.zone_type ?? null,
+          zone: body.zone,
+          roll_length_fit: body.roll_length_fit,
+          total_rolls_used: body.total_rolls_used,
+          total_seams: body.total_seams,
+          compaction_surface_firm: body.compaction_surface_firm,
+          compaction_moisture_ok: body.compaction_moisture_ok,
+          compaction_double: body.compaction_double,
+          compaction_method: body.compaction_method,
+          photos: uploadedPhotos,
+        })
+        .select("*")
+        .single()
+      data = fallback.data
+      error = fallback.error
+    }
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json(data)

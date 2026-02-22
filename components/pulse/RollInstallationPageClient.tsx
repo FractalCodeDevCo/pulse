@@ -4,6 +4,7 @@ import Image from "next/image"
 import Link from "next/link"
 import { ChangeEvent, useEffect, useState } from "react"
 
+import { createCaptureSessionId } from "../../lib/captureSession"
 import { IMAGE_INPUT_ACCEPT, processImageFile } from "../../lib/clientImage"
 import { readZonePhotosCache } from "../../lib/zonePhotoCache"
 import { PULSE_ZONE_OPTIONS, PulseZone } from "../../types/pulseZones"
@@ -55,6 +56,7 @@ export default function RollInstallationPageClient({
   const [moistureOk, setMoistureOk] = useState(true)
   const [doubleCompaction, setDoubleCompaction] = useState(false)
   const [compactionMethod, setCompactionMethod] = useState<CompactionMethod | "">("")
+  const [captureSessionId, setCaptureSessionId] = useState(() => createCaptureSessionId())
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
   const [isReadingPhoto, setIsReadingPhoto] = useState(false)
@@ -132,6 +134,8 @@ export default function RollInstallationPageClient({
           compaction_moisture_ok: moistureOk,
           compaction_double: doubleCompaction,
           compaction_method: compactionMethod,
+          capture_session_id: captureSessionId,
+          capture_status: "complete",
           photos,
         }),
       })
@@ -139,6 +143,7 @@ export default function RollInstallationPageClient({
       if (!response.ok) throw new Error(data?.error ?? "Save failed")
 
       setSuccess("Roll installation saved.")
+      setCaptureSessionId(createCaptureSessionId())
       setStep(3)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed")

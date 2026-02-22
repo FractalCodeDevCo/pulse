@@ -4,6 +4,7 @@ import Image from "next/image"
 import Link from "next/link"
 import { ChangeEvent, FormEvent, useMemo, useState } from "react"
 
+import { createCaptureSessionId } from "../../lib/captureSession"
 import { IMAGE_INPUT_ACCEPT, processImageFiles } from "../../lib/clientImage"
 import { FieldTypeSelector } from "../../components/shared/FieldTypeSelector"
 import { FieldType, readProjectFieldType, saveProjectFieldType } from "../../types/fieldType"
@@ -70,6 +71,7 @@ export default function MaterialModulePage({ projectId, projectZoneId = null }: 
   const [bolsasUtilizadas, setBolsasUtilizadas] = useState<string>("")
   const [observaciones, setObservaciones] = useState("")
   const [photos, setPhotos] = useState<PhotoItem[]>([])
+  const [captureSessionId, setCaptureSessionId] = useState(() => createCaptureSessionId())
 
   const [records, setRecords] = useState<MaterialLocalRecord[]>([])
   const [error, setError] = useState("")
@@ -162,6 +164,9 @@ export default function MaterialModulePage({ projectId, projectZoneId = null }: 
           valvula,
           bolsasEsperadas: expected,
           bolsasUtilizadas: used,
+          projectZoneId,
+          captureSessionId,
+          captureStatus: "complete",
           observaciones,
           fotos: photos.map((photo) => photo.dataUrl),
         }),
@@ -172,6 +177,7 @@ export default function MaterialModulePage({ projectId, projectZoneId = null }: 
       const data = (await response.json()) as MaterialRecordDb
       console.log("[material] save_success", { id: data.id, projectId, module: "material" })
       setRecords((prev) => [localRecord, ...prev])
+      setCaptureSessionId(createCaptureSessionId())
       setSaveMessage(`Guardado en nube. ID: ${data.id}`)
     } catch (error) {
       console.error("[material] save_failed", {
