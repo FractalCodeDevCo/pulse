@@ -7,6 +7,7 @@ import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { ChangeEvent, FormEvent, Suspense, useEffect, useMemo, useState } from "react"
 
+import ContextHeader from "../../../components/pulse/ContextHeader"
 import { createCaptureSessionId } from "../../../lib/captureSession"
 import { IMAGE_INPUT_ACCEPT, processImageFile } from "../../../lib/clientImage"
 import { saveCloudRecord } from "../../../lib/recordClient"
@@ -353,17 +354,21 @@ function PegadaPageContent() {
   return (
     <main className="min-h-screen bg-neutral-950 px-4 py-8 text-white">
       <section className="mx-auto w-full max-w-3xl space-y-6">
-        <header className="space-y-2">
-          <p className="text-sm text-neutral-400">Pulse / Pegada / {projectId}</p>
-          <h1 className="text-3xl font-bold">Captura de Pegada</h1>
-          <p className="text-neutral-300">Flujo simple: fotos, cuestionario y guardado.</p>
-          <Link
-            href={backToZoneOrHub}
-            className="inline-block rounded-xl border border-neutral-600 px-3 py-2 text-sm font-semibold hover:bg-neutral-800"
-          >
-            Volver
-          </Link>
-        </header>
+        <ContextHeader
+          title="Captura de Pegada"
+          subtitle="Flujo simple: fotos, cuestionario y guardado."
+          backHref={backToZoneOrHub}
+          backLabel={projectZoneId ? "Zona" : "Proyecto"}
+          breadcrumbs={[
+            { label: "Pulse", href: "/" },
+            { label: projectId, href: `/pulse?project=${encodeURIComponent(projectId)}` },
+            { label: "Pegada" },
+          ]}
+          projectLabel={projectId}
+          zoneLabel={macroZone && microZone ? `${macroZone} / ${microZone}` : null}
+          statusLabel={step === 3 ? "Completado" : `Paso ${displayStep}/${totalSteps}`}
+          dateLabel={new Date().toLocaleDateString("es-MX")}
+        />
 
         <section className="space-y-3 rounded-2xl border border-neutral-800 bg-neutral-900 p-4">
           <p className="text-sm text-neutral-400">Tipo de campo (por proyecto)</p>

@@ -7,6 +7,7 @@ import { ChangeEvent, FormEvent, useMemo, useState } from "react"
 import { createCaptureSessionId } from "../../lib/captureSession"
 import { IMAGE_INPUT_ACCEPT, processImageFiles } from "../../lib/clientImage"
 import { FieldTypeSelector } from "../../components/shared/FieldTypeSelector"
+import ContextHeader from "../../components/pulse/ContextHeader"
 import { FieldType, readProjectFieldType, saveProjectFieldType } from "../../types/fieldType"
 import { MaterialKind, MaterialRecordDb, PassType, StatusColor } from "../../types/material"
 
@@ -233,11 +234,20 @@ export default function MaterialModulePage({ projectId, projectZoneId = null }: 
   return (
     <main className="min-h-screen bg-neutral-950 px-4 py-8 text-white">
       <section className="mx-auto w-full max-w-3xl space-y-6">
-        <header className="space-y-2">
-          <p className="text-sm text-neutral-400">Pulse / Material / {projectId}</p>
-          <h1 className="text-3xl font-bold">Material</h1>
-          <p className="text-neutral-300">Flujo rápido en 2 pasos: fotos y cuestionario.</p>
-        </header>
+        <ContextHeader
+          title="Material"
+          subtitle="Flujo rápido en 2 pasos: fotos y cuestionario."
+          backHref={projectZoneId ? `/pulse/zones/${encodeURIComponent(projectZoneId)}?project=${encodeURIComponent(projectId)}` : `/pulse?project=${encodeURIComponent(projectId)}`}
+          backLabel={projectZoneId ? "Zona" : "Proyecto"}
+          breadcrumbs={[
+            { label: "Pulse", href: "/" },
+            { label: projectId, href: `/pulse?project=${encodeURIComponent(projectId)}` },
+            { label: "Material" },
+          ]}
+          projectLabel={projectId}
+          statusLabel={`Paso ${step}/2`}
+          dateLabel={new Date().toLocaleDateString("es-MX")}
+        />
 
         <FieldTypeSelector value={fieldType} onChange={handleFieldTypeChange} />
 
@@ -438,7 +448,9 @@ export default function MaterialModulePage({ projectId, projectZoneId = null }: 
           </form>
         ) : null}
 
-        {error ? <p className="text-sm text-red-300">{error}</p> : null}
+        {error ? (
+          <p className="rounded-xl border border-red-500/70 bg-red-500/10 p-3 text-sm text-red-300">{error}</p>
+        ) : null}
 
         {saveMessage ? (
           <p className="rounded-xl border border-blue-500/70 bg-blue-500/10 p-3 text-sm text-blue-300">

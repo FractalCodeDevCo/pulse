@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react"
 
+import ContextHeader from "../../../components/pulse/ContextHeader"
 import { createProject, readProjectsFromStorage, saveProjects, slugifyProjectName } from "../../../lib/projects"
 import { buildEmptyZoneTargets, getSetupZones, inferSetupCompleted, ZoneTarget } from "../../../lib/projectSetup"
 import { FIELD_TYPE_LABELS, FieldType, saveProjectFieldType } from "../../../types/fieldType"
@@ -248,13 +249,19 @@ export default function ProjectsAdminPage() {
   return (
     <main className="min-h-screen bg-neutral-950 px-4 py-8 text-white">
       <section className="mx-auto w-full max-w-5xl space-y-6">
-        <header className="space-y-1">
-          <p className="text-sm text-neutral-400">Pulse / Admin</p>
-          <h1 className="text-3xl font-bold">Setup Base de Proyecto</h1>
-          <p className="text-neutral-300">
-            Lo llena PM/Admin. Instalador solo recibe proyecto y captura.
-          </p>
-        </header>
+        <ContextHeader
+          title="Setup Base de Proyecto"
+          subtitle="Lo llena PM/Admin. Instalador solo recibe proyecto y captura."
+          backHref="/projects?flow=load"
+          backLabel="Proyectos"
+          breadcrumbs={[
+            { label: "Pulse", href: "/" },
+            { label: "Proyectos", href: "/projects?flow=load" },
+            { label: "Admin Setup" },
+          ]}
+          statusLabel="Administración"
+          dateLabel={new Date().toLocaleDateString("es-MX")}
+        />
 
         <form onSubmit={handleSubmit} className="space-y-5 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
           <h2 className="text-xl font-semibold">1) Proyecto</h2>

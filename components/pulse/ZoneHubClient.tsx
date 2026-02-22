@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { useMemo } from "react"
 
+import ContextHeader from "./ContextHeader"
 import { ensureProjectZones, getProjectById, getZoneProgress } from "../../lib/projects"
 
 type ZoneHubClientProps = {
@@ -40,11 +41,19 @@ export default function ZoneHubClient({ projectId }: ZoneHubClientProps) {
   return (
     <main className="min-h-screen bg-neutral-950 px-4 py-8 text-white">
       <section className="mx-auto w-full max-w-5xl space-y-6">
-        <header className="space-y-1">
-          <p className="text-sm text-neutral-400">Pulse / Proyecto / {project.id}</p>
-          <h1 className="text-3xl font-bold">{project.name}</h1>
-          <p className="text-neutral-300">Zonas del proyecto por deporte. Entra a una zona para capturar procesos.</p>
-        </header>
+        <ContextHeader
+          title={project.name}
+          subtitle="Zonas del proyecto por deporte. Entra a una zona para capturar procesos."
+          backHref="/"
+          backLabel="Inicio"
+          breadcrumbs={[
+            { label: "Pulse", href: "/" },
+            { label: project.name },
+          ]}
+          projectLabel={project.id}
+          statusLabel="En captura"
+          dateLabel={new Date().toLocaleDateString("es-MX")}
+        />
 
         {Object.entries(grouped).map(([macroZone, list]) => (
           <section key={macroZone} className="space-y-3 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">

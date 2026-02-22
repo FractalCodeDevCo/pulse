@@ -7,6 +7,7 @@ import { ChangeEvent, useEffect, useMemo, useState } from "react"
 import { createCaptureSessionId } from "../../lib/captureSession"
 import { IMAGE_INPUT_ACCEPT, processImageFiles } from "../../lib/clientImage"
 import { saveZonePhotosCache } from "../../lib/zonePhotoCache"
+import ContextHeader from "./ContextHeader"
 import {
   getProjectById,
   getProjectZoneById,
@@ -259,13 +260,21 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   return (
     <main className="min-h-screen bg-neutral-950 px-4 py-8 text-white">
       <section className="mx-auto w-full max-w-4xl space-y-6">
-        <header className="space-y-1">
-          <p className="text-sm text-neutral-400">Pulse / {project.name}</p>
-          <h1 className="text-3xl font-bold">{zone.microZone}</h1>
-          <p className="text-neutral-300">
-            MacroZona: {zone.macroZone} · Tipo: {zone.zoneType} · Progreso: {progress}%
-          </p>
-        </header>
+        <ContextHeader
+          title={zone.microZone}
+          subtitle="Flujo por zona: fotos primero, luego procesos."
+          backHref={`/pulse?project=${encodeURIComponent(project.id)}`}
+          backLabel="Zonas"
+          breadcrumbs={[
+            { label: "Pulse", href: "/" },
+            { label: project.name, href: `/pulse?project=${encodeURIComponent(project.id)}` },
+            { label: zone.microZone },
+          ]}
+          projectLabel={project.id}
+          zoneLabel={`${zone.macroZone} / ${zone.microZone}`}
+          statusLabel={`${progress}% completado`}
+          dateLabel={new Date().toLocaleDateString("es-MX")}
+        />
 
         <section className="space-y-3 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
           <h2 className="text-xl font-semibold">Paso 1 · Fotos de zona</h2>
@@ -468,8 +477,16 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                             Abrir pantalla completa
                           </Link>
 
-                          {rollPlacementError ? <p className="text-sm text-red-300">{rollPlacementError}</p> : null}
-                          {rollPlacementMessage ? <p className="text-sm text-emerald-300">{rollPlacementMessage}</p> : null}
+                          {rollPlacementError ? (
+                            <p className="rounded-xl border border-red-500/70 bg-red-500/10 p-3 text-sm text-red-300">
+                              {rollPlacementError}
+                            </p>
+                          ) : null}
+                          {rollPlacementMessage ? (
+                            <p className="rounded-xl border border-emerald-500/70 bg-emerald-500/10 p-3 text-sm text-emerald-300">
+                              {rollPlacementMessage}
+                            </p>
+                          ) : null}
                         </>
                       ) : null}
 
@@ -612,8 +629,16 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                             Abrir pantalla completa de Pegada
                           </Link>
 
-                          {adhesiveError ? <p className="text-sm text-red-300">{adhesiveError}</p> : null}
-                          {adhesiveMessage ? <p className="text-sm text-emerald-300">{adhesiveMessage}</p> : null}
+                          {adhesiveError ? (
+                            <p className="rounded-xl border border-red-500/70 bg-red-500/10 p-3 text-sm text-red-300">
+                              {adhesiveError}
+                            </p>
+                          ) : null}
+                          {adhesiveMessage ? (
+                            <p className="rounded-xl border border-emerald-500/70 bg-emerald-500/10 p-3 text-sm text-emerald-300">
+                              {adhesiveMessage}
+                            </p>
+                          ) : null}
                         </>
                       ) : null}
 

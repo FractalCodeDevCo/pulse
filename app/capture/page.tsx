@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic"
 
-import CaptureHubClient from "../../components/capture/CaptureHubClient"
+import { redirect } from "next/navigation"
 
 type CapturePageProps = {
   searchParams: Promise<{
@@ -10,5 +10,9 @@ type CapturePageProps = {
 
 export default async function CapturePage({ searchParams }: CapturePageProps) {
   const params = await searchParams
-  return <CaptureHubClient projectId={params.project ?? null} />
+  if (params.project) {
+    redirect(`/pulse?project=${encodeURIComponent(params.project)}`)
+  }
+
+  redirect("/projects?flow=load")
 }

@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic"
 import Link from "next/link"
 
 import DataSciencePanel from "../../../components/pulse/DataSciencePanel"
+import ContextHeader from "../../../components/pulse/ContextHeader"
 import { normalizeZoneTargets, ZoneTarget } from "../../../lib/projectSetup"
 import { getSupabaseAdminClient } from "../../../lib/supabase/server"
 import { FieldType } from "../../../types/fieldType"
@@ -340,16 +341,23 @@ export default async function ProjectOverviewPage({ searchParams }: OverviewPage
   return (
     <main className="min-h-screen bg-neutral-950 px-4 py-8 text-white">
       <section className="mx-auto w-full max-w-6xl space-y-6">
-        <header className="space-y-1">
-          <p className="text-sm text-neutral-400">Pulse / Proyecto / Overview</p>
-          <h1 className="text-3xl font-bold">{projectName}</h1>
-          <p className="text-neutral-300">
-            Control operativo plan vs real por zona. Proyecto: {projectId}
-          </p>
-          <p className="text-sm text-neutral-400">
-            Deporte: {fieldType} · Inicio: {formatDate(startDate)} · Crew: {crewName || "N/A"}
-          </p>
-        </header>
+        <ContextHeader
+          title={`${projectName} · Overview`}
+          subtitle="Control operativo plan vs real por zona."
+          backHref={`/pulse?project=${encodeURIComponent(projectId)}`}
+          backLabel="Zonas"
+          breadcrumbs={[
+            { label: "Pulse", href: "/" },
+            { label: projectId, href: `/pulse?project=${encodeURIComponent(projectId)}` },
+            { label: "Overview" },
+          ]}
+          projectLabel={projectId}
+          statusLabel={progressTotal === null ? "Sin baseline" : `${progressTotal.toFixed(1)}%`}
+          dateLabel={new Date().toLocaleDateString("es-MX")}
+        />
+        <p className="text-sm text-neutral-400">
+          Deporte: {fieldType} · Inicio: {formatDate(startDate)} · Crew: {crewName || "N/A"}
+        </p>
 
         {loadError ? (
           <section className="rounded-2xl border border-red-500/70 bg-red-500/10 p-4 text-red-300">

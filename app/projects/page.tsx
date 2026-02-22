@@ -6,6 +6,7 @@ import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Suspense, useEffect, useMemo, useState } from "react"
 
+import ContextHeader from "../../components/pulse/ContextHeader"
 import { FIELD_TYPE_LABELS, FieldType, saveProjectFieldType } from "../../types/fieldType"
 import {
   AppProject,
@@ -148,14 +149,21 @@ function ProjectsPageContent() {
   return (
     <main className="min-h-screen bg-neutral-950 px-4 py-8 text-white">
       <section className="mx-auto w-full max-w-2xl space-y-6">
-        <header className="space-y-2">
-          <p className="text-sm text-neutral-400">Pulse / Projects</p>
-          <h1 className="text-3xl font-bold">{flow === "new" ? "Nuevo proyecto" : "Cargar proyecto"}</h1>
-          <p className="text-neutral-300">Configura proyecto y deporte para generar zonas automáticamente.</p>
-          <Link href="/projects/admin" className="inline-block text-sm font-semibold text-amber-300 hover:underline">
-            Admin: agregar proyecto manual
-          </Link>
-        </header>
+        <ContextHeader
+          title={flow === "new" ? "Nuevo proyecto" : "Cargar proyecto"}
+          subtitle="Configura proyecto y deporte para generar zonas automáticamente."
+          backHref="/"
+          backLabel="Inicio"
+          breadcrumbs={[
+            { label: "Pulse", href: "/" },
+            { label: "Proyectos" },
+          ]}
+          statusLabel={flow === "new" ? "Alta" : "Carga"}
+          dateLabel={new Date().toLocaleDateString("es-MX")}
+        />
+        <Link href="/projects/admin" className="inline-block text-sm font-semibold text-amber-300 hover:underline">
+          Admin: agregar proyecto manual
+        </Link>
 
         <section className="space-y-4 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
           <label className="block space-y-2">

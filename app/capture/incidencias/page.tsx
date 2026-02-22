@@ -7,6 +7,7 @@ import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { ChangeEvent, Suspense, useMemo, useState } from "react"
 
+import ContextHeader from "../../../components/pulse/ContextHeader"
 import { IMAGE_INPUT_ACCEPT, processImageFiles } from "../../../lib/clientImage"
 import { FIELD_TYPE_LABELS, FieldType, readProjectFieldType, saveProjectFieldType } from "../../../types/fieldType"
 import { MacroZone, getMacroZoneOptions, getMicroZoneOptions } from "../../../types/zoneHierarchy"
@@ -169,11 +170,21 @@ function IncidenciasPageContent() {
   return (
     <main className="min-h-screen bg-neutral-950 px-4 py-8 text-white">
       <section className="mx-auto w-full max-w-3xl space-y-6">
-        <header className="space-y-2">
-          <p className="text-sm text-neutral-400">Pulse / Incidencias / {projectId}</p>
-          <h1 className="text-3xl font-bold">Bitácora de Incidencias</h1>
-          <p className="text-neutral-300">Registro estandarizado de incidencias por zona.</p>
-        </header>
+        <ContextHeader
+          title="Bitácora de Incidencias"
+          subtitle="Registro estandarizado de incidencias por zona."
+          backHref={backToZoneOrHub}
+          backLabel={projectZoneId ? "Zona" : "Proyecto"}
+          breadcrumbs={[
+            { label: "Pulse", href: "/" },
+            { label: projectId, href: `/pulse?project=${encodeURIComponent(projectId)}` },
+            { label: "Incidencias" },
+          ]}
+          projectLabel={projectId}
+          zoneLabel={macroZone && microZone ? `${macroZone} / ${microZone}` : null}
+          statusLabel={isSubmitting ? "Guardando..." : "En captura"}
+          dateLabel={new Date().toLocaleDateString("es-MX")}
+        />
 
         <section className="space-y-3 rounded-2xl border border-neutral-800 bg-neutral-900 p-4">
           <p className="text-sm text-neutral-400">Tipo de campo (por proyecto)</p>
@@ -312,8 +323,14 @@ function IncidenciasPageContent() {
             />
           </label>
 
-          {error ? <p className="text-sm text-red-300">{error}</p> : null}
-          {saveMessage ? <p className="text-sm text-emerald-300">{saveMessage}</p> : null}
+          {error ? (
+            <p className="rounded-xl border border-red-500/70 bg-red-500/10 p-3 text-sm text-red-300">{error}</p>
+          ) : null}
+          {saveMessage ? (
+            <p className="rounded-xl border border-emerald-500/70 bg-emerald-500/10 p-3 text-sm text-emerald-300">
+              {saveMessage}
+            </p>
+          ) : null}
 
           <div className="grid gap-2 sm:grid-cols-3">
             <button

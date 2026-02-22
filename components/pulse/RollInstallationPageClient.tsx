@@ -8,6 +8,7 @@ import { createCaptureSessionId } from "../../lib/captureSession"
 import { IMAGE_INPUT_ACCEPT, processImageFile } from "../../lib/clientImage"
 import { readZonePhotosCache } from "../../lib/zonePhotoCache"
 import { PULSE_ZONE_OPTIONS, PulseZone } from "../../types/pulseZones"
+import ContextHeader from "./ContextHeader"
 
 type FitStatus = "green" | "yellow" | "red"
 type CompactionMethod = "Plate" | "Roller" | "Manual"
@@ -65,6 +66,7 @@ export default function RollInstallationPageClient({
     projectId && projectZoneId
       ? `/pulse/zones/${encodeURIComponent(projectZoneId)}?project=${encodeURIComponent(projectId)}`
       : `/pulse?project=${encodeURIComponent(projectId ?? "")}`
+  const uiStep = step === 3 ? 2 : step
 
   useEffect(() => {
     if (!prefillFromZone || !projectId || !projectZoneId) return
@@ -166,18 +168,24 @@ export default function RollInstallationPageClient({
   return (
     <main className="min-h-screen bg-neutral-950 px-4 py-8 text-white">
       <section className="mx-auto w-full max-w-3xl space-y-6">
-        <header className="space-y-2">
-          <p className="text-sm text-neutral-400">Pulse / Roll Installation / {projectId}</p>
-          <h1 className="text-3xl font-bold">Roll Installation</h1>
-          {projectZoneId ? (
-            <p className="text-sm text-neutral-400">
-              Zona activa: {macroZone} / {microZone}
-            </p>
-          ) : null}
-        </header>
+        <ContextHeader
+          title="Roll Installation"
+          subtitle="Captura rápida de instalación de rollo."
+          backHref={backToZoneOrHub}
+          backLabel={projectZoneId ? "Zona" : "Proyecto"}
+          breadcrumbs={[
+            { label: "Pulse", href: "/" },
+            projectId ? { label: projectId, href: `/pulse?project=${encodeURIComponent(projectId)}` } : { label: "Proyecto" },
+            { label: "Roll Installation" },
+          ]}
+          projectLabel={projectId}
+          zoneLabel={macroZone && microZone ? `${macroZone} / ${microZone}` : null}
+          statusLabel={step === 3 ? "Completado" : `Paso ${uiStep}/2`}
+          dateLabel={new Date().toLocaleDateString("es-MX")}
+        />
 
         <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4 text-sm text-neutral-300">
-          Step {step === 3 ? 2 : step} of 2
+          Step {uiStep} of 2
         </div>
 
         {step === 1 ? (
@@ -350,7 +358,9 @@ export default function RollInstallationPageClient({
           </section>
         ) : null}
 
-        {error ? <p className="text-sm text-red-300">{error}</p> : null}
+        {error ? (
+          <p className="rounded-xl border border-red-500/70 bg-red-500/10 p-3 text-sm text-red-300">{error}</p>
+        ) : null}
       </section>
     </main>
   )

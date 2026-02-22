@@ -6,6 +6,7 @@ import { ChangeEvent, useState } from "react"
 
 import { IMAGE_INPUT_ACCEPT, processImageFile } from "../../lib/clientImage"
 import { PULSE_ZONE_OPTIONS, PulseZone } from "../../types/pulseZones"
+import ContextHeader from "./ContextHeader"
 
 type RollVerificationPageClientProps = {
   projectId: string | null
@@ -108,15 +109,21 @@ export default function RollVerificationPageClient({
   return (
     <main className="min-h-screen bg-neutral-950 px-4 py-8 text-white">
       <section className="mx-auto w-full max-w-3xl space-y-6">
-        <header className="space-y-2">
-          <p className="text-sm text-neutral-400">Pulse / Roll Verification / {projectId}</p>
-          <h1 className="text-3xl font-bold">Roll Verification</h1>
-          {projectZoneId ? (
-            <p className="text-sm text-neutral-400">
-              Zona activa: {macroZone} / {microZone}
-            </p>
-          ) : null}
-        </header>
+        <ContextHeader
+          title="Roll Verification"
+          subtitle="Verificación previa de etiqueta y estado."
+          backHref={backToZoneOrHub}
+          backLabel={projectZoneId ? "Zona" : "Proyecto"}
+          breadcrumbs={[
+            { label: "Pulse", href: "/" },
+            projectId ? { label: projectId, href: `/pulse?project=${encodeURIComponent(projectId)}` } : { label: "Proyecto" },
+            { label: "Roll Verification" },
+          ]}
+          projectLabel={projectId}
+          zoneLabel={macroZone && microZone ? `${macroZone} / ${microZone}` : null}
+          statusLabel={success ? "Completado" : "En captura"}
+          dateLabel={new Date().toLocaleDateString("es-MX")}
+        />
 
         <section className="space-y-4 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
           <label className="block space-y-2">
@@ -219,8 +226,14 @@ export default function RollVerificationPageClient({
             </Link>
           ) : null}
 
-          {error ? <p className="text-sm text-red-300">{error}</p> : null}
-          {success ? <p className="text-sm text-emerald-300">{success}</p> : null}
+          {error ? (
+            <p className="rounded-xl border border-red-500/70 bg-red-500/10 p-3 text-sm text-red-300">{error}</p>
+          ) : null}
+          {success ? (
+            <p className="rounded-xl border border-emerald-500/70 bg-emerald-500/10 p-3 text-sm text-emerald-300">
+              {success}
+            </p>
+          ) : null}
         </section>
       </section>
     </main>

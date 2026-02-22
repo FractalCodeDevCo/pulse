@@ -4,6 +4,7 @@ import Image from "next/image"
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 
+import ContextHeader from "./ContextHeader"
 type CaptureItem = {
   id: string
   module: string
@@ -183,11 +184,20 @@ export default function ProjectHistoryClient({ projectId, initialZoneKey = null 
   return (
     <main className="min-h-screen bg-neutral-950 px-4 py-8 text-white">
       <section className="mx-auto w-full max-w-5xl space-y-6">
-        <header className="space-y-1">
-          <p className="text-sm text-neutral-400">Pulse / Historial / {projectId}</p>
-          <h1 className="text-3xl font-bold">Historia de Capturas</h1>
-          <p className="text-neutral-300">Carrusel de fotos y registros guardados por proyecto y zona.</p>
-        </header>
+        <ContextHeader
+          title="Historial de Capturas"
+          subtitle="Carrusel de fotos y registros guardados por proyecto y zona."
+          backHref={`/pulse?project=${encodeURIComponent(projectId)}`}
+          backLabel="Zonas"
+          breadcrumbs={[
+            { label: "Pulse", href: "/" },
+            { label: projectId, href: `/pulse?project=${encodeURIComponent(projectId)}` },
+            { label: "Historial" },
+          ]}
+          projectLabel={projectId}
+          statusLabel="Consulta"
+          dateLabel={new Date().toLocaleDateString("es-MX")}
+        />
 
         <section className="grid gap-3 rounded-2xl border border-neutral-800 bg-neutral-900 p-4 sm:grid-cols-2">
           <label className="space-y-2">
