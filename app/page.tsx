@@ -1,75 +1,92 @@
 import Link from "next/link"
 
+import BlueprintSection from "../components/site/BlueprintSection"
 import SiteShell from "../components/site/SiteShell"
 
 export default function HomePage() {
   return (
     <SiteShell
-      title="Infrastructure for Financial Optimization in Sports Construction."
-      subtitle="Structured capture, operational intelligence, and margin protection for turf installation programs."
+      title="Structured Operational Intelligence System."
+      subtitle="Zone normalization, process integrity, and margin protection for sports construction."
     >
-      <section className="grid gap-4 md:grid-cols-3">
+      <section className="flex flex-wrap gap-3">
+        <Link
+          href="/contact"
+          className="rounded-lg bg-cyan-600 px-4 py-2.5 text-sm font-semibold text-slate-100 hover:bg-cyan-700"
+        >
+          Request Technical Brief
+        </Link>
+        <Link
+          href="/contact"
+          className="rounded-lg border border-slate-600 px-4 py-2.5 text-sm font-semibold text-slate-200 hover:bg-slate-900"
+        >
+          Request Project Evaluation
+        </Link>
+        <Link
+          href="/contact"
+          className="rounded-lg border border-slate-600 px-4 py-2.5 text-sm font-semibold text-slate-200 hover:bg-slate-900"
+        >
+          Request Consultation
+        </Link>
+      </section>
+
+      <section className="mt-8 grid gap-4 md:grid-cols-3">
         <article className="rounded-2xl border border-slate-800 bg-slate-950/70 p-5">
-          <h2 className="font-heading text-lg text-slate-100">The Problem</h2>
+          <h2 className="font-heading text-lg text-slate-100">Problem</h2>
           <p className="mt-2 text-sm text-slate-300">
-            Margin erosion from rework, inconsistent field execution, and no standardized variance signal.
+            Rework, variance blind spots, and margin leakage in sports field execution.
           </p>
         </article>
         <article className="rounded-2xl border border-slate-800 bg-slate-950/70 p-5">
-          <h2 className="font-heading text-lg text-slate-100">The System</h2>
+          <h2 className="font-heading text-lg text-slate-100">System</h2>
           <p className="mt-2 text-sm text-slate-300">
-            Zone-based capture, evidence traceability, and baseline-driven deviation metrics from day one.
+            Zone-structured capture and process checkpoints with traceable technical evidence.
           </p>
         </article>
         <article className="rounded-2xl border border-slate-800 bg-slate-950/70 p-5">
-          <h2 className="font-heading text-lg text-slate-100">The Advantage</h2>
+          <h2 className="font-heading text-lg text-slate-100">Advantage</h2>
           <p className="mt-2 text-sm text-slate-300">
-            Reduced retrabajo, tighter adhesive control, and an operational dataset ready for forecasting.
+            Controlled execution quality and a stable operational dataset for strategic planning.
           </p>
         </article>
       </section>
 
-      <section className="mt-8 grid gap-4 md:grid-cols-2">
-        <div className="rounded-2xl border border-slate-800 bg-slate-950/75 p-6">
-          <h3 className="font-heading text-xl text-slate-100">For Field Operations</h3>
-          <p className="mt-2 text-sm text-slate-300">
-            Capture by project and zone with minimal friction on mobile, even under active installation flow.
-          </p>
-          <div className="mt-5 flex flex-wrap gap-3">
-            <Link
-              href="/projects?flow=load"
-              className="rounded-lg bg-cyan-600 px-4 py-2.5 text-sm font-semibold text-slate-100 hover:bg-cyan-700"
-            >
-              Open Pulse
-            </Link>
-            <Link
-              href="/projects?flow=new"
-              className="rounded-lg border border-slate-600 px-4 py-2.5 text-sm font-semibold text-slate-200 hover:bg-slate-900"
-            >
-              Create Project
-            </Link>
-          </div>
-        </div>
+      <BlueprintSection />
 
-        <div className="rounded-2xl border border-slate-800 bg-slate-950/75 p-6">
-          <h3 className="font-heading text-xl text-slate-100">For Executives</h3>
-          <p className="mt-2 text-sm text-slate-300">
-            Operational variance visibility by zone with technical evidence that supports contract-level decisions.
-          </p>
-          <div className="mt-5 flex flex-wrap gap-3">
-            <Link
-              href="/enterprise"
-              className="rounded-lg border border-cyan-500/70 px-4 py-2.5 text-sm font-semibold text-cyan-200 hover:bg-cyan-500/10"
-            >
-              Enterprise Brief
-            </Link>
-            <Link
-              href="/contact"
-              className="rounded-lg border border-slate-600 px-4 py-2.5 text-sm font-semibold text-slate-200 hover:bg-slate-900"
-            >
-              Schedule Technical Briefing
-            </Link>
-          </div>
+      <section className="mt-10">
+        <h2 className="font-heading text-2xl text-slate-100 md:text-3xl">Operational Architecture</h2>
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <article className="rounded-2xl border border-slate-800 bg-slate-950/70 p-5">
+            <h3 className="font-heading text-lg">Operational Normalization</h3>
+            <p className="mt-2 text-sm text-slate-300">Consistent zone structure and process language across projects.</p>
+          </article>
+          <article className="rounded-2xl border border-slate-800 bg-slate-950/70 p-5">
+            <h3 className="font-heading text-lg">Traceable Evidence Layer</h3>
+            <p className="mt-2 text-sm text-slate-300">Capture records linked to project, zone, timestamp, and evidence.</p>
+          </article>
+          <article className="rounded-2xl border border-slate-800 bg-slate-950/70 p-5">
+            <h3 className="font-heading text-lg">Deviation Modeling</h3>
+            <p className="mt-2 text-sm text-slate-300">Structured variance detection for process stability and quality control.</p>
+          </article>
+          <article className="rounded-2xl border border-slate-800 bg-slate-950/70 p-5">
+            <h3 className="font-heading text-lg">Financial Projection Readiness</h3>
+            <p className="mt-2 text-sm text-slate-300">Schema-ready operational history designed for forecasting and analytics.</p>
+          </article>
+        </div>
+      </section>
+
+      <section className="mt-10 rounded-3xl border border-cyan-500/30 bg-cyan-500/10 p-6 md:p-7">
+        <h2 className="font-heading text-2xl text-cyan-100 md:text-3xl">Schedule Technical Briefing</h2>
+        <p className="mt-2 max-w-2xl text-sm text-cyan-100/90">
+          Early implementation access is available upon request for selected projects and enterprise programs.
+        </p>
+        <div className="mt-5">
+          <Link
+            href="/contact"
+            className="inline-flex rounded-lg bg-cyan-600 px-4 py-2.5 text-sm font-semibold text-slate-100 hover:bg-cyan-700"
+          >
+            Request Technical Brief
+          </Link>
         </div>
       </section>
     </SiteShell>

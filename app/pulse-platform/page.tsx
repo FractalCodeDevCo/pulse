@@ -37,10 +37,10 @@ export default function PulsePlatformPage() {
 
       <div className="mt-8">
         <Link
-          href="/projects?flow=load"
+          href="/contact"
           className="inline-flex rounded-lg bg-cyan-600 px-4 py-2.5 text-sm font-semibold text-slate-100 hover:bg-cyan-700"
         >
-          Open Pulse Workspace
+          Request Project Evaluation
         </Link>
       </div>
     </SiteShell>
