@@ -201,7 +201,7 @@ function PegadaPageContent() {
     const cached = readZonePhotosCache(projectId, projectZoneId)
     setPrefillApplied(true)
 
-    if (cached.length < 3) {
+    if (cached.length < 1) {
       setError("No encontramos fotos de zona en caché. Vuelve a Paso 1 de la zona y sube fotos.")
       return
     }
@@ -287,9 +287,6 @@ function PegadaPageContent() {
   const canShowLineasMarkbox =
     fieldType === "soccer" || fieldType === "football" || fieldType === "beisbol" || fieldType === "softbol"
 
-  const hasAllPhotos = useMemo(() => {
-    return Boolean(prepPhoto.dataUrl && antesPhoto.dataUrl && despuesPhoto.dataUrl)
-  }, [prepPhoto.dataUrl, antesPhoto.dataUrl, despuesPhoto.dataUrl])
   const totalSteps = prefillFromZone ? 2 : 3
   const displayStep = prefillFromZone ? (step === 3 ? 2 : step) : step
 
@@ -339,11 +336,6 @@ function PegadaPageContent() {
   }
 
   function goToQuestionnaire() {
-    if (!hasAllPhotos) {
-      setError("Debes subir las 3 fotos para continuar.")
-      return
-    }
-
     setError("")
     setStep(2)
   }
@@ -540,8 +532,8 @@ function PegadaPageContent() {
 
         {step === 1 ? (
           <section className="space-y-5 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
-            <h2 className="text-xl font-semibold">1) Fotos obligatorias</h2>
-            <p className="text-sm text-neutral-400">Prep, Antes de Pegado y Después de Pegado.</p>
+            <h2 className="text-xl font-semibold">1) Fotos de referencia (opcionales)</h2>
+            <p className="text-sm text-neutral-400">Si ya subiste fotos al iniciar captura, puedes continuar sin volver a subir aquí.</p>
 
             <div className="grid gap-4 md:grid-cols-3">
               <PhotoInputCard

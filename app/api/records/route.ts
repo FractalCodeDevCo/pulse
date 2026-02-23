@@ -90,7 +90,7 @@ function normalizeZoneType(value: string | null): string {
     .replace(/^_+|_+$/g, "") || "general"
 }
 
-function validatePegadaPayload(payload: Record<string, unknown>, photosCount: number): string | null {
+function validatePegadaPayload(payload: Record<string, unknown>): string | null {
   const macroZone = toStringOrNull(payload.macro_zone ?? payload.macroZone)
   if (!macroZone) return "macro_zone is required for pegada."
 
@@ -112,7 +112,6 @@ function validatePegadaPayload(payload: Record<string, unknown>, photosCount: nu
     return "ftTotales must be greater than 0 for pegada."
   }
 
-  if (photosCount < 3) return "Pegada requires at least 3 photos."
   return null
 }
 
@@ -217,7 +216,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "capture_session_id is required for pegada." }, { status: 400 })
       }
 
-      const pegadaValidationError = validatePegadaPayload(body.payload, photoCandidates.length)
+      const pegadaValidationError = validatePegadaPayload(body.payload)
       if (pegadaValidationError) {
         return NextResponse.json({ error: pegadaValidationError }, { status: 400 })
       }

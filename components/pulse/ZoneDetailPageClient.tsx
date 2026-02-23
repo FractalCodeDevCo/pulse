@@ -332,9 +332,6 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
     const prep = zonePhotos[0] ?? null
     const antes = zonePhotos[1] ?? null
     const despues = zonePhotos[2] ?? null
-    if (!prep || !antes || !despues) {
-      return setAdhesiveError("Para Adhesive necesitas 3 fotos de zona (Prep, Antes, Después).")
-    }
 
     setAdhesiveError("")
     setAdhesiveMessage("")
@@ -365,7 +362,11 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
             observaciones: adhesiveObservaciones.trim(),
             capture_session_id: adhesiveSessionId,
             capture_status: "complete",
-            evidencePhotos: { prep, antes, despues },
+            evidencePhotos: {
+              prep: prep ?? undefined,
+              antes: antes ?? undefined,
+              despues: despues ?? undefined,
+            },
           },
         }),
       })
