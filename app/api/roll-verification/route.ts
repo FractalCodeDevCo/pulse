@@ -47,10 +47,28 @@ async function uploadLabelPhoto(recordId: string, source: string): Promise<strin
   return supabase.storage.from(bucket).getPublicUrl(filePath).data.publicUrl
 }
 
+function isMissingColumnError(message: string): boolean {
+  const lower = message.toLowerCase()
+  return lower.includes("column") && lower.includes("does not exist")
+}
+
+function isMissingRelationError(message: string): boolean {
+  const lower = message.toLowerCase()
+  return lower.includes("relation") && lower.includes("does not exist")
+}
+
+function hasOnConflictConstraintError(message: string): boolean {
+  return message.toLowerCase().includes("there is no unique or exclusion constraint matching the on conflict specification")
+}
+
+function isSchemaCompatibilityError(message: string): boolean {
+  return isMissingColumnError(message) || isMissingRelationError(message) || hasOnConflictConstraintError(message)
+}
+
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as RequestBody
-    if (!body.zone || !body.status || !body.label_photo) {
+    if (!body.project_id || !body.zone || !body.status || !body.label_photo) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
 
@@ -79,7 +97,38 @@ export async function POST(request: Request) {
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json(data)
+
+    const captureRow = {
+      project_id: body.project_id,
+      zone_id: body.project_zone_id ?? null,
+      label_photo: photoUrl,
+      roll_length_ft: typeof body.length_ft === "number" ? body.length_ft : null,
+      roll_width_ft: null,
+      product_code: null,
+      color: body.color_letter?.trim() || null,
+      verification_status: body.status === "Mismatch" ? "mismatch" : "ok",
+    }
+
+    const captureInsert = await supabase.from("captures_roll_verify").insert(captureRow).select("id").single()
+    if (captureInsert.error && !isSchemaCompatibilityError(captureInsert.error.message)) {
+      console.error("[roll-verification-api] captures_roll_verify_failed", {
+        error: captureInsert.error.message,
+        projectId: body.project_id ?? null,
+        projectZoneId: body.project_zone_id ?? null,
+      })
+    }
+
+    const summary = {
+      module: "roll-verification",
+      verification_status: body.status,
+      length_ft: typeof body.length_ft === "number" ? body.length_ft : null,
+      color_letter: body.color_letter?.trim() || null,
+    }
+
+    return NextResponse.json({
+      ...data,
+      summary,
+    })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error"
     return NextResponse.json({ error: message }, { status: 500 })

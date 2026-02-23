@@ -390,3 +390,159 @@ create index if not exists idx_compactacion_photos_compactacion on public.compac
 insert into storage.buckets (id, name, public)
 values ('pulse-evidence', 'pulse-evidence', true)
 on conflict (id) do nothing;
+
+-- ===============================
+-- Pulse v0 data-science schema
+-- ===============================
+
+alter table if exists public.projects add column if not exists location text;
+alter table if exists public.projects add column if not exists start_date date;
+
+-- Keep legacy zones(id text) and extend it for project-level zone modeling.
+alter table if exists public.zones add column if not exists project_id uuid references public.projects(id) on delete cascade;
+alter table if exists public.zones add column if not exists zone_type text;
+alter table if exists public.zones add column if not exists sub_zone text;
+alter table if exists public.zones add column if not exists created_at timestamptz not null default now();
+
+create table if not exists public.glue_baselines (
+  zone_type text primary key,
+  mu numeric not null,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.captures_glue (
+  id uuid primary key default gen_random_uuid(),
+  project_id text not null,
+  zone_id text,
+  linear_ft_est numeric not null,
+  cans_used numeric not null,
+  temp_bucket text,
+  humidity_bucket text,
+  photos jsonb not null default '[]'::jsonb,
+  capture_session_id text,
+  capture_status text not null default 'complete',
+  r numeric,
+  mu numeric,
+  ratio_to_baseline numeric,
+  traffic_light text,
+  predicted_cans numeric,
+  savings_usd numeric,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_captures_glue_project on public.captures_glue(project_id);
+create index if not exists idx_captures_glue_zone on public.captures_glue(zone_id);
+create index if not exists idx_captures_glue_created_at on public.captures_glue(created_at desc);
+
+create table if not exists public.captures_roll_install (
+  id uuid primary key default gen_random_uuid(),
+  project_id text not null,
+  zone_id text,
+  seams_count int not null default 0,
+  photos jsonb not null default '[]'::jsonb,
+  capture_session_id text,
+  capture_status text not null default 'complete',
+  roll_length_sem text not null default 'green',
+  risk_score numeric,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_captures_roll_install_project on public.captures_roll_install(project_id);
+create index if not exists idx_captures_roll_install_zone on public.captures_roll_install(zone_id);
+create index if not exists idx_captures_roll_install_created_at on public.captures_roll_install(created_at desc);
+
+create table if not exists public.captures_roll_verify (
+  id uuid primary key default gen_random_uuid(),
+  project_id text not null,
+  zone_id text,
+  label_photo text not null,
+  roll_length_ft numeric,
+  roll_width_ft numeric,
+  product_code text,
+  color text,
+  verification_status text not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_captures_roll_verify_project on public.captures_roll_verify(project_id);
+create index if not exists idx_captures_roll_verify_zone on public.captures_roll_verify(zone_id);
+create index if not exists idx_captures_roll_verify_created_at on public.captures_roll_verify(created_at desc);
+
+create table if not exists public.captures_compaction (
+  id uuid primary key default gen_random_uuid(),
+  project_id text not null,
+  zone_id text,
+  surface_firm boolean not null,
+  moisture_ok boolean not null,
+  double_compaction boolean not null,
+  method text not null,
+  photos jsonb,
+  capture_session_id text,
+  capture_status text not null default 'complete',
+  compaction_risk_score numeric,
+  compaction_traffic text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_captures_compaction_project on public.captures_compaction(project_id);
+create index if not exists idx_captures_compaction_zone on public.captures_compaction(zone_id);
+create index if not exists idx_captures_compaction_created_at on public.captures_compaction(created_at desc);
+
+create table if not exists public.captures_material_pass (
+  id uuid primary key default gen_random_uuid(),
+  project_id text not null,
+  zone_id text,
+  pass_number int not null,
+  bags_expected_per_pass numeric not null,
+  bags_used numeric not null,
+  valve_setting int not null check (valve_setting between 1 and 6),
+  photos jsonb not null default '[]'::jsonb,
+  capture_session_id text,
+  capture_status text not null default 'complete',
+  deviation numeric,
+  valve_next_delta int,
+  valve_next_setting int check (valve_next_setting between 1 and 6),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_captures_material_pass_project on public.captures_material_pass(project_id);
+create index if not exists idx_captures_material_pass_zone on public.captures_material_pass(zone_id);
+create index if not exists idx_captures_material_pass_created_at on public.captures_material_pass(created_at desc);
+
+create table if not exists public.incidents (
+  id uuid primary key default gen_random_uuid(),
+  project_id text not null,
+  zone_id text,
+  type text not null,
+  severity text not null,
+  photos jsonb,
+  notes text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_incidents_project on public.incidents(project_id);
+create index if not exists idx_incidents_zone on public.incidents(zone_id);
+create index if not exists idx_incidents_created_at on public.incidents(created_at desc);
+
+-- Keep active runtime tables aligned with v0 computed metrics
+alter table if exists public.roll_installation add column if not exists roll_length_sem text;
+alter table if exists public.roll_installation add column if not exists roll_risk_score numeric;
+alter table if exists public.roll_installation add column if not exists compaction_risk_score numeric;
+alter table if exists public.roll_installation add column if not exists compaction_traffic text;
+
+-- Session-level dedupe for stable persistence
+create unique index if not exists uq_captures_glue_session
+  on public.captures_glue(project_id, zone_id, capture_session_id)
+  where capture_session_id is not null;
+
+create unique index if not exists uq_captures_roll_install_session
+  on public.captures_roll_install(project_id, zone_id, capture_session_id)
+  where capture_session_id is not null;
+
+create unique index if not exists uq_captures_compaction_session
+  on public.captures_compaction(project_id, zone_id, capture_session_id)
+  where capture_session_id is not null;
+
+create unique index if not exists uq_captures_material_pass_session
+  on public.captures_material_pass(project_id, zone_id, capture_session_id)
+  where capture_session_id is not null;

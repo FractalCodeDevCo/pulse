@@ -2,9 +2,10 @@
 
 import Image from "next/image"
 import Link from "next/link"
-import { ChangeEvent, useEffect, useState } from "react"
+import { ChangeEvent, useEffect, useMemo, useState } from "react"
 
 import { createCaptureSessionId } from "../../lib/captureSession"
+import { clearCaptureDraft, readCaptureDraft, saveCaptureDraft } from "../../lib/captureDraft"
 import { IMAGE_INPUT_ACCEPT, processImageFile } from "../../lib/clientImage"
 import { readZonePhotosCache } from "../../lib/zonePhotoCache"
 import { PULSE_ZONE_OPTIONS, PulseZone } from "../../types/pulseZones"
@@ -25,6 +26,29 @@ type RollInstallationPageClientProps = {
 }
 
 type PhotoState = Record<PhotoType, string | null>
+type RollInstallationSummary = {
+  module: "roll-installation"
+  roll_length_sem: "green" | "yellow" | "red"
+  roll_risk_score: number
+  compaction_risk_score: number
+  compaction_traffic: "green" | "yellow" | "red"
+  seams_penalty: number
+  wrong_roll_incident: boolean
+}
+
+type RollInstallationDraft = {
+  step: 1 | 2
+  photos: PhotoState
+  zone: PulseZone | ""
+  fit: FitStatus | ""
+  totalRollsUsed: string
+  totalSeams: string
+  surfaceFirm: boolean
+  moistureOk: boolean
+  doubleCompaction: boolean
+  compactionMethod: CompactionMethod | ""
+  captureSessionId: string
+}
 
 const PHOTO_LABELS: Record<PhotoType, string> = {
   compacting: "Compacting",
@@ -62,6 +86,13 @@ export default function RollInstallationPageClient({
   const [success, setSuccess] = useState("")
   const [isReadingPhoto, setIsReadingPhoto] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [summary, setSummary] = useState<RollInstallationSummary | null>(null)
+  const [draftReady, setDraftReady] = useState(false)
+  const [draftRecovered, setDraftRecovered] = useState(false)
+  const draftKey = useMemo(
+    () => (projectId ? `pulse_draft_roll_installation_${projectId}_${projectZoneId ?? "global"}` : null),
+    [projectId, projectZoneId],
+  )
   const backToZoneOrHub =
     projectId && projectZoneId
       ? `/pulse/zones/${encodeURIComponent(projectZoneId)}?project=${encodeURIComponent(projectId)}`
@@ -69,6 +100,27 @@ export default function RollInstallationPageClient({
   const uiStep = step === 3 ? 2 : step
 
   useEffect(() => {
+    if (!draftKey) return
+    const draft = readCaptureDraft<RollInstallationDraft>(draftKey)
+    if (draft) {
+      setStep(draft.step)
+      setPhotos(draft.photos)
+      setZone(draft.zone)
+      setFit(draft.fit)
+      setTotalRollsUsed(draft.totalRollsUsed)
+      setTotalSeams(draft.totalSeams)
+      setSurfaceFirm(draft.surfaceFirm)
+      setMoistureOk(draft.moistureOk)
+      setDoubleCompaction(draft.doubleCompaction)
+      setCompactionMethod(draft.compactionMethod)
+      setCaptureSessionId(draft.captureSessionId || createCaptureSessionId())
+      setDraftRecovered(true)
+    }
+    setDraftReady(true)
+  }, [draftKey])
+
+  useEffect(() => {
+    if (!draftReady || draftRecovered) return
     if (!prefillFromZone || !projectId || !projectZoneId) return
 
     const cached = readZonePhotosCache(projectId, projectZoneId)
@@ -83,7 +135,56 @@ export default function RollInstallationPageClient({
       completed: cached[2] ?? null,
     })
     setStep(2)
-  }, [prefillFromZone, projectId, projectZoneId])
+  }, [draftReady, draftRecovered, prefillFromZone, projectId, projectZoneId])
+
+  useEffect(() => {
+    if (!draftReady || !draftKey) return
+    if (step === 3) return
+
+    const hasMeaningfulDraft = Boolean(
+      photos.compacting ||
+        photos.in_progress ||
+        photos.completed ||
+        zone ||
+        fit ||
+        totalRollsUsed ||
+        totalSeams ||
+        compactionMethod,
+    )
+
+    if (!hasMeaningfulDraft) {
+      clearCaptureDraft(draftKey)
+      return
+    }
+
+    saveCaptureDraft<RollInstallationDraft>(draftKey, {
+      step: step > 2 ? 2 : step,
+      photos,
+      zone,
+      fit,
+      totalRollsUsed,
+      totalSeams,
+      surfaceFirm,
+      moistureOk,
+      doubleCompaction,
+      compactionMethod,
+      captureSessionId,
+    })
+  }, [
+    captureSessionId,
+    compactionMethod,
+    doubleCompaction,
+    draftKey,
+    draftReady,
+    fit,
+    moistureOk,
+    photos,
+    step,
+    surfaceFirm,
+    totalRollsUsed,
+    totalSeams,
+    zone,
+  ])
 
   async function handlePhotoChange(type: PhotoType, event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
@@ -116,6 +217,7 @@ export default function RollInstallationPageClient({
     setError("")
     setIsSubmitting(true)
     setSuccess("")
+    setSummary(null)
 
     try {
       const response = await fetch("/api/roll-installation", {
@@ -141,11 +243,13 @@ export default function RollInstallationPageClient({
           photos,
         }),
       })
-      const data = await response.json()
+      const data = (await response.json()) as { summary?: RollInstallationSummary | null; error?: string }
       if (!response.ok) throw new Error(data?.error ?? "Save failed")
 
       setSuccess("Roll installation saved.")
+      setSummary(data.summary ?? null)
       setCaptureSessionId(createCaptureSessionId())
+      if (draftKey) clearCaptureDraft(draftKey)
       setStep(3)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed")
@@ -187,6 +291,12 @@ export default function RollInstallationPageClient({
         <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4 text-sm text-neutral-300">
           Step {uiStep} of 2
         </div>
+
+        {draftRecovered ? (
+          <p className="rounded-xl border border-cyan-500/70 bg-cyan-500/10 p-3 text-sm text-cyan-200">
+            Borrador recuperado. Puedes continuar con tu captura.
+          </p>
+        ) : null}
 
         {step === 1 ? (
           <section className="space-y-4 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
@@ -349,11 +459,29 @@ export default function RollInstallationPageClient({
         {step === 3 ? (
           <section className="space-y-3 rounded-2xl border border-emerald-600/60 bg-emerald-500/10 p-5">
             <p className="font-semibold text-emerald-200">{success}</p>
+            {summary ? (
+              <div
+                className={`space-y-2 rounded-xl border p-3 ${
+                  summary.compaction_traffic === "green"
+                    ? "border-emerald-500/70 bg-emerald-500/10 text-emerald-100"
+                    : summary.compaction_traffic === "yellow"
+                      ? "border-amber-500/70 bg-amber-500/10 text-amber-100"
+                      : "border-red-500/70 bg-red-500/10 text-red-100"
+                }`}
+              >
+                <p className="text-sm">Roll risk: {summary.roll_risk_score}</p>
+                <p className="text-sm">Compaction risk: {summary.compaction_risk_score}</p>
+                <p className="text-sm uppercase">Compaction traffic: {summary.compaction_traffic}</p>
+                <p className="text-sm">
+                  Wrong roll incident: {summary.wrong_roll_incident ? "Yes" : "No"}
+                </p>
+              </div>
+            ) : null}
             <Link
               href={backToZoneOrHub}
               className="block w-full rounded-xl bg-blue-600 py-3 text-center font-semibold hover:bg-blue-700"
             >
-              Back
+              Back to Hub
             </Link>
           </section>
         ) : null}

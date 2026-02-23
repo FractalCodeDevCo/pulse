@@ -12,6 +12,7 @@ type SaveCloudRecordResponse = {
   field_type: string | null
   payload: Record<string, unknown>
   created_at: string
+  summary?: Record<string, unknown> | null
 }
 
 const DEBUG_CAPTURE = process.env.NEXT_PUBLIC_DEBUG_CAPTURE === "1"

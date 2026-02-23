@@ -34,6 +34,39 @@ function parseDataUrl(dataUrl: string): { mimeType: string; bytes: Uint8Array } 
   }
 }
 
+function isMissingColumnError(message: string): boolean {
+  const lower = message.toLowerCase()
+  return lower.includes("column") && lower.includes("does not exist")
+}
+
+function isMissingRelationError(message: string): boolean {
+  const lower = message.toLowerCase()
+  return lower.includes("relation") && lower.includes("does not exist")
+}
+
+function isSchemaCompatibilityError(message: string): boolean {
+  return isMissingColumnError(message) || isMissingRelationError(message)
+}
+
+function normalizeIncidentType(type: string): string {
+  const lower = type.trim().toLowerCase()
+  if (lower.includes("longitud")) return "wrong_roll"
+  if (lower.includes("costura") && lower.includes("retrabajo")) return "rework"
+  if (lower.includes("costura")) return "rework"
+  if (lower.includes("material")) return "other"
+  if (lower.includes("compact")) return "other"
+  if (lower.includes("maquinaria")) return "machine_delay"
+  return "other"
+}
+
+function normalizeSeverity(priority: string): "low" | "med" | "high" {
+  const lower = priority.trim().toLowerCase()
+  if (lower.includes("fuerte")) return "high"
+  if (lower.includes("moderado")) return "med"
+  if (lower.includes("menor")) return "med"
+  return "low"
+}
+
 async function uploadDataUrl(
   supabase: ReturnType<typeof getSupabaseAdminClient>,
   dataUrlOrUrl: string,
@@ -132,6 +165,28 @@ export async function POST(request: Request) {
         projectId: body.project_id,
       })
       return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    const incidentType = normalizeIncidentType(body.type_of_incidence)
+    const incidentSeverity = normalizeSeverity(body.priority_level)
+    const incidentInsert = await supabase
+      .from("incidents")
+      .insert({
+        project_id: body.project_id,
+        zone_id: body.project_zone_id ?? null,
+        type: incidentType,
+        severity: incidentSeverity,
+        photos: photoUrls,
+        notes: body.note ?? null,
+      })
+      .select("id")
+      .single()
+
+    if (incidentInsert.error && !isSchemaCompatibilityError(incidentInsert.error.message)) {
+      console.error("[incidences-api] incidents_insert_failed", {
+        error: incidentInsert.error.message,
+        projectId: body.project_id,
+      })
     }
 
     log("insert_success", { id: data.id, projectId: data.project_id })

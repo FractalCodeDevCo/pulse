@@ -9,6 +9,7 @@ import { ChangeEvent, FormEvent, Suspense, useEffect, useMemo, useState } from "
 
 import ContextHeader from "../../../components/pulse/ContextHeader"
 import { createCaptureSessionId } from "../../../lib/captureSession"
+import { clearCaptureDraft, readCaptureDraft, saveCaptureDraft } from "../../../lib/captureDraft"
 import { IMAGE_INPUT_ACCEPT, processImageFile } from "../../../lib/clientImage"
 import { saveCloudRecord } from "../../../lib/recordClient"
 import { readZonePhotosCache } from "../../../lib/zonePhotoCache"
@@ -42,6 +43,37 @@ type PegadaRecord = {
     antes: string
     despues: string
   }
+}
+
+type PegadaSummary = {
+  module: "pegada"
+  traffic_light: "green" | "yellow" | "red"
+  ratio_to_baseline: number
+  r_cans_per_ft: number
+  baseline_mu: number
+  baseline_mu_next: number
+  predicted_cans: number
+  savings_usd: number
+  can_price_usd: number
+  zone_type: string
+}
+
+type PegadaDraft = {
+  step: 1 | 2
+  fieldType: FieldType
+  macroZone: MacroZone | ""
+  microZone: string
+  prepPhoto: PhotoState
+  antesPhoto: PhotoState
+  despuesPhoto: PhotoState
+  ftTotales: number
+  botesUsados: number
+  criticalInfieldAreas: string[]
+  lineasMarkbox: boolean
+  clima: string[]
+  condicion: string
+  observaciones: string
+  captureSessionId: string
 }
 
 const DEFAULT_FIXED_FT = 10
@@ -119,7 +151,14 @@ function PegadaPageContent() {
   const [isReadingPhoto, setIsReadingPhoto] = useState(false)
   const [error, setError] = useState("")
   const [saveMessage, setSaveMessage] = useState("")
+  const [summary, setSummary] = useState<PegadaSummary | null>(null)
   const [prefillApplied, setPrefillApplied] = useState(false)
+  const [draftReady, setDraftReady] = useState(false)
+  const [draftRecovered, setDraftRecovered] = useState(false)
+  const draftKey = useMemo(
+    () => (projectId ? `pulse_draft_pegada_${projectId}_${projectZoneId ?? "global"}` : null),
+    [projectId, projectZoneId],
+  )
   const backToZoneOrHub =
     projectId && projectZoneId
       ? `/pulse/zones/${encodeURIComponent(projectZoneId)}?project=${encodeURIComponent(projectId)}`
@@ -131,7 +170,32 @@ function PegadaPageContent() {
   }, [fieldTypeKey])
 
   useEffect(() => {
+    if (!draftKey) return
+    const draft = readCaptureDraft<PegadaDraft>(draftKey)
+    if (draft) {
+      setStep(draft.step)
+      setFieldType(draft.fieldType)
+      setMacroZone(draft.macroZone)
+      setMicroZone(draft.microZone)
+      setPrepPhoto(draft.prepPhoto)
+      setAntesPhoto(draft.antesPhoto)
+      setDespuesPhoto(draft.despuesPhoto)
+      setFtTotales(draft.ftTotales)
+      setBotesUsados(draft.botesUsados)
+      setCriticalInfieldAreas(draft.criticalInfieldAreas)
+      setLineasMarkbox(draft.lineasMarkbox)
+      setClima(draft.clima)
+      setCondicion(draft.condicion)
+      setObservaciones(draft.observaciones)
+      setCaptureSessionId(draft.captureSessionId || createCaptureSessionId())
+      setDraftRecovered(true)
+    }
+    setDraftReady(true)
+  }, [draftKey])
+
+  useEffect(() => {
     if (prefillApplied) return
+    if (!draftReady || draftRecovered) return
     if (!prefillFromZone || !projectId || !projectZoneId) return
 
     const cached = readZonePhotosCache(projectId, projectZoneId)
@@ -147,7 +211,69 @@ function PegadaPageContent() {
     setDespuesPhoto({ dataUrl: cached[2] ?? null, fileName: "despues-zone.jpg" })
     setStep(2)
     setError("")
-  }, [prefillApplied, prefillFromZone, projectId, projectZoneId])
+  }, [draftReady, draftRecovered, prefillApplied, prefillFromZone, projectId, projectZoneId])
+
+  useEffect(() => {
+    if (!draftReady || !draftKey) return
+    if (step === 3) return
+
+    const hasMeaningfulDraft = Boolean(
+      prepPhoto.dataUrl ||
+        antesPhoto.dataUrl ||
+        despuesPhoto.dataUrl ||
+        macroZone ||
+        microZone ||
+        criticalInfieldAreas.length > 0 ||
+        lineasMarkbox ||
+        clima.length > 0 ||
+        condicion ||
+        observaciones.trim().length > 0 ||
+        ftTotales !== 30 ||
+        botesUsados !== 1 ||
+        step === 2,
+    )
+
+    if (!hasMeaningfulDraft) {
+      clearCaptureDraft(draftKey)
+      return
+    }
+
+    saveCaptureDraft<PegadaDraft>(draftKey, {
+      step: step > 2 ? 2 : step,
+      fieldType,
+      macroZone,
+      microZone,
+      prepPhoto,
+      antesPhoto,
+      despuesPhoto,
+      ftTotales,
+      botesUsados,
+      criticalInfieldAreas,
+      lineasMarkbox,
+      clima,
+      condicion,
+      observaciones,
+      captureSessionId,
+    })
+  }, [
+    antesPhoto,
+    botesUsados,
+    captureSessionId,
+    clima,
+    condicion,
+    criticalInfieldAreas,
+    despuesPhoto,
+    draftKey,
+    draftReady,
+    fieldType,
+    ftTotales,
+    lineasMarkbox,
+    macroZone,
+    microZone,
+    observaciones,
+    prepPhoto,
+    step,
+  ])
 
   const microZoneOptions = useMemo(() => {
     if (!macroZone) return []
@@ -271,6 +397,7 @@ function PegadaPageContent() {
     }
 
     if (projectId) {
+      setSummary(null)
       try {
         const response = await saveCloudRecord({
           module: "pegada",
@@ -290,7 +417,9 @@ function PegadaPageContent() {
           } as Record<string, unknown>,
         })
         console.log("[pegada] save_success", { id: response.id, projectId, module: "pegada" })
+        setSummary((response.summary as PegadaSummary | null | undefined) ?? null)
         setSaveMessage("Guardado en nube.")
+        if (draftKey) clearCaptureDraft(draftKey)
       } catch (error) {
         console.error("[pegada] save_failed", {
           projectId,
@@ -323,6 +452,7 @@ function PegadaPageContent() {
   }
 
   function resetForm() {
+    if (draftKey) clearCaptureDraft(draftKey)
     setPrepPhoto(emptyPhoto())
     setAntesPhoto(emptyPhoto())
     setDespuesPhoto(emptyPhoto())
@@ -336,6 +466,7 @@ function PegadaPageContent() {
     setCondicion("")
     setObservaciones("")
     setSaveMessage("")
+    setSummary(null)
     setError("")
     setStep(1)
   }
@@ -396,6 +527,12 @@ function PegadaPageContent() {
         <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4 text-sm text-neutral-300">
           Paso {displayStep} de {totalSteps}
         </div>
+
+        {draftRecovered ? (
+          <div className="rounded-xl border border-cyan-500/70 bg-cyan-500/10 p-3 text-sm text-cyan-200">
+            Borrador recuperado. Puedes continuar con la captura.
+          </div>
+        ) : null}
 
         {error ? (
           <div className="rounded-xl border border-red-500/70 bg-red-500/10 p-3 text-red-300">{error}</div>
@@ -642,6 +779,30 @@ function PegadaPageContent() {
                 {saveMessage}
               </p>
             ) : null}
+
+            {summary ? (
+              <div
+                className={`space-y-2 rounded-xl border p-4 ${
+                  summary.traffic_light === "green"
+                    ? "border-emerald-500/70 bg-emerald-500/10 text-emerald-200"
+                    : summary.traffic_light === "yellow"
+                      ? "border-amber-500/70 bg-amber-500/10 text-amber-200"
+                      : "border-red-500/70 bg-red-500/10 text-red-200"
+                }`}
+              >
+                <p className="text-sm font-semibold uppercase">Semáforo: {summary.traffic_light}</p>
+                <p className="text-sm">Ratio vs baseline: {summary.ratio_to_baseline.toFixed(3)}</p>
+                <p className="text-sm">Predicción de botes: {summary.predicted_cans.toFixed(2)}</p>
+                <p className="text-sm">Costo evitable estimado: ${summary.savings_usd.toFixed(2)} USD</p>
+              </div>
+            ) : null}
+
+            <Link
+              href={backToZoneOrHub}
+              className="block w-full rounded-xl border border-blue-500 px-4 py-4 text-center text-lg font-semibold text-blue-300 hover:bg-blue-500/10"
+            >
+              Back to Hub
+            </Link>
 
             <button
               type="button"

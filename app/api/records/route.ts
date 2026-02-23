@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 
+import { computeGlueMetrics } from "../../../lib/metricsV0"
 import { getSupabaseAdminClient } from "../../../lib/supabase/server"
 
 export const runtime = "nodejs"
@@ -25,6 +26,7 @@ type UnifiedCapturePayload = {
 }
 
 type CaptureStatus = "incomplete" | "complete"
+type SummaryPayload = Record<string, unknown>
 
 const DEBUG_CAPTURE = process.env.NEXT_PUBLIC_DEBUG_CAPTURE === "1" || process.env.DEBUG_CAPTURE === "1"
 
@@ -66,8 +68,26 @@ function isMissingColumnError(message: string): boolean {
   return lower.includes("column") && lower.includes("does not exist")
 }
 
+function isMissingRelationError(message: string): boolean {
+  const lower = message.toLowerCase()
+  return lower.includes("relation") && lower.includes("does not exist")
+}
+
 function hasOnConflictConstraintError(message: string): boolean {
   return message.toLowerCase().includes("there is no unique or exclusion constraint matching the on conflict specification")
+}
+
+function isSchemaCompatibilityError(message: string): boolean {
+  return isMissingColumnError(message) || isMissingRelationError(message) || hasOnConflictConstraintError(message)
+}
+
+function normalizeZoneType(value: string | null): string {
+  if (!value) return "general"
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "") || "general"
 }
 
 function validatePegadaPayload(payload: Record<string, unknown>, photosCount: number): string | null {
@@ -310,12 +330,136 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No data returned from insert" }, { status: 500 })
     }
 
+    let summary: SummaryPayload | null = null
+
+    if (body.module === "pegada") {
+      const linearFtEst = toNumber(body.payload.ftTotales ?? body.payload.ft_totales)
+      const cansUsed = toNumber(body.payload.botesUsados ?? body.payload.botes_usados)
+      const zoneTypeRaw =
+        toStringOrNull(body.payload.zone_type ?? body.payload.zoneType) ??
+        toStringOrNull(macroZone) ??
+        toStringOrNull(unifiedPayload.zone)
+      const zoneType = normalizeZoneType(zoneTypeRaw)
+      const tempBucket = toStringOrNull(body.payload.temp_bucket ?? body.payload.tempBucket)
+      const humidityBucket = toStringOrNull(body.payload.humidity_bucket ?? body.payload.humidityBucket)
+
+      if (linearFtEst && linearFtEst > 0 && cansUsed !== null && cansUsed >= 0) {
+        let baselineMu: number | null = null
+
+        const baselineRead = await supabase
+          .from("glue_baselines")
+          .select("mu")
+          .eq("zone_type", zoneType)
+          .maybeSingle()
+
+        if (baselineRead.error) {
+          if (!isSchemaCompatibilityError(baselineRead.error.message)) {
+            console.error("[capture-api] glue_baseline_read_failed", {
+              error: baselineRead.error.message,
+              zoneType,
+              projectId: body.projectId,
+            })
+          }
+        } else if (baselineRead.data?.mu !== null && baselineRead.data?.mu !== undefined) {
+          baselineMu = Number(baselineRead.data.mu)
+        }
+
+        const glueMetrics = computeGlueMetrics({
+          linearFtEst,
+          cansUsed,
+          baselineMu,
+        })
+
+        const baselineUpsert = await supabase.from("glue_baselines").upsert(
+          {
+            zone_type: zoneType,
+            mu: glueMetrics.muAfter,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "zone_type" },
+        )
+
+        if (baselineUpsert.error && !isSchemaCompatibilityError(baselineUpsert.error.message)) {
+          console.error("[capture-api] glue_baseline_upsert_failed", {
+            error: baselineUpsert.error.message,
+            zoneType,
+            projectId: body.projectId,
+          })
+        }
+
+        const glueInsertRow = {
+          project_id: body.projectId,
+          zone_id: projectZoneId,
+          linear_ft_est: linearFtEst,
+          cans_used: cansUsed,
+          temp_bucket: tempBucket,
+          humidity_bucket: humidityBucket,
+          photos: photosUrls,
+          capture_session_id: captureSessionId,
+          capture_status: captureStatus,
+          r: glueMetrics.r,
+          mu: glueMetrics.muAfter,
+          ratio_to_baseline: glueMetrics.ratioToBaseline,
+          traffic_light: glueMetrics.traffic,
+          predicted_cans: glueMetrics.predictedCans,
+          savings_usd: glueMetrics.savingsUsd,
+        }
+
+        let glueWriteError: { message: string } | null = null
+        if (captureSessionId && projectZoneId) {
+          const glueUpsert = await supabase
+            .from("captures_glue")
+            .upsert(glueInsertRow, { onConflict: "project_id,zone_id,capture_session_id" })
+            .select("id")
+            .single()
+          glueWriteError = glueUpsert.error
+
+          if (glueWriteError && hasOnConflictConstraintError(glueWriteError.message)) {
+            const glueFallback = await supabase
+              .from("captures_glue")
+              .insert(glueInsertRow)
+              .select("id")
+              .single()
+            glueWriteError = glueFallback.error
+          }
+        } else {
+          const glueInsert = await supabase.from("captures_glue").insert(glueInsertRow).select("id").single()
+          glueWriteError = glueInsert.error
+        }
+
+        if (glueWriteError && !isSchemaCompatibilityError(glueWriteError.message)) {
+          console.error("[capture-api] captures_glue_insert_failed", {
+            error: glueWriteError.message,
+            projectId: body.projectId,
+            projectZoneId,
+            captureSessionId,
+          })
+        }
+
+        summary = {
+          module: "pegada",
+          traffic_light: glueMetrics.traffic,
+          ratio_to_baseline: glueMetrics.ratioToBaseline,
+          r_cans_per_ft: glueMetrics.r,
+          baseline_mu: glueMetrics.muBefore,
+          baseline_mu_next: glueMetrics.muAfter,
+          predicted_cans: glueMetrics.predictedCans,
+          savings_usd: glueMetrics.savingsUsd,
+          can_price_usd: 95,
+          zone_type: zoneType,
+        }
+      }
+    }
+
     log("insert_success", {
       id: data.id as string | null,
       module: data.module as string | null,
       projectId: data.project_id as string | null,
     })
-    return NextResponse.json(data)
+    return NextResponse.json({
+      ...data,
+      summary,
+    })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error"
     console.error("[capture-api] unexpected_error", { message })

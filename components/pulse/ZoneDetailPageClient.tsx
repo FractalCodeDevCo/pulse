@@ -5,6 +5,7 @@ import Link from "next/link"
 import { ChangeEvent, useEffect, useMemo, useState } from "react"
 
 import { createCaptureSessionId } from "../../lib/captureSession"
+import { clearCaptureDraft, readCaptureDraft, saveCaptureDraft } from "../../lib/captureDraft"
 import { IMAGE_INPUT_ACCEPT, processImageFiles } from "../../lib/clientImage"
 import { saveZonePhotosCache } from "../../lib/zonePhotoCache"
 import ContextHeader from "./ContextHeader"
@@ -20,6 +21,44 @@ import {
 type ZoneDetailPageClientProps = {
   projectId: string | null
   projectZoneId: string
+}
+
+type RollPlacementSummary = {
+  module: "roll-installation"
+  roll_length_sem: "green" | "yellow" | "red"
+  roll_risk_score: number
+  compaction_risk_score: number
+  compaction_traffic: "green" | "yellow" | "red"
+}
+
+type AdhesiveSummary = {
+  module: "pegada"
+  traffic_light: "green" | "yellow" | "red"
+  ratio_to_baseline: number
+  predicted_cans: number
+  savings_usd: number
+}
+
+type ZoneDetailDraft = {
+  openStep: ZoneStepKey | null
+  quickNotes: Record<string, string>
+  zonePhotos: string[]
+  rollLengthFit: "green" | "yellow" | "red" | ""
+  totalRollsUsed: string
+  totalSeams: string
+  compactionMethod: "Plate" | "Roller" | "Manual" | ""
+  surfaceFirm: boolean
+  moistureOk: boolean
+  doubleCompaction: boolean
+  rollPlacementSessionId: string
+  adhesiveFt: string
+  adhesiveCriticalInfieldAreas: string[]
+  adhesiveLineasMarkbox: boolean
+  adhesiveBotes: string
+  adhesiveCondicion: string
+  adhesiveClima: string[]
+  adhesiveObservaciones: string
+  adhesiveSessionId: string
 }
 
 const CONDITION_OPTIONS = ["Excelente", "Buena", "Regular", "Mala"]
@@ -52,6 +91,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   const [isSavingRollPlacement, setIsSavingRollPlacement] = useState(false)
   const [rollPlacementMessage, setRollPlacementMessage] = useState("")
   const [rollPlacementError, setRollPlacementError] = useState("")
+  const [rollPlacementSummary, setRollPlacementSummary] = useState<RollPlacementSummary | null>(null)
 
   // Adhesive/Pegada inline metadata
   const [adhesiveFt, setAdhesiveFt] = useState("")
@@ -65,6 +105,13 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   const [isSavingAdhesive, setIsSavingAdhesive] = useState(false)
   const [adhesiveMessage, setAdhesiveMessage] = useState("")
   const [adhesiveError, setAdhesiveError] = useState("")
+  const [adhesiveSummary, setAdhesiveSummary] = useState<AdhesiveSummary | null>(null)
+  const [draftReady, setDraftReady] = useState(false)
+  const [draftRecovered, setDraftRecovered] = useState(false)
+  const draftKey = useMemo(
+    () => (projectId ? `pulse_draft_zone_detail_${projectId}_${projectZoneId}` : null),
+    [projectId, projectZoneId],
+  )
 
   const stepTemplates = useMemo(() => (zone ? getZoneStepTemplates(zone.zoneType) : []), [zone])
   const progress = zone ? getZoneProgress(zone) : 0
@@ -82,6 +129,105 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
     if (!projectId || !zone) return
     saveZonePhotosCache(projectId, zone.id, zonePhotos)
   }, [projectId, zone, zonePhotos])
+
+  useEffect(() => {
+    if (!draftKey) return
+    const draft = readCaptureDraft<ZoneDetailDraft>(draftKey)
+    if (draft) {
+      setOpenStep(draft.openStep)
+      setQuickNotes(draft.quickNotes)
+      setZonePhotos(draft.zonePhotos)
+      setRollLengthFit(draft.rollLengthFit)
+      setTotalRollsUsed(draft.totalRollsUsed)
+      setTotalSeams(draft.totalSeams)
+      setCompactionMethod(draft.compactionMethod)
+      setSurfaceFirm(draft.surfaceFirm)
+      setMoistureOk(draft.moistureOk)
+      setDoubleCompaction(draft.doubleCompaction)
+      setRollPlacementSessionId(draft.rollPlacementSessionId || createCaptureSessionId())
+      setAdhesiveFt(draft.adhesiveFt)
+      setAdhesiveCriticalInfieldAreas(draft.adhesiveCriticalInfieldAreas)
+      setAdhesiveLineasMarkbox(draft.adhesiveLineasMarkbox)
+      setAdhesiveBotes(draft.adhesiveBotes)
+      setAdhesiveCondicion(draft.adhesiveCondicion)
+      setAdhesiveClima(draft.adhesiveClima)
+      setAdhesiveObservaciones(draft.adhesiveObservaciones)
+      setAdhesiveSessionId(draft.adhesiveSessionId || createCaptureSessionId())
+      setDraftRecovered(true)
+    }
+    setDraftReady(true)
+  }, [draftKey])
+
+  useEffect(() => {
+    if (!draftReady || !draftKey) return
+
+    const hasQuickNotes = Object.values(quickNotes).some((value) => value.trim().length > 0)
+    const hasMeaningfulDraft = Boolean(
+      openStep ||
+        hasQuickNotes ||
+        zonePhotos.length > 0 ||
+        rollLengthFit ||
+        totalRollsUsed ||
+        totalSeams ||
+        compactionMethod ||
+        adhesiveFt ||
+        adhesiveCriticalInfieldAreas.length > 0 ||
+        adhesiveLineasMarkbox ||
+        adhesiveBotes ||
+        adhesiveCondicion ||
+        adhesiveClima.length > 0 ||
+        adhesiveObservaciones.trim().length > 0,
+    )
+
+    if (!hasMeaningfulDraft) {
+      clearCaptureDraft(draftKey)
+      return
+    }
+
+    saveCaptureDraft<ZoneDetailDraft>(draftKey, {
+      openStep,
+      quickNotes,
+      zonePhotos,
+      rollLengthFit,
+      totalRollsUsed,
+      totalSeams,
+      compactionMethod,
+      surfaceFirm,
+      moistureOk,
+      doubleCompaction,
+      rollPlacementSessionId,
+      adhesiveFt,
+      adhesiveCriticalInfieldAreas,
+      adhesiveLineasMarkbox,
+      adhesiveBotes,
+      adhesiveCondicion,
+      adhesiveClima,
+      adhesiveObservaciones,
+      adhesiveSessionId,
+    })
+  }, [
+    adhesiveBotes,
+    adhesiveClima,
+    adhesiveCondicion,
+    adhesiveCriticalInfieldAreas,
+    adhesiveFt,
+    adhesiveLineasMarkbox,
+    adhesiveObservaciones,
+    adhesiveSessionId,
+    compactionMethod,
+    doubleCompaction,
+    draftKey,
+    draftReady,
+    moistureOk,
+    openStep,
+    quickNotes,
+    rollLengthFit,
+    rollPlacementSessionId,
+    surfaceFirm,
+    totalRollsUsed,
+    totalSeams,
+    zonePhotos,
+  ])
 
   function toggleStep(stepKey: ZoneStepKey) {
     if (!projectId || !zone) return
@@ -134,6 +280,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
 
     setRollPlacementError("")
     setRollPlacementMessage("")
+    setRollPlacementSummary(null)
     setIsSavingRollPlacement(true)
 
     try {
@@ -164,10 +311,11 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
           },
         }),
       })
-      const data = await response.json()
+      const data = (await response.json()) as { error?: string; summary?: RollPlacementSummary | null }
       if (!response.ok) throw new Error(data?.error ?? "No se pudo guardar Roll Placement")
 
       setRollPlacementMessage("Roll Placement guardado.")
+      setRollPlacementSummary(data.summary ?? null)
       setRollPlacementSessionId(createCaptureSessionId())
       if (!zone.completedStepKeys.includes("ROLL_PLACEMENT")) toggleStep("ROLL_PLACEMENT")
     } catch (err) {
@@ -194,6 +342,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
 
     setAdhesiveError("")
     setAdhesiveMessage("")
+    setAdhesiveSummary(null)
     setIsSavingAdhesive(true)
 
     try {
@@ -224,10 +373,11 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
           },
         }),
       })
-      const data = await response.json()
+      const data = (await response.json()) as { error?: string; summary?: AdhesiveSummary | null }
       if (!response.ok) throw new Error(data?.error ?? "No se pudo guardar Adhesive")
 
       setAdhesiveMessage("Adhesive (Pegada) guardado.")
+      setAdhesiveSummary(data.summary ?? null)
       setAdhesiveSessionId(createCaptureSessionId())
       if (!zone.completedStepKeys.includes("ADHESIVE")) toggleStep("ADHESIVE")
     } catch (err) {
@@ -279,6 +429,11 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
         <section className="space-y-3 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
           <h2 className="text-xl font-semibold">Paso 1 · Fotos de zona</h2>
           <p className="text-sm text-neutral-400">Primero toma evidencia de la zona. Después se desbloquea el menú de procesos.</p>
+          {draftRecovered ? (
+            <p className="rounded-xl border border-cyan-500/70 bg-cyan-500/10 p-3 text-sm text-cyan-200">
+              Borrador recuperado. Continúa donde te quedaste.
+            </p>
+          ) : null}
           <input
             type="file"
             accept={IMAGE_INPUT_ACCEPT}
@@ -487,6 +642,19 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                               {rollPlacementMessage}
                             </p>
                           ) : null}
+                          {rollPlacementSummary ? (
+                            <div
+                              className={`rounded-xl border p-3 text-sm ${
+                                rollPlacementSummary.compaction_traffic === "green"
+                                  ? "border-emerald-500/70 bg-emerald-500/10 text-emerald-200"
+                                  : rollPlacementSummary.compaction_traffic === "yellow"
+                                    ? "border-amber-500/70 bg-amber-500/10 text-amber-200"
+                                    : "border-red-500/70 bg-red-500/10 text-red-200"
+                              }`}
+                            >
+                              Roll risk: {rollPlacementSummary.roll_risk_score} · Compaction risk: {rollPlacementSummary.compaction_risk_score}
+                            </div>
+                          ) : null}
                         </>
                       ) : null}
 
@@ -638,6 +806,19 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                             <p className="rounded-xl border border-emerald-500/70 bg-emerald-500/10 p-3 text-sm text-emerald-300">
                               {adhesiveMessage}
                             </p>
+                          ) : null}
+                          {adhesiveSummary ? (
+                            <div
+                              className={`rounded-xl border p-3 text-sm ${
+                                adhesiveSummary.traffic_light === "green"
+                                  ? "border-emerald-500/70 bg-emerald-500/10 text-emerald-200"
+                                  : adhesiveSummary.traffic_light === "yellow"
+                                    ? "border-amber-500/70 bg-amber-500/10 text-amber-200"
+                                    : "border-red-500/70 bg-red-500/10 text-red-200"
+                              }`}
+                            >
+                              Ratio: {adhesiveSummary.ratio_to_baseline.toFixed(3)} · Predicción: {adhesiveSummary.predicted_cans.toFixed(2)} botes
+                            </div>
                           ) : null}
                         </>
                       ) : null}

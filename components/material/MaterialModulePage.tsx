@@ -2,9 +2,10 @@
 
 import Image from "next/image"
 import Link from "next/link"
-import { ChangeEvent, FormEvent, useMemo, useState } from "react"
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react"
 
 import { createCaptureSessionId } from "../../lib/captureSession"
+import { clearCaptureDraft, readCaptureDraft, saveCaptureDraft } from "../../lib/captureDraft"
 import { IMAGE_INPUT_ACCEPT, processImageFiles } from "../../lib/clientImage"
 import { FieldTypeSelector } from "../../components/shared/FieldTypeSelector"
 import ContextHeader from "../../components/pulse/ContextHeader"
@@ -35,6 +36,30 @@ type MaterialLocalRecord = {
   fotos: string[]
   observaciones?: string
   timestamp: string
+}
+
+type MaterialSummary = {
+  module: "material"
+  deviation_ratio: number
+  deviation_percent: number
+  status_color: StatusColor
+  valve_current: number
+  valve_delta: -1 | 0 | 1
+  valve_next: number
+  suggestion: string | null
+}
+
+type MaterialDraft = {
+  step: 1 | 2
+  fieldType: FieldType
+  tipoMaterial: MaterialKind | ""
+  tipoPasada: PassType | ""
+  valvula: number
+  bolsasEsperadas: string
+  bolsasUtilizadas: string
+  observaciones: string
+  photos: PhotoItem[]
+  captureSessionId: string
 }
 
 const MATERIAL_OPTIONS: MaterialKind[] = ["Arena", "Goma"]
@@ -77,8 +102,15 @@ export default function MaterialModulePage({ projectId, projectZoneId = null }: 
   const [records, setRecords] = useState<MaterialLocalRecord[]>([])
   const [error, setError] = useState("")
   const [saveMessage, setSaveMessage] = useState("")
+  const [summary, setSummary] = useState<MaterialSummary | null>(null)
   const [isUploadingPhotos, setIsUploadingPhotos] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [draftRecovered, setDraftRecovered] = useState(false)
+  const [draftReady, setDraftReady] = useState(false)
+  const draftKey = useMemo(
+    () => (projectId ? `pulse_draft_material_${projectId}_${projectZoneId ?? "global"}` : null),
+    [projectId, projectZoneId],
+  )
 
   const expected = Number(bolsasEsperadas)
   const used = Number(bolsasUtilizadas)
@@ -93,6 +125,70 @@ export default function MaterialModulePage({ projectId, projectZoneId = null }: 
     if (statusColor === "amarillo") return "Amarillo"
     return "Rojo"
   }, [statusColor])
+
+  useEffect(() => {
+    if (!draftKey) return
+    const draft = readCaptureDraft<MaterialDraft>(draftKey)
+    if (draft) {
+      setStep(draft.step)
+      setFieldType(draft.fieldType)
+      setTipoMaterial(draft.tipoMaterial)
+      setTipoPasada(draft.tipoPasada)
+      setValvula(draft.valvula)
+      setBolsasEsperadas(draft.bolsasEsperadas)
+      setBolsasUtilizadas(draft.bolsasUtilizadas)
+      setObservaciones(draft.observaciones)
+      setPhotos(draft.photos)
+      setCaptureSessionId(draft.captureSessionId || createCaptureSessionId())
+      setDraftRecovered(true)
+    }
+    setDraftReady(true)
+  }, [draftKey])
+
+  useEffect(() => {
+    if (!draftReady || !draftKey) return
+
+    const hasMeaningfulDraft = Boolean(
+      photos.length > 0 ||
+        tipoMaterial ||
+        tipoPasada ||
+        bolsasEsperadas ||
+        bolsasUtilizadas ||
+        observaciones.trim().length > 0 ||
+        step === 2,
+    )
+
+    if (!hasMeaningfulDraft) {
+      clearCaptureDraft(draftKey)
+      return
+    }
+
+    saveCaptureDraft<MaterialDraft>(draftKey, {
+      step,
+      fieldType,
+      tipoMaterial,
+      tipoPasada,
+      valvula,
+      bolsasEsperadas,
+      bolsasUtilizadas,
+      observaciones,
+      photos,
+      captureSessionId,
+    })
+  }, [
+    bolsasEsperadas,
+    bolsasUtilizadas,
+    captureSessionId,
+    draftKey,
+    draftReady,
+    fieldType,
+    observaciones,
+    photos,
+    step,
+    tipoMaterial,
+    tipoPasada,
+    valvula,
+  ])
 
   function handleFieldTypeChange(next: FieldType) {
     if (!projectId) return
@@ -152,6 +248,7 @@ export default function MaterialModulePage({ projectId, projectZoneId = null }: 
 
     setIsSubmitting(true)
     setError("")
+    setSummary(null)
 
     try {
       const response = await fetch("/api/material-records", {
@@ -175,11 +272,13 @@ export default function MaterialModulePage({ projectId, projectZoneId = null }: 
 
       if (!response.ok) throw new Error("Cloud save failed")
 
-      const data = (await response.json()) as MaterialRecordDb
+      const data = (await response.json()) as MaterialRecordDb & { summary?: MaterialSummary | null }
       console.log("[material] save_success", { id: data.id, projectId, module: "material" })
       setRecords((prev) => [localRecord, ...prev])
       setCaptureSessionId(createCaptureSessionId())
+      setSummary(data.summary ?? null)
       setSaveMessage(`Guardado en nube. ID: ${data.id}`)
+      if (draftKey) clearCaptureDraft(draftKey)
     } catch (error) {
       console.error("[material] save_failed", {
         projectId,
@@ -208,6 +307,7 @@ export default function MaterialModulePage({ projectId, projectZoneId = null }: 
     setBolsasUtilizadas("")
     setObservaciones("")
     setPhotos([])
+    setSummary(null)
     setStep(1)
   }
 
@@ -254,6 +354,12 @@ export default function MaterialModulePage({ projectId, projectZoneId = null }: 
         <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4 text-sm text-neutral-300">
           Paso {step} de 2
         </div>
+
+        {draftRecovered ? (
+          <p className="rounded-xl border border-cyan-500/70 bg-cyan-500/10 p-3 text-sm text-cyan-200">
+            Borrador recuperado. Puedes continuar con la captura.
+          </p>
+        ) : null}
 
         {step === 1 ? (
           <section className="space-y-4 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
@@ -456,6 +562,22 @@ export default function MaterialModulePage({ projectId, projectZoneId = null }: 
           <p className="rounded-xl border border-blue-500/70 bg-blue-500/10 p-3 text-sm text-blue-300">
             {saveMessage}
           </p>
+        ) : null}
+
+        {summary ? (
+          <section className="space-y-2 rounded-2xl border border-cyan-500/50 bg-cyan-500/10 p-4">
+            <h3 className="text-sm font-semibold text-cyan-200">Resumen de Material</h3>
+            <p className="text-sm text-cyan-100">
+              Desviación: <span className="font-semibold">{summary.deviation_percent.toFixed(2)}%</span>
+            </p>
+            <p className="text-sm text-cyan-100">
+              Estado: <span className="font-semibold uppercase">{summary.status_color}</span>
+            </p>
+            <p className="text-sm text-cyan-100">
+              Válvula: {summary.valve_current} {summary.valve_delta === 0 ? "(sin ajuste)" : `→ ${summary.valve_next}`}
+            </p>
+            {summary.suggestion ? <p className="text-sm text-cyan-100">{summary.suggestion}</p> : null}
+          </section>
         ) : null}
 
         {records.length > 0 ? (

@@ -2,8 +2,9 @@
 
 import Image from "next/image"
 import Link from "next/link"
-import { ChangeEvent, useState } from "react"
+import { ChangeEvent, useEffect, useMemo, useState } from "react"
 
+import { clearCaptureDraft, readCaptureDraft, saveCaptureDraft } from "../../lib/captureDraft"
 import { IMAGE_INPUT_ACCEPT, processImageFile } from "../../lib/clientImage"
 import { PULSE_ZONE_OPTIONS, PulseZone } from "../../types/pulseZones"
 import ContextHeader from "./ContextHeader"
@@ -15,6 +16,15 @@ type RollVerificationPageClientProps = {
   macroZone: string | null
   microZone: string | null
   zoneType: string | null
+}
+
+type RollVerificationDraft = {
+  zone: PulseZone | ""
+  lengthFt: string
+  colorLetter: string
+  status: "Verified" | "Mismatch" | ""
+  notes: string
+  photo: string | null
 }
 
 export default function RollVerificationPageClient({
@@ -35,10 +45,47 @@ export default function RollVerificationPageClient({
   const [success, setSuccess] = useState("")
   const [isReadingPhoto, setIsReadingPhoto] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [draftRecovered, setDraftRecovered] = useState(false)
+  const draftKey = useMemo(
+    () => (projectId ? `pulse_draft_roll_verification_${projectId}_${projectZoneId ?? "global"}` : null),
+    [projectId, projectZoneId],
+  )
   const backToZoneOrHub =
     projectId && projectZoneId
       ? `/pulse/zones/${encodeURIComponent(projectZoneId)}?project=${encodeURIComponent(projectId)}`
       : `/pulse?project=${encodeURIComponent(projectId ?? "")}`
+
+  useEffect(() => {
+    if (!draftKey) return
+    const draft = readCaptureDraft<RollVerificationDraft>(draftKey)
+    if (!draft) return
+    setZone(draft.zone)
+    setLengthFt(draft.lengthFt)
+    setColorLetter(draft.colorLetter)
+    setStatus(draft.status)
+    setNotes(draft.notes)
+    setPhoto(draft.photo)
+    setDraftRecovered(true)
+  }, [draftKey])
+
+  useEffect(() => {
+    if (!draftKey) return
+
+    const hasMeaningfulDraft = Boolean(zone || status || lengthFt || colorLetter || notes.trim().length > 0 || photo)
+    if (!hasMeaningfulDraft) {
+      clearCaptureDraft(draftKey)
+      return
+    }
+
+    saveCaptureDraft<RollVerificationDraft>(draftKey, {
+      zone,
+      lengthFt,
+      colorLetter,
+      status,
+      notes,
+      photo,
+    })
+  }, [colorLetter, draftKey, lengthFt, notes, photo, status, zone])
 
   async function handlePhotoChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
@@ -88,6 +135,7 @@ export default function RollVerificationPageClient({
       if (!response.ok) throw new Error(data?.error ?? "Save failed")
 
       setSuccess("Roll verification saved.")
+      if (draftKey) clearCaptureDraft(draftKey)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed")
     } finally {
@@ -126,6 +174,12 @@ export default function RollVerificationPageClient({
         />
 
         <section className="space-y-4 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
+          {draftRecovered ? (
+            <p className="rounded-xl border border-cyan-500/70 bg-cyan-500/10 p-3 text-sm text-cyan-200">
+              Borrador recuperado. Puedes continuar con la captura.
+            </p>
+          ) : null}
+
           <label className="block space-y-2">
             <span className="text-sm text-neutral-300">Label Photo</span>
             <input

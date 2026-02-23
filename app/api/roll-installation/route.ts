@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto"
 import { NextResponse } from "next/server"
 
+import { computeCompactionRisk, computeRollInstallRisk, normalizeSemaforo } from "../../../lib/metricsV0"
 import { getSupabaseAdminClient } from "../../../lib/supabase/server"
 
 export const runtime = "nodejs"
@@ -29,6 +30,7 @@ type RequestBody = {
 }
 
 type CaptureStatus = "incomplete" | "complete"
+type TrafficLight = "green" | "yellow" | "red"
 
 function parseDataUrl(dataUrl: string): { mimeType: string; bytes: Uint8Array } | null {
   const match = dataUrl.match(/^data:(.*?);base64,(.*)$/)
@@ -66,6 +68,64 @@ function isMissingColumnError(message: string): boolean {
   return lower.includes("column") && lower.includes("does not exist")
 }
 
+function isMissingRelationError(message: string): boolean {
+  const lower = message.toLowerCase()
+  return lower.includes("relation") && lower.includes("does not exist")
+}
+
+function hasOnConflictConstraintError(message: string): boolean {
+  return message.toLowerCase().includes("there is no unique or exclusion constraint matching the on conflict specification")
+}
+
+function isSchemaCompatibilityError(message: string): boolean {
+  return isMissingColumnError(message) || isMissingRelationError(message) || hasOnConflictConstraintError(message)
+}
+
+async function hasWrongRollIncident(
+  supabase: ReturnType<typeof getSupabaseAdminClient>,
+  projectId: string,
+  projectZoneId: string,
+): Promise<boolean> {
+  const result = await supabase
+    .from("incidents")
+    .select("id", { count: "exact", head: true })
+    .eq("project_id", projectId)
+    .eq("zone_id", projectZoneId)
+    .in("type", ["wrong_roll", "longitud_de_rollo_incorrecta"])
+
+  if (result.error) {
+    if (!isSchemaCompatibilityError(result.error.message)) {
+      console.error("[roll-installation-api] incident_lookup_failed", {
+        error: result.error.message,
+        projectId,
+        projectZoneId,
+      })
+    }
+    return false
+  }
+
+  return (result.count ?? 0) > 0
+}
+
+function buildSummary(
+  rollSem: TrafficLight,
+  rollRiskScore: number,
+  compactionRiskScore: number,
+  compactionTraffic: TrafficLight,
+  seamsPenalty: number,
+  hasWrongRoll: boolean,
+) {
+  return {
+    module: "roll-installation",
+    roll_length_sem: rollSem,
+    roll_risk_score: rollRiskScore,
+    compaction_risk_score: compactionRiskScore,
+    compaction_traffic: compactionTraffic,
+    seams_penalty: seamsPenalty,
+    wrong_roll_incident: hasWrongRoll,
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as RequestBody
@@ -101,6 +161,28 @@ export async function POST(request: Request) {
     }
 
     const supabase = getSupabaseAdminClient()
+    const rollSem = normalizeSemaforo(body.roll_length_fit) as TrafficLight
+    const wrongRollIncident = await hasWrongRollIncident(supabase, body.project_id, body.project_zone_id)
+    const rollRisk = computeRollInstallRisk({
+      rollLengthSem: rollSem,
+      seamsCount: body.total_seams,
+      hasWrongRollIncident: wrongRollIncident,
+    })
+    const compactionRisk = computeCompactionRisk({
+      surfaceFirm: body.compaction_surface_firm,
+      moistureOk: body.compaction_moisture_ok,
+      doubleCompaction: body.compaction_double,
+      method: body.compaction_method,
+    })
+    const summary = buildSummary(
+      rollSem,
+      rollRisk.riskScore,
+      compactionRisk.riskScore,
+      compactionRisk.traffic,
+      rollRisk.seamsPenalty,
+      wrongRollIncident,
+    )
+
     const existingRecord = await supabase
       .from("roll_installation")
       .select("*")
@@ -110,7 +192,10 @@ export async function POST(request: Request) {
       .maybeSingle()
 
     if (!existingRecord.error && existingRecord.data) {
-      return NextResponse.json(existingRecord.data)
+      return NextResponse.json({
+        ...existingRecord.data,
+        summary,
+      })
     }
     if (existingRecord.error && !isMissingColumnError(existingRecord.error.message)) {
       return NextResponse.json({ error: existingRecord.error.message }, { status: 500 })
@@ -140,6 +225,10 @@ export async function POST(request: Request) {
       compaction_moisture_ok: body.compaction_moisture_ok,
       compaction_double: body.compaction_double,
       compaction_method: body.compaction_method,
+      roll_length_sem: rollSem,
+      roll_risk_score: rollRisk.riskScore,
+      compaction_risk_score: compactionRisk.riskScore,
+      compaction_traffic: compactionRisk.traffic,
       capture_session_id: body.capture_session_id,
       capture_status: captureStatus,
       photos: uploadedPhotos,
@@ -170,6 +259,10 @@ export async function POST(request: Request) {
           compaction_moisture_ok: body.compaction_moisture_ok,
           compaction_double: body.compaction_double,
           compaction_method: body.compaction_method,
+          roll_length_sem: rollSem,
+          roll_risk_score: rollRisk.riskScore,
+          compaction_risk_score: compactionRisk.riskScore,
+          compaction_traffic: compactionRisk.traffic,
           photos: uploadedPhotos,
         })
         .select("*")
@@ -179,7 +272,94 @@ export async function POST(request: Request) {
     }
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json(data)
+
+    const rollInstallCaptureRow = {
+      project_id: body.project_id,
+      zone_id: body.project_zone_id,
+      seams_count: body.total_seams,
+      photos: uploadedPhotos,
+      capture_session_id: body.capture_session_id,
+      capture_status: captureStatus,
+      roll_length_sem: rollSem,
+      risk_score: rollRisk.riskScore,
+    }
+
+    let rollCaptureError: { message: string } | null = null
+    const rollCaptureUpsert = await supabase
+      .from("captures_roll_install")
+      .upsert(rollInstallCaptureRow, { onConflict: "project_id,zone_id,capture_session_id" })
+      .select("id")
+      .single()
+    rollCaptureError = rollCaptureUpsert.error
+
+    if (rollCaptureError && hasOnConflictConstraintError(rollCaptureError.message)) {
+      const rollCaptureFallback = await supabase
+        .from("captures_roll_install")
+        .insert(rollInstallCaptureRow)
+        .select("id")
+        .single()
+      rollCaptureError = rollCaptureFallback.error
+    }
+
+    if (rollCaptureError && !isSchemaCompatibilityError(rollCaptureError.message)) {
+      console.error("[roll-installation-api] captures_roll_install_failed", {
+        error: rollCaptureError.message,
+        projectId: body.project_id,
+        projectZoneId: body.project_zone_id,
+      })
+    }
+
+    const compactionCaptureRow = {
+      project_id: body.project_id,
+      zone_id: body.project_zone_id,
+      surface_firm: body.compaction_surface_firm,
+      moisture_ok: body.compaction_moisture_ok,
+      double_compaction: body.compaction_double,
+      method: body.compaction_method,
+      photos: uploadedPhotos,
+      capture_session_id: body.capture_session_id,
+      capture_status: captureStatus,
+      compaction_risk_score: compactionRisk.riskScore,
+      compaction_traffic: compactionRisk.traffic,
+    }
+
+    let compactionCaptureError: { message: string } | null = null
+    const compactionCaptureUpsert = await supabase
+      .from("captures_compaction")
+      .upsert(compactionCaptureRow, { onConflict: "project_id,zone_id,capture_session_id" })
+      .select("id")
+      .single()
+    compactionCaptureError = compactionCaptureUpsert.error
+
+    if (compactionCaptureError && hasOnConflictConstraintError(compactionCaptureError.message)) {
+      const compactionCaptureFallback = await supabase
+        .from("captures_compaction")
+        .insert(compactionCaptureRow)
+        .select("id")
+        .single()
+      compactionCaptureError = compactionCaptureFallback.error
+    }
+
+    if (compactionCaptureError && !isSchemaCompatibilityError(compactionCaptureError.message)) {
+      console.error("[roll-installation-api] captures_compaction_failed", {
+        error: compactionCaptureError.message,
+        projectId: body.project_id,
+        projectZoneId: body.project_zone_id,
+      })
+    }
+
+    console.log("[roll-installation-api] save_success", {
+      id: data?.id ?? null,
+      projectId: body.project_id,
+      projectZoneId: body.project_zone_id,
+      rollRisk: rollRisk.riskScore,
+      compactionRisk: compactionRisk.riskScore,
+    })
+
+    return NextResponse.json({
+      ...data,
+      summary,
+    })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error"
     return NextResponse.json({ error: message }, { status: 500 })
