@@ -202,17 +202,12 @@ export default function RollInstallationPageClient({
     }
   }
 
-  function hasAllPhotos() {
-    return Boolean(photos.compacting && photos.in_progress && photos.completed)
-  }
-
   async function submit() {
     if (!zone) return setError("Zone is required.")
     if (!fit) return setError("Roll length fit is required.")
     if (!totalRollsUsed || Number(totalRollsUsed) < 0) return setError("Total rolls used is required.")
     if (!totalSeams || Number(totalSeams) < 0) return setError("Total seams is required.")
     if (!compactionMethod) return setError("Compaction method is required.")
-    if (!hasAllPhotos()) return setError("3 photos are required.")
 
     setError("")
     setIsSubmitting(true)
@@ -300,7 +295,7 @@ export default function RollInstallationPageClient({
 
         {step === 1 ? (
           <section className="space-y-4 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
-            <h2 className="text-lg font-semibold">Required Photos</h2>
+            <h2 className="text-lg font-semibold">Photos (Optional)</h2>
             {(["compacting", "in_progress", "completed"] as PhotoType[]).map((type) => (
               <label key={type} className="block space-y-2">
                 <span className="text-sm text-neutral-300">{PHOTO_LABELS[type]}</span>
@@ -326,7 +321,7 @@ export default function RollInstallationPageClient({
             <button
               type="button"
               onClick={() => setStep(2)}
-              disabled={!hasAllPhotos() || isReadingPhoto}
+              disabled={isReadingPhoto}
               className="w-full rounded-xl bg-emerald-600 px-4 py-3 text-lg font-semibold hover:bg-emerald-700 disabled:opacity-50"
             >
               Continue

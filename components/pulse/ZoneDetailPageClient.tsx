@@ -274,10 +274,6 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
     const inProgressPhoto = zonePhotos[1] ?? null
     const completedPhoto = zonePhotos[2] ?? null
 
-    if (!compactingPhoto || !inProgressPhoto || !completedPhoto) {
-      return setRollPlacementError("Necesitas 3 fotos de zona para Roll Placement.")
-    }
-
     setRollPlacementError("")
     setRollPlacementMessage("")
     setRollPlacementSummary(null)
@@ -305,9 +301,9 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
           capture_session_id: rollPlacementSessionId,
           capture_status: "complete",
           photos: {
-            compacting: compactingPhoto,
-            in_progress: inProgressPhoto,
-            completed: completedPhoto,
+            compacting: compactingPhoto ?? undefined,
+            in_progress: inProgressPhoto ?? undefined,
+            completed: completedPhoto ?? undefined,
           },
         }),
       })
@@ -605,7 +601,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                             </button>
                           </div>
                           <p className="text-xs text-neutral-400">
-                            Usa las primeras 3 fotos de zona (Compacting, In Progress y Completed).
+                            Puedes guardar sin fotos o usando las primeras fotos de zona.
                           </p>
 
                           <div className="grid gap-2 sm:grid-cols-2">

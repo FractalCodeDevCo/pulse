@@ -31,6 +31,7 @@ type RequestBody = {
 
 type CaptureStatus = "incomplete" | "complete"
 type TrafficLight = "green" | "yellow" | "red"
+type UploadedPhoto = { type: PhotoType; url: string }
 
 function parseDataUrl(dataUrl: string): { mimeType: string; bytes: Uint8Array } | null {
   const match = dataUrl.match(/^data:(.*?);base64,(.*)$/)
@@ -77,8 +78,18 @@ function hasOnConflictConstraintError(message: string): boolean {
   return message.toLowerCase().includes("there is no unique or exclusion constraint matching the on conflict specification")
 }
 
+function hasSchemaCacheColumnError(message: string): boolean {
+  const lower = message.toLowerCase()
+  return lower.includes("schema cache") && lower.includes("could not find the")
+}
+
 function isSchemaCompatibilityError(message: string): boolean {
-  return isMissingColumnError(message) || isMissingRelationError(message) || hasOnConflictConstraintError(message)
+  return (
+    isMissingColumnError(message) ||
+    isMissingRelationError(message) ||
+    hasOnConflictConstraintError(message) ||
+    hasSchemaCacheColumnError(message)
+  )
 }
 
 async function hasWrongRollIncident(
@@ -129,8 +140,7 @@ function buildSummary(
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as RequestBody
-
-    const requiredPhotoTypes: PhotoType[] = ["compacting", "in_progress", "completed"]
+    const photoTypes: PhotoType[] = ["compacting", "in_progress", "completed"]
     if (
       !body.project_id ||
       !body.project_zone_id ||
@@ -142,8 +152,7 @@ export async function POST(request: Request) {
       typeof body.compaction_surface_firm !== "boolean" ||
       typeof body.compaction_moisture_ok !== "boolean" ||
       typeof body.compaction_double !== "boolean" ||
-      !body.compaction_method ||
-      !body.photos
+      !body.compaction_method
     ) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
@@ -152,12 +161,6 @@ export async function POST(request: Request) {
     }
     if (body.total_seams < 0 || !Number.isInteger(body.total_seams)) {
       return NextResponse.json({ error: "total_seams must be an integer >= 0" }, { status: 400 })
-    }
-
-    for (const type of requiredPhotoTypes) {
-      if (!body.photos[type]) {
-        return NextResponse.json({ error: `Missing required photo: ${type}` }, { status: 400 })
-      }
     }
 
     const supabase = getSupabaseAdminClient()
@@ -202,14 +205,16 @@ export async function POST(request: Request) {
     }
 
     const id = randomUUID()
-    const uploadedPhotos: Array<{ type: PhotoType; url: string }> = []
-    for (const type of requiredPhotoTypes) {
-      const url = await uploadPhoto(id, type, body.photos[type] as string)
+    const uploadedPhotos: UploadedPhoto[] = []
+    for (const type of photoTypes) {
+      const source = body.photos?.[type]
+      if (!source) continue
+      const url = await uploadPhoto(id, type, source)
       uploadedPhotos.push({ type, url })
     }
 
     const captureStatus = normalizeCaptureStatus(body.capture_status)
-    const row = {
+    const baseRow = {
       id,
       project_id: body.project_id,
       project_zone_id: body.project_zone_id,
@@ -225,46 +230,28 @@ export async function POST(request: Request) {
       compaction_moisture_ok: body.compaction_moisture_ok,
       compaction_double: body.compaction_double,
       compaction_method: body.compaction_method,
-      roll_length_sem: rollSem,
-      roll_risk_score: rollRisk.riskScore,
-      compaction_risk_score: compactionRisk.riskScore,
-      compaction_traffic: compactionRisk.traffic,
       capture_session_id: body.capture_session_id,
       capture_status: captureStatus,
       photos: uploadedPhotos,
     }
+    const fullRow = {
+      ...baseRow,
+      roll_length_sem: rollSem,
+      roll_risk_score: rollRisk.riskScore,
+      compaction_risk_score: compactionRisk.riskScore,
+      compaction_traffic: compactionRisk.traffic,
+    }
 
     let { data, error } = await supabase
       .from("roll_installation")
-      .insert(row)
+      .insert(fullRow)
       .select("*")
       .single()
 
-    if (error && isMissingColumnError(error.message)) {
+    if (error && isSchemaCompatibilityError(error.message)) {
       const fallback = await supabase
         .from("roll_installation")
-        .insert({
-          id,
-          project_id: body.project_id,
-          project_zone_id: body.project_zone_id,
-          field_type: body.field_type ?? null,
-          macro_zone: body.macro_zone ?? null,
-          micro_zone: body.micro_zone ?? null,
-          zone_type: body.zone_type ?? null,
-          zone: body.zone,
-          roll_length_fit: body.roll_length_fit,
-          total_rolls_used: body.total_rolls_used,
-          total_seams: body.total_seams,
-          compaction_surface_firm: body.compaction_surface_firm,
-          compaction_moisture_ok: body.compaction_moisture_ok,
-          compaction_double: body.compaction_double,
-          compaction_method: body.compaction_method,
-          roll_length_sem: rollSem,
-          roll_risk_score: rollRisk.riskScore,
-          compaction_risk_score: compactionRisk.riskScore,
-          compaction_traffic: compactionRisk.traffic,
-          photos: uploadedPhotos,
-        })
+        .insert(baseRow)
         .select("*")
         .single()
       data = fallback.data
