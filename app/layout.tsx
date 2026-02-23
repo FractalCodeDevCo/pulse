@@ -2,8 +2,8 @@ import type { Metadata } from "next"
 import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "Pulse",
-  description: "Field evidence capture for turf installation",
+  title: "FractalBuild | Industrial Sports Construction Intelligence",
+  description: "Structured operational intelligence for sports field construction.",
 }
 
 export default function RootLayout({

@@ -1,58 +1,77 @@
-'use client';
-
 import Link from "next/link"
-import { useState } from "react"
 
-const LAST_PROJECT_STORAGE_KEY = "pulse_last_project"
+import SiteShell from "../components/site/SiteShell"
 
-function getInitialLoadHref(): string {
-  if (typeof window === "undefined") return "/projects?flow=load"
-
-  try {
-    const raw = localStorage.getItem(LAST_PROJECT_STORAGE_KEY)
-    if (!raw) return "/projects?flow=load"
-    const projectId = JSON.parse(raw) as string
-    if (!projectId) return "/projects?flow=load"
-    return `/pulse?project=${encodeURIComponent(projectId)}`
-  } catch {
-    return "/projects?flow=load"
-  }
-}
-
-export default function Home() {
-  const [loadProjectHref] = useState<string>(() => getInitialLoadHref())
-
+export default function HomePage() {
   return (
-    <main className="min-h-screen bg-black p-6 text-white">
-      <section className="mx-auto flex min-h-screen w-full max-w-3xl flex-col items-center justify-center gap-6">
-        <h1 className="text-4xl font-bold">PULSE</h1>
-        <p className="max-w-xl text-center text-neutral-400">
-          Sistema de captura para producción de instalación deportiva.
-        </p>
+    <SiteShell
+      title="Infrastructure for Financial Optimization in Sports Construction."
+      subtitle="Structured capture, operational intelligence, and margin protection for turf installation programs."
+    >
+      <section className="grid gap-4 md:grid-cols-3">
+        <article className="rounded-2xl border border-slate-800 bg-slate-950/70 p-5">
+          <h2 className="font-heading text-lg text-slate-100">The Problem</h2>
+          <p className="mt-2 text-sm text-slate-300">
+            Margin erosion from rework, inconsistent field execution, and no standardized variance signal.
+          </p>
+        </article>
+        <article className="rounded-2xl border border-slate-800 bg-slate-950/70 p-5">
+          <h2 className="font-heading text-lg text-slate-100">The System</h2>
+          <p className="mt-2 text-sm text-slate-300">
+            Zone-based capture, evidence traceability, and baseline-driven deviation metrics from day one.
+          </p>
+        </article>
+        <article className="rounded-2xl border border-slate-800 bg-slate-950/70 p-5">
+          <h2 className="font-heading text-lg text-slate-100">The Advantage</h2>
+          <p className="mt-2 text-sm text-slate-300">
+            Reduced retrabajo, tighter adhesive control, and an operational dataset ready for forecasting.
+          </p>
+        </article>
+      </section>
 
-        <div className="grid w-full gap-3 sm:grid-cols-3">
-          <Link
-            href="/projects?flow=new"
-            className="rounded-xl bg-emerald-600 px-4 py-4 text-center font-semibold hover:bg-emerald-700"
-          >
-            Nuevo proyecto
-          </Link>
+      <section className="mt-8 grid gap-4 md:grid-cols-2">
+        <div className="rounded-2xl border border-slate-800 bg-slate-950/75 p-6">
+          <h3 className="font-heading text-xl text-slate-100">For Field Operations</h3>
+          <p className="mt-2 text-sm text-slate-300">
+            Capture by project and zone with minimal friction on mobile, even under active installation flow.
+          </p>
+          <div className="mt-5 flex flex-wrap gap-3">
+            <Link
+              href="/projects?flow=load"
+              className="rounded-lg bg-cyan-600 px-4 py-2.5 text-sm font-semibold text-slate-100 hover:bg-cyan-700"
+            >
+              Open Pulse
+            </Link>
+            <Link
+              href="/projects?flow=new"
+              className="rounded-lg border border-slate-600 px-4 py-2.5 text-sm font-semibold text-slate-200 hover:bg-slate-900"
+            >
+              Create Project
+            </Link>
+          </div>
+        </div>
 
-          <Link
-            href={loadProjectHref}
-            className="rounded-xl bg-blue-600 px-4 py-4 text-center font-semibold hover:bg-blue-700"
-          >
-            Cargar proyecto
-          </Link>
-
-          <Link
-            href="/dashboard"
-            className="rounded-xl border border-neutral-600 px-4 py-4 text-center font-semibold hover:bg-neutral-900"
-          >
-            Dashboard
-          </Link>
+        <div className="rounded-2xl border border-slate-800 bg-slate-950/75 p-6">
+          <h3 className="font-heading text-xl text-slate-100">For Executives</h3>
+          <p className="mt-2 text-sm text-slate-300">
+            Operational variance visibility by zone with technical evidence that supports contract-level decisions.
+          </p>
+          <div className="mt-5 flex flex-wrap gap-3">
+            <Link
+              href="/enterprise"
+              className="rounded-lg border border-cyan-500/70 px-4 py-2.5 text-sm font-semibold text-cyan-200 hover:bg-cyan-500/10"
+            >
+              Enterprise Brief
+            </Link>
+            <Link
+              href="/contact"
+              className="rounded-lg border border-slate-600 px-4 py-2.5 text-sm font-semibold text-slate-200 hover:bg-slate-900"
+            >
+              Schedule Technical Briefing
+            </Link>
+          </div>
         </div>
       </section>
-    </main>
+    </SiteShell>
   )
 }
