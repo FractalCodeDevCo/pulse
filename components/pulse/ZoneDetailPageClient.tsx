@@ -63,13 +63,51 @@ type ZoneDetailDraft = {
 
 const CONDITION_OPTIONS = ["Excelente", "Buena", "Regular", "Mala"]
 const CLIMATE_OPTIONS = ["Soleado", "Nublado", "Lluvioso", "Viento", "Humedad alta"]
-const BEIS_SOFT_CRITICAL_AREAS = [
-  "Batter Box",
-  "Pitcher Mound",
-  "Coach Zones",
-  "Línea del corredor",
-] as const
-const LINEAS_MARKBOX = "Lineas"
+const SPORT_CRITICAL_OPTIONS: Record<string, string[]> = {
+  beisbol: [
+    "Coach A",
+    "Coach B",
+    "Línea del corredor",
+    "Batter Box",
+    "Pitcher Mound",
+    "Logo",
+    "Letras",
+    "Curva",
+    "Curva diámetro chico",
+    "Unión lineal",
+  ],
+  softbol: [
+    "Coach A",
+    "Coach B",
+    "Línea del corredor",
+    "Batter Box",
+    "Pitcher Mound",
+    "Logo",
+    "Letras",
+    "Curva",
+    "Curva diámetro chico",
+    "Unión lineal",
+  ],
+  football: [
+    "Números",
+    "Hashmarks",
+    "Tick marks",
+    "Logo",
+    "Letras",
+    "Curva",
+    "Curva diámetro chico",
+    "Unión lineal",
+  ],
+  soccer: [
+    "Curva",
+    "Curva diámetro chico",
+    "Líneas",
+    "Logo",
+    "Letras",
+    "Unión lineal",
+  ],
+}
+const LINEAR_OPTION = "Unión lineal"
 
 export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneDetailPageClientProps) {
   const project = useMemo(() => (projectId ? getProjectById(projectId) : null), [projectId])
@@ -116,14 +154,11 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   const stepTemplates = useMemo(() => (zone ? getZoneStepTemplates(zone.zoneType) : []), [zone])
   const progress = zone ? getZoneProgress(zone) : 0
   const canOpenProcesses = zonePhotos.length > 0
-  const isBeisSoftInfield =
-    zone?.macroZone === "Infield" && (zone.fieldType === "beisbol" || zone.fieldType === "softbol")
-  const canShowLineasMarkbox =
-    zone?.fieldType === "beisbol" ||
-    zone?.fieldType === "softbol" ||
-    zone?.fieldType === "football" ||
-    zone?.fieldType === "soccer"
-  const isCriticalInfieldSelection = isBeisSoftInfield && adhesiveCriticalInfieldAreas.length > 0
+  const adhesiveCriticalOptions = zone ? SPORT_CRITICAL_OPTIONS[zone.fieldType] ?? [] : []
+  const hasAdhesiveCriticalSelection = adhesiveCriticalInfieldAreas.length > 0
+  const isAdhesiveLinearOnlySelection =
+    adhesiveCriticalInfieldAreas.length === 1 && adhesiveCriticalInfieldAreas[0] === LINEAR_OPTION
+  const disableAdhesiveFtSlider = hasAdhesiveCriticalSelection && !isAdhesiveLinearOnlySelection
 
   useEffect(() => {
     if (!projectId || !zone) return
@@ -325,7 +360,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
     if (!projectId || !zone) return
     if (!adhesiveBotes || Number(adhesiveBotes) <= 0) return setAdhesiveError("Botes usados debe ser mayor a 0.")
     if (!adhesiveCondicion) return setAdhesiveError("Condición es requerida.")
-    if (!isCriticalInfieldSelection && (!adhesiveFt || Number(adhesiveFt) <= 0)) {
+    if (!disableAdhesiveFtSlider && (!adhesiveFt || Number(adhesiveFt) <= 0)) {
       return setAdhesiveError("Ft Totales debe ser mayor a 0.")
     }
 
@@ -352,10 +387,10 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
             micro_zone: zone.microZone,
             project_zone_id: zone.id,
             zone_type: zone.zoneType,
-            critical_infield_area: isCriticalInfieldSelection ? adhesiveCriticalInfieldAreas[0] : undefined,
-            critical_infield_areas: isCriticalInfieldSelection ? adhesiveCriticalInfieldAreas : undefined,
-            markbox: adhesiveLineasMarkbox ? LINEAS_MARKBOX : undefined,
-            ftTotales: isCriticalInfieldSelection ? 10 : Number(adhesiveFt),
+            critical_infield_area: hasAdhesiveCriticalSelection ? adhesiveCriticalInfieldAreas[0] : undefined,
+            critical_infield_areas: hasAdhesiveCriticalSelection ? adhesiveCriticalInfieldAreas : undefined,
+            markbox: undefined,
+            ftTotales: disableAdhesiveFtSlider ? 10 : Number(adhesiveFt),
             botesUsados: Number(adhesiveBotes),
             condicion: adhesiveCondicion,
             clima: adhesiveClima,
@@ -659,11 +694,11 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                         <>
                           <p className="text-sm text-neutral-300">Metadata de Adhesive (Pegada) inline.</p>
 
-                          {isBeisSoftInfield ? (
+                          {adhesiveCriticalOptions.length > 0 ? (
                             <fieldset className="space-y-2">
                               <legend className="text-sm text-neutral-300">Zona crítica (opción múltiple)</legend>
                               <div className="grid gap-2 sm:grid-cols-2">
-                                {BEIS_SOFT_CRITICAL_AREAS.map((item) => {
+                                {adhesiveCriticalOptions.map((item) => {
                                   const active = adhesiveCriticalInfieldAreas.includes(item)
                                   return (
                                     <button
@@ -681,14 +716,13 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                                   )
                                 })}
                               </div>
-                              <p className="text-xs text-neutral-400">Puedes seleccionar varias. Si eliges al menos una, Ft Totales se desactiva.</p>
                             </fieldset>
                           ) : null}
 
                           <div className="grid gap-3 sm:grid-cols-2">
                             <label className="block space-y-2">
                               <span className="text-sm text-neutral-300">
-                                Ft Totales ({isCriticalInfieldSelection ? "fijo por zona crítica" : adhesiveFt || 0})
+                                Ft Totales ({disableAdhesiveFtSlider ? "fijo por selección actual" : adhesiveFt || 0})
                               </span>
                               <input
                                 type="range"
@@ -696,7 +730,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                                 max={500}
                                 value={adhesiveFt}
                                 onChange={(event) => setAdhesiveFt(event.target.value)}
-                                disabled={isCriticalInfieldSelection}
+                                disabled={disableAdhesiveFtSlider}
                                 className="w-full disabled:cursor-not-allowed disabled:opacity-40"
                               />
                             </label>
@@ -712,24 +746,6 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                               />
                             </label>
                           </div>
-
-                          {canShowLineasMarkbox ? (
-                            <fieldset className="space-y-2">
-                              <legend className="text-sm text-neutral-300">Markbox adicional</legend>
-                              <button
-                                type="button"
-                                onClick={() => setAdhesiveLineasMarkbox((prev) => !prev)}
-                                className={`w-full rounded-xl border px-3 py-3 text-sm font-semibold ${
-                                  adhesiveLineasMarkbox
-                                    ? "border-blue-500 bg-blue-500/20 text-blue-200"
-                                    : "border-neutral-700 bg-neutral-900"
-                                }`}
-                              >
-                                {LINEAS_MARKBOX}
-                              </button>
-                              <p className="text-xs text-neutral-400">Este botón no modifica Ft Totales.</p>
-                            </fieldset>
-                          ) : null}
 
                           <label className="block space-y-2">
                             <span className="text-sm text-neutral-300">Condición</span>

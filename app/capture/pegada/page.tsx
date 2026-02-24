@@ -80,13 +80,53 @@ const DEFAULT_FIXED_FT = 10
 
 const CLIMATE_OPTIONS = ["Soleado", "Nublado", "Lluvioso", "Viento", "Humedad alta"]
 const CONDITION_OPTIONS = ["Excelente", "Buena", "Regular", "Mala"]
-const BEIS_SOFT_CRITICAL_AREAS = [
-  "Batter Box",
-  "Pitcher Mound",
-  "Coach Zones",
-  "Línea del corredor",
-] as const
-const LINEAS_MARKBOX = "Lineas"
+
+const SPORT_CRITICAL_OPTIONS: Record<FieldType, string[]> = {
+  beisbol: [
+    "Coach A",
+    "Coach B",
+    "Línea del corredor",
+    "Batter Box",
+    "Pitcher Mound",
+    "Logo",
+    "Letras",
+    "Curva",
+    "Curva diámetro chico",
+    "Unión lineal",
+  ],
+  softbol: [
+    "Coach A",
+    "Coach B",
+    "Línea del corredor",
+    "Batter Box",
+    "Pitcher Mound",
+    "Logo",
+    "Letras",
+    "Curva",
+    "Curva diámetro chico",
+    "Unión lineal",
+  ],
+  football: [
+    "Números",
+    "Hashmarks",
+    "Tick marks",
+    "Logo",
+    "Letras",
+    "Curva",
+    "Curva diámetro chico",
+    "Unión lineal",
+  ],
+  soccer: [
+    "Curva",
+    "Curva diámetro chico",
+    "Líneas",
+    "Logo",
+    "Letras",
+    "Unión lineal",
+  ],
+}
+
+const LINEAR_OPTION = "Unión lineal"
 
 function readStoredFieldType(storageKey: string): FieldType {
   if (typeof window === "undefined") return "football"
@@ -281,11 +321,11 @@ function PegadaPageContent() {
   }, [fieldType, macroZone])
   const macroZoneOptions = useMemo(() => getMacroZoneOptions(fieldType), [fieldType])
 
-  const isBeisSoft = fieldType === "beisbol" || fieldType === "softbol"
-  const isBeisSoftInfield = isBeisSoft && macroZone === "Infield"
-  const isCriticalInfieldSelection = isBeisSoftInfield && criticalInfieldAreas.length > 0
-  const canShowLineasMarkbox =
-    fieldType === "soccer" || fieldType === "football" || fieldType === "beisbol" || fieldType === "softbol"
+  const criticalOptions = SPORT_CRITICAL_OPTIONS[fieldType] ?? []
+  const hasCriticalSelection = criticalInfieldAreas.length > 0
+  const isLinearOnlySelection =
+    criticalInfieldAreas.length === 1 && criticalInfieldAreas[0] === LINEAR_OPTION
+  const disableFtSlider = hasCriticalSelection && !isLinearOnlySelection
 
   const totalSteps = prefillFromZone ? 2 : 3
   const displayStep = prefillFromZone ? (step === 3 ? 2 : step) : step
@@ -293,11 +333,10 @@ function PegadaPageContent() {
   function handleFieldTypeChange(next: FieldType) {
     setFieldType(next)
     localStorage.setItem(fieldTypeKey, JSON.stringify(next))
-    setMacroZone("")
-    setMicroZone("")
-    setCriticalInfieldAreas([])
-    setLineasMarkbox(false)
-    setError("")
+      setMacroZone("")
+      setMicroZone("")
+      setCriticalInfieldAreas([])
+      setError("")
   }
 
   function toggleCriticalInfieldArea(item: string) {
@@ -361,7 +400,7 @@ function PegadaPageContent() {
       return false
     }
 
-    if (!isCriticalInfieldSelection && ftTotales <= 0) {
+    if (!disableFtSlider && ftTotales <= 0) {
       setError("Ft totales debe ser mayor a 0.")
       return false
     }
@@ -373,10 +412,10 @@ function PegadaPageContent() {
       zone: microZone,
       macro_zone: macroZone,
       micro_zone: microZone,
-      critical_infield_area: isCriticalInfieldSelection ? criticalInfieldAreas[0] : undefined,
-      critical_infield_areas: isCriticalInfieldSelection ? criticalInfieldAreas : undefined,
-      markbox: lineasMarkbox ? LINEAS_MARKBOX : undefined,
-      ftTotales: isCriticalInfieldSelection ? DEFAULT_FIXED_FT : ftTotales,
+      critical_infield_area: hasCriticalSelection ? criticalInfieldAreas[0] : undefined,
+      critical_infield_areas: hasCriticalSelection ? criticalInfieldAreas : undefined,
+      markbox: undefined,
+      ftTotales: disableFtSlider ? DEFAULT_FIXED_FT : ftTotales,
       botesUsados,
       clima,
       condicion,
@@ -584,7 +623,6 @@ function PegadaPageContent() {
                   setMacroZone(event.target.value as MacroZone | "")
                   setMicroZone("")
                   setCriticalInfieldAreas([])
-                  setLineasMarkbox(false)
                 }}
                 className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3"
                 required
@@ -616,11 +654,11 @@ function PegadaPageContent() {
               </select>
             </label>
 
-            {isBeisSoftInfield ? (
+            {criticalOptions.length > 0 ? (
               <fieldset className="space-y-2">
                 <legend className="text-sm text-neutral-300">Zona crítica (opción múltiple)</legend>
                 <div className="grid gap-2 sm:grid-cols-2">
-                  {BEIS_SOFT_CRITICAL_AREAS.map((item) => {
+                  {criticalOptions.map((item) => {
                     const active = criticalInfieldAreas.includes(item)
                     return (
                       <button
@@ -636,15 +674,12 @@ function PegadaPageContent() {
                     )
                   })}
                 </div>
-                <p className="text-xs text-neutral-400">
-                  Puedes seleccionar varias. Si eliges al menos una, Ft Totales se desactiva.
-                </p>
               </fieldset>
             ) : null}
 
             <label className="block space-y-2">
               <span className="text-sm text-neutral-300">
-                Ft Totales ({isCriticalInfieldSelection ? "fijo por zona crítica" : ftTotales})
+                Ft Totales ({disableFtSlider ? "fijo por selección actual" : ftTotales})
               </span>
               <input
                 type="range"
@@ -652,7 +687,7 @@ function PegadaPageContent() {
                 max={500}
                 value={ftTotales}
                 onChange={(event) => setFtTotales(Number(event.target.value))}
-                disabled={isCriticalInfieldSelection}
+                disabled={disableFtSlider}
                 className="w-full disabled:cursor-not-allowed disabled:opacity-40"
               />
             </label>
@@ -669,22 +704,6 @@ function PegadaPageContent() {
                 required
               />
             </label>
-
-            {canShowLineasMarkbox ? (
-              <fieldset className="space-y-2">
-                <legend className="text-sm text-neutral-300">Markbox adicional</legend>
-                <button
-                  type="button"
-                  onClick={() => setLineasMarkbox((prev) => !prev)}
-                  className={`w-full rounded-xl border px-3 py-3 text-sm font-semibold ${
-                    lineasMarkbox ? "border-blue-500 bg-blue-500/20 text-blue-200" : "border-neutral-700 bg-neutral-950"
-                  }`}
-                >
-                  {LINEAS_MARKBOX}
-                </button>
-                <p className="text-xs text-neutral-400">Este botón no modifica Ft Totales.</p>
-              </fieldset>
-            ) : null}
 
             <fieldset className="space-y-3">
               <legend className="text-sm text-neutral-300">Clima (selección múltiple)</legend>
