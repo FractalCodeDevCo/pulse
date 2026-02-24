@@ -546,3 +546,18 @@ create unique index if not exists uq_captures_compaction_session
 create unique index if not exists uq_captures_material_pass_session
   on public.captures_material_pass(project_id, zone_id, capture_session_id)
   where capture_session_id is not null;
+
+-- Public technical insights managed from web admin
+create table if not exists public.technical_insights (
+  id uuid primary key default gen_random_uuid(),
+  slug text not null unique,
+  title text not null,
+  summary text not null,
+  body text not null default '',
+  status text not null default 'draft' check (status in ('draft', 'published')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_technical_insights_status on public.technical_insights(status);
+create index if not exists idx_technical_insights_created_at on public.technical_insights(created_at desc);

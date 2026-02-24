@@ -337,6 +337,14 @@ export default async function ProjectOverviewPage({ searchParams }: OverviewPage
 
   const materialDeviation = materialExpected > 0 ? ((materialUsed - materialExpected) / materialExpected) * 100 : null
   const eta = getEta(startDate, progressTotal)
+  const plannedSeamTotal = zoneMetrics.reduce((sum, item) => sum + (item.plannedSeamFt ?? 0), 0)
+  const realSeamTotal = zoneMetrics.reduce((sum, item) => sum + item.realSeams, 0)
+
+  const objectiveFtDone = progressTotal !== null && progressTotal >= 100
+  const objectiveRollsDone = plannedRollsTotal > 0 && realRollsTotal >= plannedRollsTotal
+  const objectiveAdhesiveDone = adhesiveDeviation !== null && Math.abs(adhesiveDeviation) <= 15
+  const objectiveMaterialDone = materialDeviation !== null && Math.abs(materialDeviation) <= 12
+  const objectivesDone = [objectiveFtDone, objectiveRollsDone, objectiveAdhesiveDone, objectiveMaterialDone].filter(Boolean).length
 
   return (
     <main className="min-h-screen bg-neutral-950 px-4 py-8 text-white">
@@ -415,6 +423,61 @@ export default async function ProjectOverviewPage({ searchParams }: OverviewPage
             <p className="mt-2 text-3xl font-bold text-neutral-100">{zoneMetrics.length} zonas</p>
             <p className="text-xs text-neutral-400">Total sqft setup: {formatNumber(totalSqft, 1)}</p>
           </article>
+        </section>
+
+        <section className="space-y-4 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-semibold">Progreso por Objetivos</h2>
+              <p className="text-sm text-neutral-400">No depende de fases. Mide cumplimiento de metas operativas del proyecto.</p>
+            </div>
+            <p className="rounded-full border border-cyan-500/50 bg-cyan-500/10 px-3 py-1 text-sm font-semibold text-cyan-200">
+              {objectivesDone}/4 objetivos en rango
+            </p>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <article className={`rounded-xl border p-3 ${objectiveFtDone ? "border-emerald-500/60 bg-emerald-500/10" : "border-amber-500/60 bg-amber-500/10"}`}>
+              <p className="text-xs text-neutral-300">Objetivo Ft ejecutados</p>
+              <p className="mt-1 text-lg font-semibold">{formatPercent(progressTotal)}</p>
+              <p className="text-xs text-neutral-400">
+                {formatNumber(realFtTotal, 1)} / {formatNumber(plannedSqftTotal > 0 ? plannedSqftTotal : totalSqft, 1)}
+              </p>
+            </article>
+            <article className={`rounded-xl border p-3 ${objectiveRollsDone ? "border-emerald-500/60 bg-emerald-500/10" : "border-amber-500/60 bg-amber-500/10"}`}>
+              <p className="text-xs text-neutral-300">Objetivo Rollos</p>
+              <p className="mt-1 text-lg font-semibold">
+                {formatNumber(realRollsTotal, 0)} / {formatNumber(plannedRollsTotal > 0 ? plannedRollsTotal : null, 0)}
+              </p>
+              <p className="text-xs text-neutral-400">Costuras: {formatNumber(realSeamTotal, 0)} / {formatNumber(plannedSeamTotal > 0 ? plannedSeamTotal : null, 0)}</p>
+            </article>
+            <article className={`rounded-xl border p-3 ${objectiveAdhesiveDone ? "border-emerald-500/60 bg-emerald-500/10" : "border-amber-500/60 bg-amber-500/10"}`}>
+              <p className="text-xs text-neutral-300">Objetivo Control Adhesivo</p>
+              <p className="mt-1 text-lg font-semibold">{formatPercent(adhesiveDeviation)}</p>
+              <p className="text-xs text-neutral-400">
+                {formatNumber(realAdhesiveTotal, 1)} / {formatNumber(plannedAdhesiveTotal > 0 ? plannedAdhesiveTotal : null, 1)}
+              </p>
+            </article>
+            <article className={`rounded-xl border p-3 ${objectiveMaterialDone ? "border-emerald-500/60 bg-emerald-500/10" : "border-amber-500/60 bg-amber-500/10"}`}>
+              <p className="text-xs text-neutral-300">Objetivo Control Material</p>
+              <p className="mt-1 text-lg font-semibold">{formatPercent(materialDeviation)}</p>
+              <p className="text-xs text-neutral-400">
+                {formatNumber(materialUsed, 1)} / {formatNumber(materialExpected > 0 ? materialExpected : null, 1)}
+              </p>
+            </article>
+          </div>
+
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <a
+              href={`/api/reports/project-summary?project=${encodeURIComponent(projectId)}`}
+              target="_blank"
+              rel="noreferrer"
+              className="w-full rounded-xl border border-blue-500 px-4 py-3 text-center font-semibold text-blue-300 hover:bg-blue-500/10"
+            >
+              Generar Reporte Ejecutivo (PDF)
+            </a>
+            <p className="text-xs text-neutral-400 sm:self-center">Abre versión imprimible con logo/membrete y resumen por zona.</p>
+          </div>
         </section>
 
         <section className="space-y-3 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">

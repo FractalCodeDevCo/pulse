@@ -1,6 +1,9 @@
 import SiteShell from "../../components/site/SiteShell"
+import Link from "next/link"
 
-const papers = [
+import { getSupabaseAdminClient } from "../../lib/supabase/server"
+
+const fallbackPapers = [
   {
     title: "Zone-Based Adhesive Variance Framework",
     summary: "EWMA baseline methodology for early detection of adhesive overuse by zone type.",
@@ -15,12 +18,65 @@ const papers = [
   },
 ]
 
-export default function InsightsPage() {
+type InsightRow = {
+  id: string
+  title: string
+  summary: string
+  status: "draft" | "published"
+}
+
+function isMissingRelationError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false
+  return (error as { code?: string }).code === "42P01"
+}
+
+export default async function InsightsPage() {
+  let papers = fallbackPapers
+  let warning = ""
+
+  try {
+    const supabase = getSupabaseAdminClient()
+    const { data, error } = await supabase
+      .from("technical_insights")
+      .select("id,title,summary,status")
+      .eq("status", "published")
+      .order("created_at", { ascending: false })
+      .limit(50)
+
+    if (error) {
+      if (isMissingRelationError(error)) {
+        warning = "Activa technical_insights en Supabase para publicar artículos desde admin."
+      } else {
+        warning = error.message
+      }
+    } else if ((data ?? []).length > 0) {
+      papers = (data as InsightRow[]).map((item) => ({
+        title: item.title,
+        summary: item.summary,
+      }))
+    }
+  } catch (error) {
+    warning = error instanceof Error ? error.message : "No se pudieron cargar insights."
+  }
+
   return (
     <SiteShell
       title="Field Technical Insights."
       subtitle="Technical notes and applied modeling frameworks for sports construction performance control."
     >
+      <section className="mb-4 flex items-center justify-end">
+        <Link
+          href="/insights/admin"
+          className="rounded-lg border border-amber-500/70 px-3 py-2 text-sm font-semibold text-amber-200 hover:bg-amber-500/10"
+        >
+          Manage Insights
+        </Link>
+      </section>
+      {warning ? (
+        <section className="mb-4 rounded-2xl border border-amber-500/70 bg-amber-500/10 p-4 text-sm text-amber-200">
+          {warning}
+        </section>
+      ) : null}
       <section className="space-y-4">
         {papers.map((paper) => (
           <article key={paper.title} className="rounded-2xl border border-slate-800 bg-slate-950/70 p-5">
