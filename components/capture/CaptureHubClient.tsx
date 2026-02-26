@@ -31,6 +31,9 @@ export default function CaptureHubClient({ projectId }: CaptureHubClientProps) {
       <div className="text-center">
         <h1 className="text-3xl font-bold">Módulos de captura</h1>
         <p className="mt-1 text-sm text-neutral-400">Proyecto: {projectId}</p>
+        <p className="mt-2 text-xs text-neutral-500">
+          Legacy: reparaciones, patios, jardines y eventos especiales sin estructura por zonas.
+        </p>
       </div>
 
       <div className="flex w-80 flex-col gap-4">
