@@ -5,14 +5,17 @@ import { getSupabaseAdminClient } from "../../lib/supabase/server"
 
 const fallbackPapers = [
   {
+    slug: "zone-based-adhesive-variance-framework",
     title: "Zone-Based Adhesive Variance Framework",
     summary: "EWMA baseline methodology for early detection of adhesive overuse by zone type.",
   },
   {
+    slug: "risk-scoring-roll-installation-compaction",
     title: "Risk Scoring for Roll Installation and Compaction",
     summary: "Simple weighted model to expose operational risk before retrabajo propagates.",
   },
   {
+    slug: "structured-capture-schema-sports-construction",
     title: "Structured Capture Schema for Sports Construction",
     summary: "Data model designed for reproducible analysis and financial projection workflows.",
   },
@@ -20,6 +23,7 @@ const fallbackPapers = [
 
 type InsightRow = {
   id: string
+  slug: string
   title: string
   summary: string
   status: "draft" | "published"
@@ -38,7 +42,7 @@ export default async function InsightsPage() {
     const supabase = getSupabaseAdminClient()
     const { data, error } = await supabase
       .from("technical_insights")
-      .select("id,title,summary,status")
+      .select("id,slug,title,summary,status")
       .eq("status", "published")
       .order("created_at", { ascending: false })
       .limit(50)
@@ -51,6 +55,7 @@ export default async function InsightsPage() {
       }
     } else if ((data ?? []).length > 0) {
       papers = (data as InsightRow[]).map((item) => ({
+        slug: item.slug,
         title: item.title,
         summary: item.summary,
       }))
@@ -82,7 +87,12 @@ export default async function InsightsPage() {
           <article key={paper.title} className="rounded-2xl border border-slate-800 bg-slate-950/70 p-5">
             <h2 className="font-heading text-lg text-slate-100">{paper.title}</h2>
             <p className="mt-2 text-sm text-slate-300">{paper.summary}</p>
-            <p className="mt-3 text-xs uppercase tracking-[0.16em] text-slate-500">Internal Technical Brief</p>
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Internal Technical Brief</p>
+              <Link href={`/insights/${encodeURIComponent(paper.slug)}`} className="text-sm font-semibold text-cyan-300 hover:text-cyan-200">
+                Leer artículo
+              </Link>
+            </div>
           </article>
         ))}
       </section>
