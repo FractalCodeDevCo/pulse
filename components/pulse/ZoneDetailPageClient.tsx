@@ -347,6 +347,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
 
       setStepSaveMessages((prev) => ({ ...prev, [stepKey]: "Captura guardada en nube." }))
       setStepSessionIds((prev) => ({ ...prev, [stepKey]: createCaptureSessionId() }))
+      setZonePhotos([])
       if (!zone.completedStepKeys.includes(stepKey)) toggleStep(stepKey)
     } catch (err) {
       setStepSaveErrors((prev) => ({
@@ -418,6 +419,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
       setRollPlacementMessage(isCompleteCapture ? "Roll Placement guardado." : "Roll Placement parcial guardado.")
       setRollPlacementSummary(data.summary ?? null)
       setRollPlacementSessionId(createCaptureSessionId())
+      setZonePhotos([])
       if (isCompleteCapture && !zone.completedStepKeys.includes("ROLL_PLACEMENT")) toggleStep("ROLL_PLACEMENT")
     } catch (err) {
       setRollPlacementError(err instanceof Error ? err.message : "Error al guardar Roll Placement.")
@@ -481,6 +483,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
       setAdhesiveMessage("Adhesive (Pegada) guardado.")
       setAdhesiveSummary(data.summary ?? null)
       setAdhesiveSessionId(createCaptureSessionId())
+      setZonePhotos([])
       if (!zone.completedStepKeys.includes("ADHESIVE")) toggleStep("ADHESIVE")
     } catch (err) {
       setAdhesiveError(err instanceof Error ? err.message : "Error al guardar Adhesive.")

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 
 import { computeCompactionRisk, computeRollInstallRisk, normalizeSemaforo } from "../../../lib/metricsV0"
 import { getSupabaseAdminClient } from "../../../lib/supabase/server"
+import { resolveZoneRecordType, validatePhaseByZoneType } from "../../../lib/zonePhaseRules"
 
 export const runtime = "nodejs"
 
@@ -148,6 +149,14 @@ export async function POST(request: Request) {
     const photoTypes: PhotoType[] = ["compacting", "in_progress", "completed"]
     const requestedStatus = normalizeCaptureStatus(body.capture_status)
     const isCompleteCapture = requestedStatus === "complete"
+    const zoneRecordType = resolveZoneRecordType(body.zone_type)
+    const phaseValidation = validatePhaseByZoneType({
+      zoneRecordType,
+      phase: "ROLL_PLACEMENT",
+    })
+    if (!phaseValidation.ok) {
+      return NextResponse.json({ error: phaseValidation.error }, { status: 400 })
+    }
 
     const normalizedRollLengthFit =
       typeof body.roll_length_fit === "string" && body.roll_length_fit.trim().length > 0

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 
 import { computeGlueMetrics } from "../../../lib/metricsV0"
 import { getSupabaseAdminClient } from "../../../lib/supabase/server"
+import { mapCompactPhase, mapRollosPhase, resolveZoneRecordType, validatePhaseByZoneType } from "../../../lib/zonePhaseRules"
 
 export const runtime = "nodejs"
 
@@ -206,6 +207,22 @@ export async function POST(request: Request) {
     const projectZoneId = toStringOrNull(body.payload.project_zone_id)
     const captureSessionId = toStringOrNull(body.payload.capture_session_id)
     const captureStatus = normalizeCaptureStatus(body.payload.capture_status)
+    const zoneRecordType = resolveZoneRecordType(body.payload.zone_type ?? body.payload.zoneType)
+
+    const phase =
+      body.module === "pegada"
+        ? "ADHESIVE"
+        : body.module === "compactacion"
+          ? mapCompactPhase(body.payload.step_key, zoneRecordType)
+          : mapRollosPhase(body.payload.step_key)
+
+    const phaseValidation = validatePhaseByZoneType({
+      zoneRecordType,
+      phase,
+    })
+    if (!phaseValidation.ok) {
+      return NextResponse.json({ error: phaseValidation.error }, { status: 400 })
+    }
 
     const photoCandidates = extractPhotoCandidates(body.payload)
     if (body.module === "pegada") {

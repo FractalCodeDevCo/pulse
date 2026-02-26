@@ -103,6 +103,12 @@ export default function ZoneHubClient({ projectId }: ZoneHubClientProps) {
           >
             Ver historial
           </Link>
+          <Link
+            href={`/capture?project=${encodeURIComponent(project.id)}`}
+            className="w-full rounded-xl border border-neutral-600 px-4 py-3 text-center font-semibold hover:bg-neutral-800"
+          >
+            Abrir módulos legacy
+          </Link>
         </div>
       </section>
     </main>

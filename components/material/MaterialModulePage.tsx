@@ -15,6 +15,7 @@ import { MaterialKind, MaterialRecordDb, PassType, StatusColor } from "../../typ
 type MaterialModulePageProps = {
   projectId: string | null
   projectZoneId?: string | null
+  zoneType?: string | null
 }
 
 type PhotoItem = {
@@ -85,7 +86,7 @@ function getStatusStyles(statusColor: StatusColor): string {
   return "border-red-500 bg-red-500/15 text-red-200"
 }
 
-export default function MaterialModulePage({ projectId, projectZoneId = null }: MaterialModulePageProps) {
+export default function MaterialModulePage({ projectId, projectZoneId = null, zoneType = null }: MaterialModulePageProps) {
   const [step, setStep] = useState<1 | 2>(1)
   const [fieldType, setFieldType] = useState<FieldType>(() =>
     projectId ? readProjectFieldType(projectId) : "football",
@@ -257,6 +258,7 @@ export default function MaterialModulePage({ projectId, projectZoneId = null }: 
         body: JSON.stringify({
           projectId,
           fieldType,
+          zoneType,
           tipoMaterial,
           tipoPasada,
           valvula,

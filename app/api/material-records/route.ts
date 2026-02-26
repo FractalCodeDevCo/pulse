@@ -2,12 +2,14 @@ import { NextResponse } from "next/server"
 
 import { computeMaterialPass } from "../../../lib/metricsV0"
 import { getSupabaseAdminClient } from "../../../lib/supabase/server"
+import { resolveZoneRecordType, validatePhaseByZoneType } from "../../../lib/zonePhaseRules"
 
 export const runtime = "nodejs"
 
 type RequestBody = {
   projectId?: string
   projectZoneId?: string | null
+  zoneType?: string | null
   captureSessionId?: string
   captureStatus?: "incomplete" | "complete"
   passNumber?: number
@@ -102,6 +104,14 @@ function isSchemaCompatibilityError(message: string): boolean {
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as RequestBody
+    const zoneRecordType = resolveZoneRecordType(body.zoneType)
+    const phaseValidation = validatePhaseByZoneType({
+      zoneRecordType,
+      phase: "MATERIAL_FINAL",
+    })
+    if (!phaseValidation.ok) {
+      return NextResponse.json({ error: phaseValidation.error }, { status: 400 })
+    }
 
     if (
       !body.projectId ||

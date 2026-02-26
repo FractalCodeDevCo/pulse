@@ -2,6 +2,7 @@ import { FieldType } from "../types/fieldType"
 import { ZONE_HIERARCHY_BY_SPORT } from "../types/zoneHierarchy"
 
 export type ZoneType = "GLOBAL" | "PRECISION" | "STANDARD" | "PERIMETER" | "MARKINGS"
+export type ZoneRecordType = "GLOBAL" | "MICRO"
 export type ZoneStepKey =
   | "COMPACT"
   | "ROLL_PLACEMENT"
@@ -22,6 +23,9 @@ export type ProjectZone = {
   macroZone: string
   microZone: string
   zoneType: ZoneType
+  type: ZoneRecordType
+  order: number
+  isDeletable: boolean
   stepKeys: ZoneStepKey[]
   completedStepKeys: ZoneStepKey[]
 }
@@ -231,10 +235,12 @@ export function getProjectById(projectId: string): AppProject | null {
 export function generateProjectZones(projectId: string, fieldType: FieldType): ProjectZone[] {
   const macros = ZONE_HIERARCHY_BY_SPORT[fieldType]
   const zones: ProjectZone[] = []
+  let orderCursor = 0
 
   Object.entries(macros).forEach(([macroZone, microZones]) => {
     microZones.forEach((microZone, index) => {
       const zoneType = inferZoneType(macroZone, microZone)
+      const isGlobal = zoneType === "GLOBAL"
       zones.push({
         id: buildProjectZoneId(projectId, macroZone, microZone, index),
         projectId,
@@ -242,6 +248,9 @@ export function generateProjectZones(projectId: string, fieldType: FieldType): P
         macroZone,
         microZone,
         zoneType,
+        type: isGlobal ? "GLOBAL" : "MICRO",
+        order: orderCursor++,
+        isDeletable: !isGlobal,
         stepKeys: STEP_TEMPLATES_BY_ZONE_TYPE[zoneType].map((step) => step.key),
         completedStepKeys: [],
       })
@@ -251,28 +260,36 @@ export function generateProjectZones(projectId: string, fieldType: FieldType): P
   return zones
 }
 
+export function generateZonesBySport(sport: string): Pick<ProjectZone, "macroZone" | "microZone" | "zoneType" | "type" | "order" | "isDeletable" | "stepKeys">[] {
+  const fieldType = normalizeFieldType(sport)
+  const projectId = "template"
+  return generateProjectZones(projectId, fieldType).map((zone) => ({
+    macroZone: zone.macroZone,
+    microZone: zone.microZone,
+    zoneType: zone.zoneType,
+    type: zone.type,
+    order: zone.order,
+    isDeletable: zone.isDeletable,
+    stepKeys: zone.stepKeys,
+  }))
+}
+
 export function ensureProjectZones(projectId: string, fieldType: FieldType): ProjectZone[] {
   const zonesMap = readZonesMap()
   const existing = zonesMap[projectId]
   const generated = generateProjectZones(projectId, fieldType)
 
   if (Array.isArray(existing) && existing.length > 0) {
-    if (areZoneTemplatesAligned(existing, generated)) return existing
-
-    const existingByTemplate = new Map(existing.map((zone) => [buildZoneTemplateKey(zone), zone]))
-    const migrated = generated.map((zone) => {
-      const previous = existingByTemplate.get(buildZoneTemplateKey(zone))
-      if (!previous) return zone
-
-      return {
-        ...zone,
-        completedStepKeys: previous.completedStepKeys.filter((key) => zone.stepKeys.includes(key)),
-      }
-    })
-
-    zonesMap[projectId] = migrated
-    saveZonesMap(zonesMap)
-    return migrated
+    // Keep legacy projects unchanged for backward compatibility.
+    return existing.map((zone, index) => ({
+      ...zone,
+      type: zone.type ?? (zone.zoneType === "GLOBAL" ? "GLOBAL" : "MICRO"),
+      order: typeof zone.order === "number" ? zone.order : index,
+      isDeletable:
+        typeof zone.isDeletable === "boolean"
+          ? zone.isDeletable
+          : (zone.zoneType === "GLOBAL" ? false : true),
+    }))
   }
 
   zonesMap[projectId] = generated
