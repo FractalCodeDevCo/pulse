@@ -144,6 +144,10 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   const [adhesiveMessage, setAdhesiveMessage] = useState("")
   const [adhesiveError, setAdhesiveError] = useState("")
   const [adhesiveSummary, setAdhesiveSummary] = useState<AdhesiveSummary | null>(null)
+  const [stepSessionIds, setStepSessionIds] = useState<Record<string, string>>({})
+  const [stepSavingKey, setStepSavingKey] = useState<ZoneStepKey | null>(null)
+  const [stepSaveMessages, setStepSaveMessages] = useState<Record<string, string>>({})
+  const [stepSaveErrors, setStepSaveErrors] = useState<Record<string, string>>({})
   const [draftReady, setDraftReady] = useState(false)
   const [draftRecovered, setDraftRecovered] = useState(false)
   const draftKey = useMemo(
@@ -296,6 +300,62 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
       if (current.includes(item)) return current.filter((value) => value !== item)
       return [...current, item]
     })
+  }
+
+  function getStepSessionId(stepKey: ZoneStepKey): string {
+    return stepSessionIds[stepKey] ?? createCaptureSessionId()
+  }
+
+  async function submitSimpleStep(stepKey: ZoneStepKey) {
+    if (!projectId || !zone) return
+
+    const moduleForStep = stepKey === "COMPACT" ? "compactacion" : "rollos"
+    const sessionId = getStepSessionId(stepKey)
+    const note = (quickNotes[stepKey] ?? "").trim()
+    const stepPhotos = zonePhotos.slice(0, 3)
+
+    setStepSaveErrors((prev) => ({ ...prev, [stepKey]: "" }))
+    setStepSaveMessages((prev) => ({ ...prev, [stepKey]: "" }))
+    setStepSavingKey(stepKey)
+
+    try {
+      const response = await fetch("/api/records", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          module: moduleForStep,
+          projectId,
+          fieldType: zone.fieldType,
+          payload: {
+            zone: zone.microZone,
+            macro_zone: zone.macroZone,
+            micro_zone: zone.microZone,
+            zone_type: zone.zoneType,
+            project_zone_id: zone.id,
+            capture_session_id: sessionId,
+            capture_status: "complete",
+            step_key: stepKey,
+            step_label: stepTemplates.find((step) => step.key === stepKey)?.label ?? stepKey,
+            note,
+            photos: stepPhotos,
+          },
+        }),
+      })
+
+      const data = (await response.json()) as { error?: string }
+      if (!response.ok) throw new Error(data.error ?? "No se pudo guardar captura del paso.")
+
+      setStepSaveMessages((prev) => ({ ...prev, [stepKey]: "Captura guardada en nube." }))
+      setStepSessionIds((prev) => ({ ...prev, [stepKey]: createCaptureSessionId() }))
+      if (!zone.completedStepKeys.includes(stepKey)) toggleStep(stepKey)
+    } catch (err) {
+      setStepSaveErrors((prev) => ({
+        ...prev,
+        [stepKey]: err instanceof Error ? err.message : "Error al guardar captura del paso.",
+      }))
+    } finally {
+      setStepSavingKey(null)
+    }
   }
 
   async function submitRollPlacementInline() {
@@ -856,6 +916,24 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                           >
                             Marcar paso {step.label}
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => void submitSimpleStep(step.key)}
+                            disabled={stepSavingKey === step.key}
+                            className="w-full rounded-xl bg-blue-600 py-3 font-semibold hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            {stepSavingKey === step.key ? "Guardando..." : `Guardar captura ${step.label}`}
+                          </button>
+                          {stepSaveErrors[step.key] ? (
+                            <p className="rounded-xl border border-red-500/70 bg-red-500/10 p-3 text-sm text-red-300">
+                              {stepSaveErrors[step.key]}
+                            </p>
+                          ) : null}
+                          {stepSaveMessages[step.key] ? (
+                            <p className="rounded-xl border border-emerald-500/70 bg-emerald-500/10 p-3 text-sm text-emerald-300">
+                              {stepSaveMessages[step.key]}
+                            </p>
+                          ) : null}
                         </>
                       ) : null}
                     </div>
