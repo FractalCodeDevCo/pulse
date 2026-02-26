@@ -575,13 +575,17 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
 
         <section className="space-y-3 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
           <h2 className="text-xl font-semibold">Paso 2 · Procesos por zona</h2>
-          <p className="text-sm text-neutral-400">Compaction → Roll Placement → Sewing → Cut → Adhesive.</p>
+          <p className="text-sm text-neutral-400">
+            {zone.zoneType === "GLOBAL"
+              ? "Compactación general → Material."
+              : "Compaction → Roll Placement → Sewing → Cut → Adhesive."}
+          </p>
 
           <div className={canOpenProcesses ? "space-y-2" : "pointer-events-none space-y-2 opacity-50"}>
             {stepTemplates.map((step) => {
               const completed = zone.completedStepKeys.includes(step.key)
               const expanded = openStep === step.key
-              const shouldAutoExpand = step.key === "ROLL_PLACEMENT" || step.key === "ADHESIVE"
+              const shouldAutoExpand = step.key === "ROLL_PLACEMENT" || step.key === "ADHESIVE" || step.key === "MATERIAL"
 
               return (
                 <div key={step.key} className="rounded-xl border border-neutral-700 bg-neutral-950">
@@ -906,7 +910,26 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                         </>
                       ) : null}
 
-                      {step.key !== "ROLL_PLACEMENT" && step.key !== "ADHESIVE" ? (
+                      {step.key === "MATERIAL" ? (
+                        <>
+                          <p className="text-sm text-neutral-300">Abre el cuestionario de Material para esta zona.</p>
+                          <Link
+                            href={`/capture/material?${query}`}
+                            className="block rounded-xl border border-emerald-500 py-3 text-center font-semibold text-emerald-300 hover:bg-emerald-500/10"
+                          >
+                            Abrir Material
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => toggleStep(step.key)}
+                            className="w-full rounded-xl border border-neutral-600 py-3 font-semibold hover:bg-neutral-800"
+                          >
+                            Marcar paso Material
+                          </button>
+                        </>
+                      ) : null}
+
+                      {step.key !== "ROLL_PLACEMENT" && step.key !== "ADHESIVE" && step.key !== "MATERIAL" ? (
                         <>
                           <label className="block space-y-2">
                             <span className="text-sm text-neutral-300">Nota rápida (opcional)</span>

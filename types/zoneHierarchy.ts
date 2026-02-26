@@ -1,8 +1,21 @@
 import { FieldType } from "./fieldType"
 
 export type MacroZone =
+  | "Campo completo"
   | "Infield"
   | "Outfield"
+  | "Foul Territory"
+  | "Warning Track"
+  | "Bullpen"
+  | "Playing Field"
+  | "End Zone A"
+  | "End Zone B"
+  | "Sideline A"
+  | "Sideline B"
+  | "Playing Surface"
+  | "Goal Area A"
+  | "Goal Area B"
+  | "Perimeter / Sidelines"
   | "Sidelines"
   | "Central"
   | "Endzones"
@@ -13,24 +26,35 @@ type MacroMap = Record<string, string[]>
 
 export const ZONE_HIERARCHY_BY_SPORT: Record<FieldType, MacroMap> = {
   beisbol: {
+    "Campo completo": ["Campo completo"],
     Infield: ["Infield"],
     Outfield: ["Outfield"],
-    Sidelines: ["Sidelines"],
+    "Foul Territory": ["Foul Territory"],
+    "Warning Track": ["Warning Track"],
+    Bullpen: ["Bullpen"],
   },
   softbol: {
+    "Campo completo": ["Campo completo"],
     Infield: ["Infield"],
     Outfield: ["Outfield"],
-    Sidelines: ["Sidelines"],
+    "Foul Territory": ["Foul Territory"],
+    "Warning Track": ["Warning Track"],
+    Bullpen: ["Bullpen"],
   },
   football: {
-    Central: ["Central"],
-    Endzones: ["Endzones"],
-    Sidelines: ["Sidelines"],
+    "Campo completo": ["Campo completo"],
+    "Playing Field": ["Playing Field"],
+    "End Zone A": ["End Zone A"],
+    "End Zone B": ["End Zone B"],
+    "Sideline A": ["Sideline A"],
+    "Sideline B": ["Sideline B"],
   },
   soccer: {
-    "Areas de Portero": ["Areas de Portero"],
-    Midfield: ["Midfield"],
-    Outfield: ["Outfield"],
+    "Campo completo": ["Campo completo"],
+    "Playing Surface": ["Playing Surface"],
+    "Goal Area A": ["Goal Area A"],
+    "Goal Area B": ["Goal Area B"],
+    "Perimeter / Sidelines": ["Perimeter / Sidelines"],
   },
 }
 

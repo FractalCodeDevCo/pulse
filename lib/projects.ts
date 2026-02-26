@@ -1,13 +1,14 @@
 import { FieldType } from "../types/fieldType"
 import { ZONE_HIERARCHY_BY_SPORT } from "../types/zoneHierarchy"
 
-export type ZoneType = "PRECISION" | "STANDARD" | "PERIMETER" | "MARKINGS"
+export type ZoneType = "GLOBAL" | "PRECISION" | "STANDARD" | "PERIMETER" | "MARKINGS"
 export type ZoneStepKey =
   | "COMPACT"
   | "ROLL_PLACEMENT"
   | "SEWING"
   | "CUT"
   | "ADHESIVE"
+  | "MATERIAL"
 
 export type ZoneStepTemplate = {
   key: ZoneStepKey
@@ -44,6 +45,10 @@ export const MOCK_PROJECTS: AppProject[] = [
 ]
 
 const STEP_TEMPLATES_BY_ZONE_TYPE: Record<ZoneType, ZoneStepTemplate[]> = {
+  GLOBAL: [
+    { key: "COMPACT", label: "Compactación general" },
+    { key: "MATERIAL", label: "Material" },
+  ],
   PRECISION: [
     { key: "COMPACT", label: "Compaction" },
     { key: "ROLL_PLACEMENT", label: "Roll Placement" },
@@ -139,6 +144,7 @@ function saveZonesMap(map: Record<string, ProjectZone[]>) {
 function inferZoneType(macroZone: string, microZone: string): ZoneType {
   const macro = macroZone.toLowerCase()
   const micro = microZone.toLowerCase()
+  if (macro === "campo completo" || micro === "campo completo") return "GLOBAL"
 
   if (macro.includes("warning") || macro.includes("sideline") || macro.includes("foul")) return "PERIMETER"
   if (macro.includes("logo") || micro.includes("logo") || micro.includes("mark")) {

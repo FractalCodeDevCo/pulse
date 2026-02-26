@@ -98,12 +98,6 @@ export default function ZoneHubClient({ projectId }: ZoneHubClientProps) {
             Project Overview
           </Link>
           <Link
-            href={`/capture/material?project=${encodeURIComponent(project.id)}`}
-            className="w-full rounded-xl border border-emerald-500 px-4 py-3 text-center font-semibold text-emerald-300 hover:bg-emerald-500/10"
-          >
-            Ir a fase de material
-          </Link>
-          <Link
             href={`/pulse/history?project=${encodeURIComponent(project.id)}`}
             className="w-full rounded-xl border border-amber-500 px-4 py-3 text-center font-semibold text-amber-300 hover:bg-amber-500/10"
           >
