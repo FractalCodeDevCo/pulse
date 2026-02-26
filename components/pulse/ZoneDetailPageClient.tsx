@@ -39,6 +39,17 @@ type AdhesiveSummary = {
   savings_usd: number
 }
 
+type MaterialSummary = {
+  module: "material"
+  deviation_ratio: number
+  deviation_percent: number
+  status_color: "verde" | "amarillo" | "rojo"
+  valve_current: number
+  valve_delta: -1 | 0 | 1
+  valve_next: number
+  suggestion: string | null
+}
+
 type ZoneDetailDraft = {
   openStep: ZoneStepKey | null
   quickNotes: Record<string, string>
@@ -59,6 +70,15 @@ type ZoneDetailDraft = {
   adhesiveClima: string[]
   adhesiveObservaciones: string
   adhesiveSessionId: string
+  materialStep: 1 | 2
+  materialTipo: "Arena" | "Goma" | ""
+  materialPasada: "Sencilla" | "Doble" | ""
+  materialValvula: number
+  materialBolsasEsperadas: string
+  materialBolsasUsadas: string
+  materialObservaciones: string
+  materialSessionId: string
+  materialPhotos: string[]
 }
 
 const CONDITION_OPTIONS = ["Excelente", "Buena", "Regular", "Mala"]
@@ -144,6 +164,19 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   const [adhesiveMessage, setAdhesiveMessage] = useState("")
   const [adhesiveError, setAdhesiveError] = useState("")
   const [adhesiveSummary, setAdhesiveSummary] = useState<AdhesiveSummary | null>(null)
+  const [materialStep, setMaterialStep] = useState<1 | 2>(1)
+  const [materialTipo, setMaterialTipo] = useState<"Arena" | "Goma" | "">("")
+  const [materialPasada, setMaterialPasada] = useState<"Sencilla" | "Doble" | "">("")
+  const [materialValvula, setMaterialValvula] = useState(1)
+  const [materialBolsasEsperadas, setMaterialBolsasEsperadas] = useState("")
+  const [materialBolsasUsadas, setMaterialBolsasUsadas] = useState("")
+  const [materialObservaciones, setMaterialObservaciones] = useState("")
+  const [materialSessionId, setMaterialSessionId] = useState(() => createCaptureSessionId())
+  const [materialPhotos, setMaterialPhotos] = useState<string[]>([])
+  const [isSavingMaterial, setIsSavingMaterial] = useState(false)
+  const [materialMessage, setMaterialMessage] = useState("")
+  const [materialError, setMaterialError] = useState("")
+  const [materialSummary, setMaterialSummary] = useState<MaterialSummary | null>(null)
   const [stepSessionIds, setStepSessionIds] = useState<Record<string, string>>({})
   const [stepSavingKey, setStepSavingKey] = useState<ZoneStepKey | null>(null)
   const [stepSaveMessages, setStepSaveMessages] = useState<Record<string, string>>({})
@@ -192,6 +225,15 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
       setAdhesiveClima(draft.adhesiveClima)
       setAdhesiveObservaciones(draft.adhesiveObservaciones)
       setAdhesiveSessionId(draft.adhesiveSessionId || createCaptureSessionId())
+      setMaterialStep(draft.materialStep)
+      setMaterialTipo(draft.materialTipo)
+      setMaterialPasada(draft.materialPasada)
+      setMaterialValvula(draft.materialValvula)
+      setMaterialBolsasEsperadas(draft.materialBolsasEsperadas)
+      setMaterialBolsasUsadas(draft.materialBolsasUsadas)
+      setMaterialObservaciones(draft.materialObservaciones)
+      setMaterialSessionId(draft.materialSessionId || createCaptureSessionId())
+      setMaterialPhotos(draft.materialPhotos)
       setDraftRecovered(true)
     }
     setDraftReady(true)
@@ -215,7 +257,14 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
         adhesiveBotes ||
         adhesiveCondicion ||
         adhesiveClima.length > 0 ||
-        adhesiveObservaciones.trim().length > 0,
+        adhesiveObservaciones.trim().length > 0 ||
+        materialStep === 2 ||
+        materialTipo ||
+        materialPasada ||
+        materialBolsasEsperadas ||
+        materialBolsasUsadas ||
+        materialObservaciones.trim().length > 0 ||
+        materialPhotos.length > 0,
     )
 
     if (!hasMeaningfulDraft) {
@@ -243,6 +292,15 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
       adhesiveClima,
       adhesiveObservaciones,
       adhesiveSessionId,
+      materialStep,
+      materialTipo,
+      materialPasada,
+      materialValvula,
+      materialBolsasEsperadas,
+      materialBolsasUsadas,
+      materialObservaciones,
+      materialSessionId,
+      materialPhotos,
     })
   }, [
     adhesiveBotes,
@@ -253,6 +311,15 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
     adhesiveLineasMarkbox,
     adhesiveObservaciones,
     adhesiveSessionId,
+    materialStep,
+    materialTipo,
+    materialPasada,
+    materialValvula,
+    materialBolsasEsperadas,
+    materialBolsasUsadas,
+    materialObservaciones,
+    materialSessionId,
+    materialPhotos,
     compactionMethod,
     doubleCompaction,
     draftKey,
@@ -300,6 +367,22 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
       if (current.includes(item)) return current.filter((value) => value !== item)
       return [...current, item]
     })
+  }
+
+  async function handleMaterialPhotos(event: ChangeEvent<HTMLInputElement>) {
+    const files = event.target.files
+    if (!files || files.length === 0) return
+    setIsReadingPhotos(true)
+    try {
+      const urls = await processImageFiles(Array.from(files))
+      setMaterialPhotos((prev) => [...prev, ...urls].slice(0, 8))
+    } finally {
+      setIsReadingPhotos(false)
+    }
+  }
+
+  function removeMaterialPhoto(index: number) {
+    setMaterialPhotos((prev) => prev.filter((_, i) => i !== index))
   }
 
   function getStepSessionId(stepKey: ZoneStepKey): string {
@@ -489,6 +572,56 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
       setAdhesiveError(err instanceof Error ? err.message : "Error al guardar Adhesive.")
     } finally {
       setIsSavingAdhesive(false)
+    }
+  }
+
+  async function submitMaterialInline() {
+    if (!projectId || !zone) return
+    const expected = Number(materialBolsasEsperadas)
+    const used = Number(materialBolsasUsadas)
+    if (!materialTipo) return setMaterialError("Tipo de material es requerido.")
+    if (!materialPasada) return setMaterialError("Tipo de pasada es requerido.")
+    if (!expected || expected <= 0) return setMaterialError("Bolsas esperadas debe ser mayor a 0.")
+    if (!used || used <= 0) return setMaterialError("Bolsas utilizadas debe ser mayor a 0.")
+
+    setMaterialError("")
+    setMaterialMessage("")
+    setMaterialSummary(null)
+    setIsSavingMaterial(true)
+
+    try {
+      const response = await fetch("/api/material-records", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          projectZoneId: zone.id,
+          zoneType: zone.zoneType,
+          fieldType: zone.fieldType,
+          captureSessionId: materialSessionId,
+          captureStatus: "complete",
+          tipoMaterial: materialTipo,
+          tipoPasada: materialPasada,
+          valvula: materialValvula,
+          bolsasEsperadas: expected,
+          bolsasUtilizadas: used,
+          observaciones: materialObservaciones,
+          fotos: materialPhotos,
+        }),
+      })
+      const data = (await response.json()) as { error?: string; summary?: MaterialSummary | null }
+      if (!response.ok) throw new Error(data.error ?? "No se pudo guardar Material")
+
+      setMaterialMessage("Material guardado.")
+      setMaterialSummary(data.summary ?? null)
+      setMaterialSessionId(createCaptureSessionId())
+      setMaterialStep(1)
+      setMaterialPhotos([])
+      if (!zone.completedStepKeys.includes("MATERIAL")) toggleStep("MATERIAL")
+    } catch (err) {
+      setMaterialError(err instanceof Error ? err.message : "Error al guardar Material.")
+    } finally {
+      setIsSavingMaterial(false)
     }
   }
 
@@ -915,20 +1048,159 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
 
                       {step.key === "MATERIAL" ? (
                         <>
-                          <p className="text-sm text-neutral-300">Abre el cuestionario de Material para esta zona.</p>
-                          <Link
-                            href={`/capture/material?${query}`}
-                            className="block rounded-xl border border-emerald-500 py-3 text-center font-semibold text-emerald-300 hover:bg-emerald-500/10"
-                          >
-                            Abrir Material
-                          </Link>
-                          <button
-                            type="button"
-                            onClick={() => toggleStep(step.key)}
-                            className="w-full rounded-xl border border-neutral-600 py-3 font-semibold hover:bg-neutral-800"
-                          >
-                            Marcar paso Material
-                          </button>
+                          <p className="text-sm text-neutral-300">Material inline: fotos primero y luego cuestionario.</p>
+
+                          {materialStep === 1 ? (
+                            <div className="space-y-3">
+                              <label className="block space-y-2">
+                                <span className="text-sm text-neutral-300">Fotos de material (galería o cámara)</span>
+                                <input
+                                  type="file"
+                                  accept={IMAGE_INPUT_ACCEPT}
+                                  multiple
+                                  onChange={(event) => void handleMaterialPhotos(event)}
+                                  className="block w-full rounded-xl border border-neutral-700 bg-neutral-950 p-2 text-sm"
+                                />
+                              </label>
+                              {materialPhotos.length > 0 ? (
+                                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                                  {materialPhotos.map((photo, index) => (
+                                    <div key={`${photo}-${index}`} className="space-y-2">
+                                      <Image
+                                        src={photo}
+                                        alt={`Material ${index + 1}`}
+                                        width={600}
+                                        height={400}
+                                        unoptimized
+                                        className="h-24 w-full rounded-xl border border-neutral-700 object-cover"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => removeMaterialPhoto(index)}
+                                        className="w-full rounded-lg border border-neutral-600 px-2 py-1 text-xs hover:bg-neutral-800"
+                                      >
+                                        Quitar
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-xs text-neutral-400">Sin fotos cargadas.</p>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setMaterialStep(2)}
+                                className="w-full rounded-xl bg-emerald-600 py-3 font-semibold hover:bg-emerald-700"
+                              >
+                                Continuar a Material
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              <label className="block space-y-2">
+                                <span className="text-sm text-neutral-300">Tipo de material</span>
+                                <select
+                                  value={materialTipo}
+                                  onChange={(event) => setMaterialTipo(event.target.value as "Arena" | "Goma" | "")}
+                                  className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
+                                >
+                                  <option value="">Selecciona</option>
+                                  <option value="Arena">Arena</option>
+                                  <option value="Goma">Goma</option>
+                                </select>
+                              </label>
+                              <label className="block space-y-2">
+                                <span className="text-sm text-neutral-300">Tipo de pasada</span>
+                                <select
+                                  value={materialPasada}
+                                  onChange={(event) => setMaterialPasada(event.target.value as "Sencilla" | "Doble" | "")}
+                                  className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
+                                >
+                                  <option value="">Selecciona</option>
+                                  <option value="Sencilla">Sencilla</option>
+                                  <option value="Doble">Doble</option>
+                                </select>
+                              </label>
+                              <label className="block space-y-2">
+                                <span className="text-sm text-neutral-300">Válvula (1-6)</span>
+                                <input
+                                  type="range"
+                                  min={1}
+                                  max={6}
+                                  step={1}
+                                  value={materialValvula}
+                                  onChange={(event) => setMaterialValvula(Number(event.target.value))}
+                                  className="w-full"
+                                />
+                                <p className="text-xs text-neutral-400">Seleccionado: {materialValvula}</p>
+                              </label>
+                              <div className="grid gap-3 sm:grid-cols-2">
+                                <label className="block space-y-2">
+                                  <span className="text-sm text-neutral-300">Bolsas esperadas</span>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    value={materialBolsasEsperadas}
+                                    onChange={(event) => setMaterialBolsasEsperadas(event.target.value)}
+                                    className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
+                                  />
+                                </label>
+                                <label className="block space-y-2">
+                                  <span className="text-sm text-neutral-300">Bolsas utilizadas</span>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    value={materialBolsasUsadas}
+                                    onChange={(event) => setMaterialBolsasUsadas(event.target.value)}
+                                    className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
+                                  />
+                                </label>
+                              </div>
+                              <label className="block space-y-2">
+                                <span className="text-sm text-neutral-300">Observaciones (opcional)</span>
+                                <textarea
+                                  rows={3}
+                                  value={materialObservaciones}
+                                  onChange={(event) => setMaterialObservaciones(event.target.value)}
+                                  className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
+                                />
+                              </label>
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setMaterialStep(1)}
+                                  className="w-full rounded-xl border border-neutral-600 py-3 font-semibold hover:bg-neutral-800"
+                                >
+                                  Volver a fotos
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void submitMaterialInline()}
+                                  disabled={isSavingMaterial}
+                                  className="w-full rounded-xl bg-emerald-600 py-3 font-semibold hover:bg-emerald-700 disabled:opacity-50"
+                                >
+                                  {isSavingMaterial ? "Guardando..." : "Guardar Material"}
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {materialError ? (
+                            <p className="rounded-xl border border-red-500/70 bg-red-500/10 p-3 text-sm text-red-300">
+                              {materialError}
+                            </p>
+                          ) : null}
+                          {materialMessage ? (
+                            <p className="rounded-xl border border-emerald-500/70 bg-emerald-500/10 p-3 text-sm text-emerald-300">
+                              {materialMessage}
+                            </p>
+                          ) : null}
+                          {materialSummary ? (
+                            <div className="rounded-xl border border-cyan-500/70 bg-cyan-500/10 p-3 text-sm text-cyan-200">
+                              Desviación: {materialSummary.deviation_percent.toFixed(2)}% · Válvula: {materialSummary.valve_current} →
+                              {" "}{materialSummary.valve_next}
+                            </div>
+                          ) : null}
                         </>
                       ) : null}
 
