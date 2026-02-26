@@ -171,6 +171,41 @@ create table if not exists public.project_zones (
   unique (project_id, zone_template_id)
 );
 
+-- Runtime zone registry used by app capture flow (project code based)
+create table if not exists public.project_zones_runtime (
+  id uuid primary key default gen_random_uuid(),
+  project_code text not null,
+  project_uuid uuid references public.projects(id) on delete cascade,
+  zone_name text not null,
+  macro_zone text not null,
+  micro_zone text not null,
+  zone_record_type text not null check (zone_record_type in ('GLOBAL', 'MICRO')),
+  zone_order integer not null,
+  is_deletable boolean not null default true,
+  created_at timestamptz not null default now(),
+  unique (project_code, macro_zone, micro_zone)
+);
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'project_zones_runtime_global_shape_check'
+  ) then
+    alter table if exists public.project_zones_runtime
+      add constraint project_zones_runtime_global_shape_check
+      check (
+        zone_record_type <> 'GLOBAL'
+        or (zone_name = 'Campo completo' and zone_order = 0 and is_deletable = false)
+      );
+  end if;
+end $$;
+
+create unique index if not exists uq_project_zones_runtime_single_global
+  on public.project_zones_runtime(project_code)
+  where zone_record_type = 'GLOBAL';
+
 create table if not exists public.zone_step_templates (
   id uuid primary key default gen_random_uuid(),
   zone_type text not null,
@@ -192,6 +227,7 @@ create table if not exists public.zone_metrics (
 
 create index if not exists idx_projects_sport on public.projects(sport);
 create index if not exists idx_project_zones_project on public.project_zones(project_id);
+create index if not exists idx_project_zones_runtime_project_code on public.project_zones_runtime(project_code);
 create index if not exists idx_zone_metrics_project_zone on public.zone_metrics(project_zone_id);
 
 -- Data science snapshots (daily cumulative per zone)

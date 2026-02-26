@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 
+import { generateProjectZones } from "../../../lib/projects"
 import { inferSetupCompleted, normalizeZoneTargets, ZoneTarget } from "../../../lib/projectSetup"
 import { getSupabaseAdminClient } from "../../../lib/supabase/server"
 import { FieldType } from "../../../types/fieldType"
@@ -7,6 +8,7 @@ import { FieldType } from "../../../types/fieldType"
 export const runtime = "nodejs"
 
 type ProjectRow = {
+  id?: string | null
   code: string | null
   name: string | null
   sport: string | null
@@ -66,6 +68,11 @@ function toStringArray(value: unknown): string[] {
 function isMissingColumnError(message: string): boolean {
   const lower = message.toLowerCase()
   return lower.includes("column") && lower.includes("does not exist")
+}
+
+function isMissingRelationError(message: string): boolean {
+  const lower = message.toLowerCase()
+  return lower.includes("relation") && lower.includes("does not exist")
 }
 
 function extractSetup(body: RequestBody, fieldType: FieldType) {
@@ -156,6 +163,8 @@ export async function POST(request: Request) {
     const fieldType = normalizeFieldType(body.fieldType)
     const setup = extractSetup(body, fieldType)
     const supabase = getSupabaseAdminClient()
+    const existingCheck = await supabase.from("projects").select("id, code").eq("code", body.id).limit(1)
+    const existedBefore = (existingCheck.data ?? []).length > 0
 
     const payload = {
       code: body.id,
@@ -194,6 +203,34 @@ export async function POST(request: Request) {
     }
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    if (!existedBefore && data) {
+      const runtimeZones = generateProjectZones(body.id, fieldType).map((zone) => ({
+        project_code: body.id,
+        project_uuid: (data as ProjectRow).id ?? null,
+        zone_name: zone.microZone,
+        macro_zone: zone.macroZone,
+        micro_zone: zone.microZone,
+        zone_record_type: zone.type,
+        zone_order: zone.order,
+        is_deletable: zone.isDeletable,
+      }))
+
+      const runtimeInsert = await supabase.from("project_zones_runtime").upsert(runtimeZones, {
+        onConflict: "project_code,macro_zone,micro_zone",
+      })
+
+      if (
+        runtimeInsert.error &&
+        !isMissingColumnError(runtimeInsert.error.message) &&
+        !isMissingRelationError(runtimeInsert.error.message)
+      ) {
+        console.error("[projects-api] runtime_zones_persist_failed", {
+          project: body.id,
+          error: runtimeInsert.error.message,
+        })
+      }
+    }
 
     return NextResponse.json({ project: mapProjectRow(data as ProjectRow) })
   } catch (error) {

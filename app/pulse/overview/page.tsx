@@ -25,12 +25,14 @@ type ProjectRow = {
 }
 
 type PegadaRow = {
+  project_zone_id: string | null
   macro_zone: string | null
   micro_zone: string | null
   payload: unknown
 }
 
 type RollInstallationRow = {
+  project_zone_id: string | null
   macro_zone: string | null
   zone: string | null
   total_rolls_used: number | null
@@ -38,6 +40,7 @@ type RollInstallationRow = {
 }
 
 type MaterialRow = {
+  project_zone_id: string | null
   bolsas_esperadas: number | null
   bolsas_utilizadas: number | null
 }
@@ -221,6 +224,13 @@ export default async function ProjectOverviewPage({ searchParams }: OverviewPage
   const zoneMetricsMap = new Map<string, ZoneOverview>()
   let materialExpected = 0
   let materialUsed = 0
+  let legacyCaptureCount = 0
+  let legacyFt = 0
+  let legacyAdhesive = 0
+  let legacyRolls = 0
+  let legacySeams = 0
+  let legacyMaterialExpected = 0
+  let legacyMaterialUsed = 0
 
   try {
     const supabase = getSupabaseAdminClient()
@@ -266,18 +276,18 @@ export default async function ProjectOverviewPage({ searchParams }: OverviewPage
     const [pegadaRes, rollRes, materialRes] = await Promise.all([
       selectTableRows<PegadaRow>({
         table: "field_records",
-        columns: "macro_zone, micro_zone, payload",
+        columns: "project_zone_id, macro_zone, micro_zone, payload",
         projectId,
         module: "pegada",
       }),
       selectTableRows<RollInstallationRow>({
         table: "roll_installation",
-        columns: "macro_zone, zone, total_rolls_used, total_seams",
+        columns: "project_zone_id, macro_zone, zone, total_rolls_used, total_seams",
         projectId,
       }),
       selectTableRows<MaterialRow>({
         table: "material_records",
-        columns: "bolsas_esperadas, bolsas_utilizadas",
+        columns: "project_zone_id, bolsas_esperadas, bolsas_utilizadas",
         projectId,
       }),
     ])
@@ -295,22 +305,46 @@ export default async function ProjectOverviewPage({ searchParams }: OverviewPage
         row.micro_zone ??
         readFirstText(metadata, ["micro_zone", "microZone"]) ??
         "Sin zona"
+      const ft = readFirstNumber(metadata, ["ftTotales", "ft_totales", "ft", "feet"])
+      const adhesive = readFirstNumber(metadata, ["botesUsados", "botes_usados", "botes"])
 
-      const metric = ensureZoneMetrics(zoneMetricsMap, zone)
-      metric.realFt += readFirstNumber(metadata, ["ftTotales", "ft_totales", "ft", "feet"])
-      metric.realAdhesive += readFirstNumber(metadata, ["botesUsados", "botes_usados", "botes"])
+      if (row.project_zone_id) {
+        const metric = ensureZoneMetrics(zoneMetricsMap, zone)
+        metric.realFt += ft
+        metric.realAdhesive += adhesive
+      } else {
+        legacyCaptureCount += 1
+        legacyFt += ft
+        legacyAdhesive += adhesive
+      }
     }
 
     for (const row of rollRes.data) {
-      const zone = row.macro_zone ?? row.zone ?? "Sin zona"
-      const metric = ensureZoneMetrics(zoneMetricsMap, zone)
-      metric.realRolls += Math.max(0, toNumber(row.total_rolls_used) ?? 0)
-      metric.realSeams += Math.max(0, toNumber(row.total_seams) ?? 0)
+      const rolls = Math.max(0, toNumber(row.total_rolls_used) ?? 0)
+      const seams = Math.max(0, toNumber(row.total_seams) ?? 0)
+      if (row.project_zone_id) {
+        const zone = row.macro_zone ?? row.zone ?? "Sin zona"
+        const metric = ensureZoneMetrics(zoneMetricsMap, zone)
+        metric.realRolls += rolls
+        metric.realSeams += seams
+      } else {
+        legacyCaptureCount += 1
+        legacyRolls += rolls
+        legacySeams += seams
+      }
     }
 
     for (const row of materialRes.data) {
-      materialExpected += Math.max(0, toNumber(row.bolsas_esperadas) ?? 0)
-      materialUsed += Math.max(0, toNumber(row.bolsas_utilizadas) ?? 0)
+      const expected = Math.max(0, toNumber(row.bolsas_esperadas) ?? 0)
+      const used = Math.max(0, toNumber(row.bolsas_utilizadas) ?? 0)
+      if (row.project_zone_id) {
+        materialExpected += expected
+        materialUsed += used
+      } else {
+        legacyCaptureCount += 1
+        legacyMaterialExpected += expected
+        legacyMaterialUsed += used
+      }
     }
   } catch (error) {
     loadError = error instanceof Error ? error.message : "No se pudo cargar overview del proyecto."
@@ -336,6 +370,8 @@ export default async function ProjectOverviewPage({ searchParams }: OverviewPage
     plannedAdhesiveTotal > 0 ? ((realAdhesiveTotal - plannedAdhesiveTotal) / plannedAdhesiveTotal) * 100 : null
 
   const materialDeviation = materialExpected > 0 ? ((materialUsed - materialExpected) / materialExpected) * 100 : null
+  const legacyMaterialDeviation =
+    legacyMaterialExpected > 0 ? ((legacyMaterialUsed - legacyMaterialExpected) / legacyMaterialExpected) * 100 : null
   const eta = getEta(startDate, progressTotal)
   const plannedSeamTotal = zoneMetrics.reduce((sum, item) => sum + (item.plannedSeamFt ?? 0), 0)
   const realSeamTotal = zoneMetrics.reduce((sum, item) => sum + item.realSeams, 0)
@@ -423,6 +459,13 @@ export default async function ProjectOverviewPage({ searchParams }: OverviewPage
             <p className="mt-2 text-3xl font-bold text-neutral-100">{zoneMetrics.length} zonas</p>
             <p className="text-xs text-neutral-400">Total sqft setup: {formatNumber(totalSqft, 1)}</p>
           </article>
+          <article className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4">
+            <p className="text-sm text-neutral-400">Legacy (sin zonas)</p>
+            <p className="mt-2 text-2xl font-bold text-neutral-100">{legacyCaptureCount} capturas</p>
+            <p className="text-xs text-neutral-400">
+              Ft {formatNumber(legacyFt, 1)} · Botes {formatNumber(legacyAdhesive, 1)} · Rollos {formatNumber(legacyRolls, 0)}
+            </p>
+          </article>
         </section>
 
         <section className="space-y-4 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
@@ -435,6 +478,13 @@ export default async function ProjectOverviewPage({ searchParams }: OverviewPage
               {objectivesDone}/4 objetivos en rango
             </p>
           </div>
+
+          {legacyCaptureCount > 0 ? (
+            <div className="rounded-xl border border-neutral-700 bg-neutral-950 p-3 text-xs text-neutral-300">
+              Legacy separado de zonas: Material dev {formatPercent(legacyMaterialDeviation)} ·
+              Material {formatNumber(legacyMaterialUsed, 1)} / {formatNumber(legacyMaterialExpected > 0 ? legacyMaterialExpected : null, 1)}
+            </div>
+          ) : null}
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <article className={`rounded-xl border p-3 ${objectiveFtDone ? "border-emerald-500/60 bg-emerald-500/10" : "border-amber-500/60 bg-amber-500/10"}`}>

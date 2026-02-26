@@ -23,6 +23,16 @@ type ZoneTotals = {
   realSeams: number
 }
 
+type SplitTotals = {
+  captures: number
+  realFt: number
+  realAdhesive: number
+  realRolls: number
+  realSeams: number
+  materialExpected: number
+  materialUsed: number
+}
+
 function normalizeFieldType(value: string | null | undefined): FieldType {
   if (value === "football" || value === "soccer" || value === "beisbol" || value === "softbol") return value
   if (value === "baseball") return "beisbol"
@@ -67,6 +77,18 @@ function objectivePill(label: string, done: boolean, value: string): string {
   return `<div class="pill ${tone}"><strong>${escapeHtml(label)}:</strong> ${escapeHtml(value)}</div>`
 }
 
+function createSplitTotals(): SplitTotals {
+  return {
+    captures: 0,
+    realFt: 0,
+    realAdhesive: 0,
+    realRolls: 0,
+    realSeams: 0,
+    materialExpected: 0,
+    materialUsed: 0,
+  }
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
@@ -96,14 +118,17 @@ export async function GET(request: Request) {
     }
 
     const [fieldRes, rollRes, materialRes] = await Promise.all([
-      supabase.from("field_records").select("macro_zone,micro_zone,payload").eq("project_id", projectId).eq("module", "pegada").limit(5000),
-      supabase.from("roll_installation").select("macro_zone,zone,total_rolls_used,total_seams").eq("project_id", projectId).limit(5000),
-      supabase.from("material_records").select("bolsas_esperadas,bolsas_utilizadas").eq("project_id", projectId).limit(5000),
+      supabase.from("field_records").select("project_zone_id,macro_zone,micro_zone,payload").eq("project_id", projectId).eq("module", "pegada").limit(5000),
+      supabase.from("roll_installation").select("project_zone_id,macro_zone,zone,total_rolls_used,total_seams").eq("project_id", projectId).limit(5000),
+      supabase.from("material_records").select("project_zone_id,bolsas_esperadas,bolsas_utilizadas").eq("project_id", projectId).limit(5000),
     ])
 
     if (fieldRes.error && fieldRes.error.code !== "42P01") return NextResponse.json({ error: fieldRes.error.message }, { status: 500 })
     if (rollRes.error && rollRes.error.code !== "42P01") return NextResponse.json({ error: rollRes.error.message }, { status: 500 })
     if (materialRes.error && materialRes.error.code !== "42P01") return NextResponse.json({ error: materialRes.error.message }, { status: 500 })
+
+    const zonified = createSplitTotals()
+    const legacy = createSplitTotals()
 
     for (const row of (fieldRes.data ?? []) as Array<Record<string, unknown>>) {
       const payload = row.payload && typeof row.payload === "object" ? (row.payload as Record<string, unknown>) : {}
@@ -112,26 +137,46 @@ export async function GET(request: Request) {
           ? (payload.metadata as Record<string, unknown>)
           : payload
 
+      const bucket = row.project_zone_id ? zonified : legacy
       const zone = toText(row.macro_zone) || toText(metadata.macro_zone) || toText(metadata.macroZone) || "Sin zona"
-      if (!zoneMap.has(zone)) zoneMap.set(zone, { realFt: 0, realAdhesive: 0, realRolls: 0, realSeams: 0 })
-      const current = zoneMap.get(zone)!
-      current.realFt += toNumber(metadata.ftTotales ?? metadata.ft_totales ?? metadata.ft)
-      current.realAdhesive += toNumber(metadata.botesUsados ?? metadata.botes_usados ?? metadata.botes)
+      const ft = toNumber(metadata.ftTotales ?? metadata.ft_totales ?? metadata.ft)
+      const adhesive = toNumber(metadata.botesUsados ?? metadata.botes_usados ?? metadata.botes)
+      bucket.captures += 1
+      bucket.realFt += ft
+      bucket.realAdhesive += adhesive
+
+      if (row.project_zone_id) {
+        if (!zoneMap.has(zone)) zoneMap.set(zone, { realFt: 0, realAdhesive: 0, realRolls: 0, realSeams: 0 })
+        const current = zoneMap.get(zone)!
+        current.realFt += ft
+        current.realAdhesive += adhesive
+      }
     }
 
     for (const row of (rollRes.data ?? []) as Array<Record<string, unknown>>) {
-      const zone = toText(row.macro_zone) || toText(row.zone) || "Sin zona"
-      if (!zoneMap.has(zone)) zoneMap.set(zone, { realFt: 0, realAdhesive: 0, realRolls: 0, realSeams: 0 })
-      const current = zoneMap.get(zone)!
-      current.realRolls += toNumber(row.total_rolls_used)
-      current.realSeams += toNumber(row.total_seams)
+      const bucket = row.project_zone_id ? zonified : legacy
+      const rolls = toNumber(row.total_rolls_used)
+      const seams = toNumber(row.total_seams)
+      bucket.captures += 1
+      bucket.realRolls += rolls
+      bucket.realSeams += seams
+
+      if (row.project_zone_id) {
+        const zone = toText(row.macro_zone) || toText(row.zone) || "Sin zona"
+        if (!zoneMap.has(zone)) zoneMap.set(zone, { realFt: 0, realAdhesive: 0, realRolls: 0, realSeams: 0 })
+        const current = zoneMap.get(zone)!
+        current.realRolls += rolls
+        current.realSeams += seams
+      }
     }
 
-    let materialExpected = 0
-    let materialUsed = 0
     for (const row of (materialRes.data ?? []) as Array<Record<string, unknown>>) {
-      materialExpected += toNumber(row.bolsas_esperadas)
-      materialUsed += toNumber(row.bolsas_utilizadas)
+      const bucket = row.project_zone_id ? zonified : legacy
+      const expected = toNumber(row.bolsas_esperadas)
+      const used = toNumber(row.bolsas_utilizadas)
+      bucket.captures += 1
+      bucket.materialExpected += expected
+      bucket.materialUsed += used
     }
 
     const plannedSqftTotal = zoneTargets.reduce((sum, item) => sum + (item.plannedSqft ?? 0), 0)
@@ -148,7 +193,10 @@ export async function GET(request: Request) {
     const progressFt =
       plannedSqftTotal > 0 ? Math.max(0, Math.min(100, (realFtTotal / plannedSqftTotal) * 100)) : totalSqft > 0 ? Math.max(0, Math.min(100, (realFtTotal / totalSqft) * 100)) : null
     const adhesiveDeviation = plannedAdhesiveTotal > 0 ? ((realAdhesiveTotal - plannedAdhesiveTotal) / plannedAdhesiveTotal) * 100 : null
-    const materialDeviation = materialExpected > 0 ? ((materialUsed - materialExpected) / materialExpected) * 100 : null
+    const materialDeviation =
+      zonified.materialExpected > 0 ? ((zonified.materialUsed - zonified.materialExpected) / zonified.materialExpected) * 100 : null
+    const legacyMaterialDeviation =
+      legacy.materialExpected > 0 ? ((legacy.materialUsed - legacy.materialExpected) / legacy.materialExpected) * 100 : null
 
     const objFtDone = progressFt !== null && progressFt >= 100
     const objRollDone = plannedRollsTotal > 0 && realRollsTotal >= plannedRollsTotal
@@ -213,6 +261,11 @@ export async function GET(request: Request) {
     <div class="box">
       <h2>Resumen General</h2>
       <p class="small">Ft: ${formatNumber(realFtTotal, 1)} / ${formatNumber(plannedSqftTotal > 0 ? plannedSqftTotal : totalSqft, 1)} · Rollos: ${formatNumber(realRollsTotal, 0)} / ${formatNumber(plannedRollsTotal, 0)} · Botes: ${formatNumber(realAdhesiveTotal, 1)} / ${formatNumber(plannedAdhesiveTotal, 1)} · Costuras: ${formatNumber(realSeamTotal, 0)} / ${formatNumber(plannedSeamTotal, 0)}</p>
+    </div>
+    <div class="box">
+      <h2>Métricas Zonificadas vs Legacy</h2>
+      <p class="small"><strong>Zonificadas</strong> · Capturas: ${zonified.captures} · Ft: ${formatNumber(zonified.realFt, 1)} · Botes: ${formatNumber(zonified.realAdhesive, 1)} · Rollos: ${formatNumber(zonified.realRolls, 0)} · Material dev: ${formatPercent(materialDeviation)}</p>
+      <p class="small"><strong>Legacy</strong> · Capturas: ${legacy.captures} · Ft: ${formatNumber(legacy.realFt, 1)} · Botes: ${formatNumber(legacy.realAdhesive, 1)} · Rollos: ${formatNumber(legacy.realRolls, 0)} · Material dev: ${formatPercent(legacyMaterialDeviation)}</p>
     </div>
     <div class="box">
       <h2>Detalle por Zona</h2>
