@@ -64,6 +64,11 @@ function normalizeCaptureStatus(value: unknown): CaptureStatus {
   return value === "incomplete" ? "incomplete" : "complete"
 }
 
+function toNonNegativeInt(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) return null
+  return value
+}
+
 function isMissingColumnError(message: string): boolean {
   const lower = message.toLowerCase()
   return lower.includes("column") && lower.includes("does not exist")
@@ -141,41 +146,76 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json()) as RequestBody
     const photoTypes: PhotoType[] = ["compacting", "in_progress", "completed"]
+    const requestedStatus = normalizeCaptureStatus(body.capture_status)
+    const isCompleteCapture = requestedStatus === "complete"
+
+    const normalizedRollLengthFit =
+      typeof body.roll_length_fit === "string" && body.roll_length_fit.trim().length > 0
+        ? body.roll_length_fit
+        : isCompleteCapture
+          ? ""
+          : "yellow"
+    const normalizedTotalRollsUsed = toNonNegativeInt(body.total_rolls_used) ?? 0
+    const normalizedTotalSeams = toNonNegativeInt(body.total_seams) ?? 0
+    const normalizedSurfaceFirm =
+      typeof body.compaction_surface_firm === "boolean"
+        ? body.compaction_surface_firm
+        : isCompleteCapture
+          ? null
+          : true
+    const normalizedMoistureOk =
+      typeof body.compaction_moisture_ok === "boolean"
+        ? body.compaction_moisture_ok
+        : isCompleteCapture
+          ? null
+          : true
+    const normalizedDoubleCompaction =
+      typeof body.compaction_double === "boolean"
+        ? body.compaction_double
+        : isCompleteCapture
+          ? null
+          : false
+    const normalizedCompactionMethod =
+      typeof body.compaction_method === "string" && body.compaction_method.trim().length > 0
+        ? body.compaction_method
+        : isCompleteCapture
+          ? ""
+          : "Manual"
+
     if (
       !body.project_id ||
       !body.project_zone_id ||
       !body.capture_session_id ||
       !body.zone ||
-      !body.roll_length_fit ||
-      typeof body.total_rolls_used !== "number" ||
-      typeof body.total_seams !== "number" ||
-      typeof body.compaction_surface_firm !== "boolean" ||
-      typeof body.compaction_moisture_ok !== "boolean" ||
-      typeof body.compaction_double !== "boolean" ||
-      !body.compaction_method
+      (isCompleteCapture &&
+        (!normalizedRollLengthFit ||
+          normalizedSurfaceFirm === null ||
+          normalizedMoistureOk === null ||
+          normalizedDoubleCompaction === null ||
+          !normalizedCompactionMethod))
     ) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
-    if (body.total_rolls_used < 0 || !Number.isInteger(body.total_rolls_used)) {
+    if (body.total_rolls_used !== undefined && toNonNegativeInt(body.total_rolls_used) === null) {
       return NextResponse.json({ error: "total_rolls_used must be an integer >= 0" }, { status: 400 })
     }
-    if (body.total_seams < 0 || !Number.isInteger(body.total_seams)) {
+    if (body.total_seams !== undefined && toNonNegativeInt(body.total_seams) === null) {
       return NextResponse.json({ error: "total_seams must be an integer >= 0" }, { status: 400 })
     }
 
     const supabase = getSupabaseAdminClient()
-    const rollSem = normalizeSemaforo(body.roll_length_fit) as TrafficLight
+    const rollSem = normalizeSemaforo(normalizedRollLengthFit) as TrafficLight
     const wrongRollIncident = await hasWrongRollIncident(supabase, body.project_id, body.project_zone_id)
     const rollRisk = computeRollInstallRisk({
       rollLengthSem: rollSem,
-      seamsCount: body.total_seams,
+      seamsCount: normalizedTotalSeams,
       hasWrongRollIncident: wrongRollIncident,
     })
     const compactionRisk = computeCompactionRisk({
-      surfaceFirm: body.compaction_surface_firm,
-      moistureOk: body.compaction_moisture_ok,
-      doubleCompaction: body.compaction_double,
-      method: body.compaction_method,
+      surfaceFirm: Boolean(normalizedSurfaceFirm),
+      moistureOk: Boolean(normalizedMoistureOk),
+      doubleCompaction: Boolean(normalizedDoubleCompaction),
+      method: normalizedCompactionMethod,
     })
     const summary = buildSummary(
       rollSem,
@@ -213,7 +253,7 @@ export async function POST(request: Request) {
       uploadedPhotos.push({ type, url })
     }
 
-    const captureStatus = normalizeCaptureStatus(body.capture_status)
+    const captureStatus = requestedStatus
     const baseRow = {
       id,
       project_id: body.project_id,
@@ -223,13 +263,13 @@ export async function POST(request: Request) {
       micro_zone: body.micro_zone ?? null,
       zone_type: body.zone_type ?? null,
       zone: body.zone,
-      roll_length_fit: body.roll_length_fit,
-      total_rolls_used: body.total_rolls_used,
-      total_seams: body.total_seams,
-      compaction_surface_firm: body.compaction_surface_firm,
-      compaction_moisture_ok: body.compaction_moisture_ok,
-      compaction_double: body.compaction_double,
-      compaction_method: body.compaction_method,
+      roll_length_fit: normalizedRollLengthFit,
+      total_rolls_used: normalizedTotalRollsUsed,
+      total_seams: normalizedTotalSeams,
+      compaction_surface_firm: Boolean(normalizedSurfaceFirm),
+      compaction_moisture_ok: Boolean(normalizedMoistureOk),
+      compaction_double: Boolean(normalizedDoubleCompaction),
+      compaction_method: normalizedCompactionMethod,
       capture_session_id: body.capture_session_id,
       capture_status: captureStatus,
       photos: uploadedPhotos,
@@ -263,7 +303,7 @@ export async function POST(request: Request) {
     const rollInstallCaptureRow = {
       project_id: body.project_id,
       zone_id: body.project_zone_id,
-      seams_count: body.total_seams,
+      seams_count: normalizedTotalSeams,
       photos: uploadedPhotos,
       capture_session_id: body.capture_session_id,
       capture_status: captureStatus,
@@ -299,10 +339,10 @@ export async function POST(request: Request) {
     const compactionCaptureRow = {
       project_id: body.project_id,
       zone_id: body.project_zone_id,
-      surface_firm: body.compaction_surface_firm,
-      moisture_ok: body.compaction_moisture_ok,
-      double_compaction: body.compaction_double,
-      method: body.compaction_method,
+      surface_firm: Boolean(normalizedSurfaceFirm),
+      moisture_ok: Boolean(normalizedMoistureOk),
+      double_compaction: Boolean(normalizedDoubleCompaction),
+      method: normalizedCompactionMethod,
       photos: uploadedPhotos,
       capture_session_id: body.capture_session_id,
       capture_status: captureStatus,

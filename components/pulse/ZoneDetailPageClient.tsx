@@ -360,10 +360,20 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
 
   async function submitRollPlacementInline() {
     if (!projectId || !zone) return
-    if (!rollLengthFit) return setRollPlacementError("Roll length fit es requerido.")
-    if (!totalRollsUsed || Number(totalRollsUsed) < 0) return setRollPlacementError("Total rolls es requerido.")
-    if (!totalSeams || Number(totalSeams) < 0) return setRollPlacementError("Total seams es requerido.")
-    if (!compactionMethod) return setRollPlacementError("Compaction method es requerido.")
+    const parsedRolls = totalRollsUsed.trim() === "" ? null : Number(totalRollsUsed)
+    const parsedSeams = totalSeams.trim() === "" ? null : Number(totalSeams)
+    if (parsedRolls !== null && (!Number.isInteger(parsedRolls) || parsedRolls < 0)) {
+      return setRollPlacementError("Total rolls debe ser entero >= 0.")
+    }
+    if (parsedSeams !== null && (!Number.isInteger(parsedSeams) || parsedSeams < 0)) {
+      return setRollPlacementError("Total seams debe ser entero >= 0.")
+    }
+
+    const isCompleteCapture =
+      Boolean(rollLengthFit) &&
+      parsedRolls !== null &&
+      parsedSeams !== null &&
+      Boolean(compactionMethod)
 
     const compactingPhoto = zonePhotos[0] ?? null
     const inProgressPhoto = zonePhotos[1] ?? null
@@ -386,15 +396,15 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
           micro_zone: zone.microZone,
           zone_type: zone.zoneType,
           zone: zone.microZone,
-          roll_length_fit: rollLengthFit,
-          total_rolls_used: Number(totalRollsUsed),
-          total_seams: Number(totalSeams),
+          roll_length_fit: rollLengthFit || undefined,
+          total_rolls_used: parsedRolls ?? undefined,
+          total_seams: parsedSeams ?? undefined,
           compaction_surface_firm: surfaceFirm,
           compaction_moisture_ok: moistureOk,
           compaction_double: doubleCompaction,
-          compaction_method: compactionMethod,
+          compaction_method: compactionMethod || undefined,
           capture_session_id: rollPlacementSessionId,
-          capture_status: "complete",
+          capture_status: isCompleteCapture ? "complete" : "incomplete",
           photos: {
             compacting: compactingPhoto ?? undefined,
             in_progress: inProgressPhoto ?? undefined,
@@ -405,10 +415,10 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
       const data = (await response.json()) as { error?: string; summary?: RollPlacementSummary | null }
       if (!response.ok) throw new Error(data?.error ?? "No se pudo guardar Roll Placement")
 
-      setRollPlacementMessage("Roll Placement guardado.")
+      setRollPlacementMessage(isCompleteCapture ? "Roll Placement guardado." : "Roll Placement parcial guardado.")
       setRollPlacementSummary(data.summary ?? null)
       setRollPlacementSessionId(createCaptureSessionId())
-      if (!zone.completedStepKeys.includes("ROLL_PLACEMENT")) toggleStep("ROLL_PLACEMENT")
+      if (isCompleteCapture && !zone.completedStepKeys.includes("ROLL_PLACEMENT")) toggleStep("ROLL_PLACEMENT")
     } catch (err) {
       setRollPlacementError(err instanceof Error ? err.message : "Error al guardar Roll Placement.")
     } finally {
