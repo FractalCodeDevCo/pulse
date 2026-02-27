@@ -225,7 +225,7 @@ function BlueprintScene({
           </g>
         </g>
 
-        <g fill="#49b6ff" stroke="#d7efff" transition="all 250ms ease">
+        <g fill="#49b6ff" stroke="#d7efff">
           {sport === "baseball" ? (
             <>
               <circle cx="450" cy="302" r="52" {...zoneStyle("infield")} />
