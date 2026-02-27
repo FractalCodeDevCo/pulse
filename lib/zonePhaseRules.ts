@@ -2,6 +2,7 @@ export type ZoneRecordType = "GLOBAL" | "MICRO" | "LEGACY"
 
 export type CapturePhase =
   | "COMPACTACION_GENERAL"
+  | "LAYOUT_GENERAL"
   | "ROLADO_GENERAL"
   | "MATERIAL_FINAL"
   | "FOTOS_FINALES"
@@ -14,6 +15,7 @@ export type CapturePhase =
 
 const GLOBAL_PHASES: CapturePhase[] = [
   "COMPACTACION_GENERAL",
+  "LAYOUT_GENERAL",
   "ROLADO_GENERAL",
   "MATERIAL_FINAL",
   "FOTOS_FINALES",
@@ -65,6 +67,7 @@ export function mapCompactPhase(stepKeyLike: unknown, zoneRecordType: ZoneRecord
 
 export function mapRollosPhase(stepKeyLike: unknown): CapturePhase {
   const step = normalizeText(stepKeyLike)
+  if (step === "LAYOUT") return "LAYOUT_GENERAL"
   if (step === "ROLL_PLACEMENT") return "ROLL_PLACEMENT"
   if (step === "SEWING") return "SEWING"
   if (step === "CUT") return "CUT"

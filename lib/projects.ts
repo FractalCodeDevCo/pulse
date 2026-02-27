@@ -5,6 +5,7 @@ export type ZoneType = "GLOBAL" | "PRECISION" | "STANDARD" | "PERIMETER" | "MARK
 export type ZoneRecordType = "GLOBAL" | "MICRO"
 export type ZoneStepKey =
   | "COMPACT"
+  | "LAYOUT"
   | "ROLL_PLACEMENT"
   | "SEWING"
   | "CUT"
@@ -51,6 +52,7 @@ export const MOCK_PROJECTS: AppProject[] = [
 const STEP_TEMPLATES_BY_ZONE_TYPE: Record<ZoneType, ZoneStepTemplate[]> = {
   GLOBAL: [
     { key: "COMPACT", label: "Compactación general" },
+    { key: "LAYOUT", label: "Layout" },
     { key: "MATERIAL", label: "Material" },
   ],
   PRECISION: [

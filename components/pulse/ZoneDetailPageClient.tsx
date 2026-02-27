@@ -713,7 +713,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
           <h2 className="text-xl font-semibold">Paso 2 · Procesos por zona</h2>
           <p className="text-sm text-neutral-400">
             {zone.zoneType === "GLOBAL"
-              ? "Compactación general → Material."
+              ? "Compactación general → Layout → Material."
               : "Compaction → Roll Placement → Sewing → Cut → Adhesive."}
           </p>
 
@@ -721,17 +721,16 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
             {stepTemplates.map((step) => {
               const completed = zone.completedStepKeys.includes(step.key)
               const expanded = openStep === step.key
-              const shouldAutoExpand = step.key === "ROLL_PLACEMENT" || step.key === "ADHESIVE" || step.key === "MATERIAL"
+              const shouldAutoExpand =
+                step.key === "ROLL_PLACEMENT" || step.key === "ADHESIVE" || step.key === "MATERIAL" || step.key === "LAYOUT"
 
               return (
                 <div key={step.key} className="rounded-xl border border-neutral-700 bg-neutral-950">
                   <div className="flex items-center justify-between gap-2 px-4 py-3">
                     <button
                       type="button"
-                      onClick={() => {
-                        if (shouldAutoExpand) setOpenStep(step.key)
-                      }}
-                      className={`text-left ${shouldAutoExpand ? "cursor-pointer" : "cursor-default"}`}
+                      onClick={() => setOpenStep((prev) => (prev === step.key ? null : step.key))}
+                      className="cursor-pointer text-left"
                     >
                       <p className="font-medium">{step.label}</p>
                       <p className="text-xs text-neutral-400">{step.key}</p>
