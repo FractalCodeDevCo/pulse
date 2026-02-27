@@ -57,6 +57,8 @@ type ZoneDetailDraft = {
   rollLengthFit: "green" | "yellow" | "red" | ""
   totalRollsUsed: string
   totalSeams: string
+  rollColorLabels: string[]
+  rollColorInput: string
   compactionMethod: "Plate" | "Roller" | "Manual" | ""
   surfaceFirm: boolean
   moistureOk: boolean
@@ -128,6 +130,7 @@ const SPORT_CRITICAL_OPTIONS: Record<string, string[]> = {
   ],
 }
 const LINEAR_OPTION = "Unión lineal"
+const ROLL_COLOR_QUICK_LABELS = ["A", "B", "C", "D", "E", "F", "G", "H"]
 
 export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneDetailPageClientProps) {
   const project = useMemo(() => (projectId ? getProjectById(projectId) : null), [projectId])
@@ -141,6 +144,8 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   const [rollLengthFit, setRollLengthFit] = useState<"green" | "yellow" | "red" | "">("")
   const [totalRollsUsed, setTotalRollsUsed] = useState("")
   const [totalSeams, setTotalSeams] = useState("")
+  const [rollColorLabels, setRollColorLabels] = useState<string[]>([])
+  const [rollColorInput, setRollColorInput] = useState("")
   const [compactionMethod, setCompactionMethod] = useState<"Plate" | "Roller" | "Manual" | "">("")
   const [surfaceFirm, setSurfaceFirm] = useState(true)
   const [moistureOk, setMoistureOk] = useState(true)
@@ -196,6 +201,9 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   const isAdhesiveLinearOnlySelection =
     adhesiveCriticalInfieldAreas.length === 1 && adhesiveCriticalInfieldAreas[0] === LINEAR_OPTION
   const disableAdhesiveFtSlider = hasAdhesiveCriticalSelection && !isAdhesiveLinearOnlySelection
+  const expectedRolls = totalRollsUsed.trim() === "" ? null : Number(totalRollsUsed)
+  const hasValidExpectedRolls = expectedRolls !== null && Number.isInteger(expectedRolls) && expectedRolls >= 0
+  const rollLabelProgress = hasValidExpectedRolls && expectedRolls > 0 ? Math.min(100, Math.round((rollColorLabels.length / expectedRolls) * 100)) : null
 
   useEffect(() => {
     if (!projectId || !zone) return
@@ -212,6 +220,8 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
       setRollLengthFit(draft.rollLengthFit)
       setTotalRollsUsed(draft.totalRollsUsed)
       setTotalSeams(draft.totalSeams)
+      setRollColorLabels(draft.rollColorLabels ?? [])
+      setRollColorInput(draft.rollColorInput ?? "")
       setCompactionMethod(draft.compactionMethod)
       setSurfaceFirm(draft.surfaceFirm)
       setMoistureOk(draft.moistureOk)
@@ -250,6 +260,8 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
         rollLengthFit ||
         totalRollsUsed ||
         totalSeams ||
+        rollColorLabels.length > 0 ||
+        rollColorInput.trim().length > 0 ||
         compactionMethod ||
         adhesiveFt ||
         adhesiveCriticalInfieldAreas.length > 0 ||
@@ -279,6 +291,8 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
       rollLengthFit,
       totalRollsUsed,
       totalSeams,
+      rollColorLabels,
+      rollColorInput,
       compactionMethod,
       surfaceFirm,
       moistureOk,
@@ -328,12 +342,39 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
     openStep,
     quickNotes,
     rollLengthFit,
+    rollColorInput,
+    rollColorLabels,
     rollPlacementSessionId,
     surfaceFirm,
     totalRollsUsed,
     totalSeams,
     zonePhotos,
   ])
+
+  function normalizeRollColorLabel(raw: string): string {
+    return raw.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "")
+  }
+
+  function addRollColorLabel(raw: string) {
+    const normalized = normalizeRollColorLabel(raw)
+    if (!normalized) return
+
+    setRollColorLabels((prev) => {
+      if (prev.includes(normalized)) return prev
+      return [...prev, normalized]
+    })
+    setRollColorInput("")
+  }
+
+  function removeRollColorLabel(label: string) {
+    setRollColorLabels((prev) => prev.filter((item) => item !== label))
+  }
+
+  function syncRollPlacementTotalsFromLabels() {
+    const total = rollColorLabels.length
+    setTotalRollsUsed(String(total))
+    setTotalSeams(String(Math.max(total - 1, 0)))
+  }
 
   function toggleStep(stepKey: ZoneStepKey) {
     if (!projectId || !zone) return
@@ -483,6 +524,8 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
           roll_length_fit: rollLengthFit || undefined,
           total_rolls_used: parsedRolls ?? undefined,
           total_seams: parsedSeams ?? undefined,
+          roll_color_labels: rollColorLabels,
+          roll_color_count: rollColorLabels.length,
           compaction_surface_firm: surfaceFirm,
           compaction_moisture_ok: moistureOk,
           compaction_double: doubleCompaction,
@@ -814,6 +857,91 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                                 className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
                               />
                             </label>
+                          </div>
+
+                          <div className="space-y-3 rounded-xl border border-neutral-700 bg-neutral-950 p-3">
+                            <p className="text-sm text-neutral-300">Roll Color Labels (optional)</p>
+                            <p className="text-xs text-neutral-500">
+                              Agrega etiquetas por rollo (A/B/C...) para llevar conteo y progreso real sin afectar el flujo actual.
+                            </p>
+                            <div className="grid gap-2 sm:grid-cols-4">
+                              {ROLL_COLOR_QUICK_LABELS.map((label) => {
+                                const active = rollColorLabels.includes(label)
+                                return (
+                                  <button
+                                    key={label}
+                                    type="button"
+                                    onClick={() => (active ? removeRollColorLabel(label) : addRollColorLabel(label))}
+                                    className={`rounded-lg border px-3 py-2 text-sm font-semibold ${
+                                      active
+                                        ? "border-cyan-400 bg-cyan-500/20 text-cyan-100"
+                                        : "border-neutral-700 bg-neutral-900 text-neutral-200 hover:border-cyan-500/60"
+                                    }`}
+                                  >
+                                    {label}
+                                  </button>
+                                )
+                              })}
+                            </div>
+
+                            <div className="flex flex-col gap-2 sm:flex-row">
+                              <input
+                                type="text"
+                                value={rollColorInput}
+                                onChange={(event) => setRollColorInput(event.target.value)}
+                                placeholder="Add label (ex: J)"
+                                className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => addRollColorLabel(rollColorInput)}
+                                className="rounded-xl border border-cyan-500 px-4 py-2 text-sm font-semibold text-cyan-300 hover:bg-cyan-500/10"
+                              >
+                                Add
+                              </button>
+                              <button
+                                type="button"
+                                onClick={syncRollPlacementTotalsFromLabels}
+                                disabled={rollColorLabels.length === 0}
+                                className="rounded-xl border border-neutral-600 px-4 py-2 text-sm font-semibold hover:bg-neutral-800 disabled:opacity-50"
+                              >
+                                Sync Totals
+                              </button>
+                            </div>
+
+                            {rollColorLabels.length > 0 ? (
+                              <div className="flex flex-wrap gap-2">
+                                {rollColorLabels.map((label) => (
+                                  <button
+                                    key={label}
+                                    type="button"
+                                    onClick={() => removeRollColorLabel(label)}
+                                    className="rounded-full border border-cyan-500/70 bg-cyan-500/10 px-3 py-1 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/20"
+                                  >
+                                    {label} ×
+                                  </button>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-xs text-neutral-500">Sin labels capturados.</p>
+                            )}
+
+                            <div className="space-y-1">
+                              <p className="text-xs text-neutral-400">
+                                Capturados: {rollColorLabels.length} rollos · Costuras sugeridas: {Math.max(rollColorLabels.length - 1, 0)}
+                              </p>
+                              {rollLabelProgress !== null ? (
+                                <>
+                                  <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-800">
+                                    <div
+                                      className="h-full rounded-full bg-cyan-500 transition-all"
+                                      style={{ width: `${rollLabelProgress}%` }}
+                                    />
+                                  </div>
+                                  <p className="text-xs text-cyan-200">Progreso vs Total Rolls: {rollLabelProgress}%</p>
+                                </>
+                              ) : null}
+                            </div>
                           </div>
 
                           <div className="grid gap-2 sm:grid-cols-3">

@@ -186,6 +186,22 @@ export default function RollInstallationPageClient({
     zone,
   ])
 
+  function resetForm() {
+    setStep(1)
+    setPhotos({ ...INITIAL_PHOTOS })
+    setZone("")
+    setFit("")
+    setTotalRollsUsed("")
+    setTotalSeams("")
+    setSurfaceFirm(true)
+    setMoistureOk(true)
+    setDoubleCompaction(false)
+    setCompactionMethod("")
+    setSummary(null)
+    setCaptureSessionId(createCaptureSessionId())
+    setDraftRecovered(false)
+  }
+
   async function handlePhotoChange(type: PhotoType, event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
     if (!file) return
@@ -241,11 +257,9 @@ export default function RollInstallationPageClient({
       const data = (await response.json()) as { summary?: RollInstallationSummary | null; error?: string }
       if (!response.ok) throw new Error(data?.error ?? "Save failed")
 
-      setSuccess("Roll installation saved.")
-      setSummary(data.summary ?? null)
-      setCaptureSessionId(createCaptureSessionId())
+      resetForm()
+      setSuccess("Roll installation saved. Form reset for a new capture.")
       if (draftKey) clearCaptureDraft(draftKey)
-      setStep(3)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed")
     } finally {

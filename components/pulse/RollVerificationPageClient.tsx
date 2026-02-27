@@ -87,6 +87,16 @@ export default function RollVerificationPageClient({
     })
   }, [colorLetter, draftKey, lengthFt, notes, photo, status, zone])
 
+  function resetForm() {
+    setZone("")
+    setLengthFt("")
+    setColorLetter("")
+    setStatus("")
+    setNotes("")
+    setPhoto(null)
+    setDraftRecovered(false)
+  }
+
   async function handlePhotoChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
     if (!file) return
@@ -134,7 +144,8 @@ export default function RollVerificationPageClient({
       const data = await response.json()
       if (!response.ok) throw new Error(data?.error ?? "Save failed")
 
-      setSuccess("Roll verification saved.")
+      resetForm()
+      setSuccess("Roll verification saved. Form reset for a new capture.")
       if (draftKey) clearCaptureDraft(draftKey)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed")

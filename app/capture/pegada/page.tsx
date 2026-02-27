@@ -465,15 +465,13 @@ function PegadaPageContent() {
       return false
     }
 
-    setCaptureSessionId(createCaptureSessionId())
-
     setError("")
     if (returnToHub && projectId) {
       window.location.href = backToZoneOrHub
       return true
     }
 
-    setStep(3)
+    resetForm({ keepSaveMessage: true })
     return true
   }
 
@@ -482,7 +480,8 @@ function PegadaPageContent() {
     await savePegada(false)
   }
 
-  function resetForm() {
+  function resetForm(options?: { keepSaveMessage?: boolean }) {
+    const keepSaveMessage = options?.keepSaveMessage ?? false
     if (draftKey) clearCaptureDraft(draftKey)
     setPrepPhoto(emptyPhoto())
     setAntesPhoto(emptyPhoto())
@@ -496,10 +495,12 @@ function PegadaPageContent() {
     setClima([])
     setCondicion("")
     setObservaciones("")
-    setSaveMessage("")
+    setCaptureSessionId(createCaptureSessionId())
+    setSaveMessage(keepSaveMessage ? "Guardado en nube. Formulario reiniciado para nueva captura." : "")
     setSummary(null)
     setError("")
     setStep(1)
+    setDraftRecovered(false)
   }
 
   if (!projectId) {
@@ -817,7 +818,7 @@ function PegadaPageContent() {
 
             <button
               type="button"
-              onClick={resetForm}
+              onClick={() => resetForm()}
               className="w-full rounded-xl bg-neutral-100 px-4 py-4 text-lg font-semibold text-neutral-950 hover:bg-white"
             >
               Nueva captura
