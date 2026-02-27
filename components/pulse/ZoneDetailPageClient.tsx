@@ -130,7 +130,6 @@ const SPORT_CRITICAL_OPTIONS: Record<string, string[]> = {
   ],
 }
 const LINEAR_OPTION = "Unión lineal"
-const ROLL_COLOR_QUICK_LABELS = ["A", "B", "C", "D", "E", "F", "G", "H"]
 
 export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneDetailPageClientProps) {
   const project = useMemo(() => (projectId ? getProjectById(projectId) : null), [projectId])
@@ -862,34 +861,15 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                           <div className="space-y-3 rounded-xl border border-neutral-700 bg-neutral-950 p-3">
                             <p className="text-sm text-neutral-300">Roll Color Labels (optional)</p>
                             <p className="text-xs text-neutral-500">
-                              Agrega etiquetas por rollo (A/B/C...) para llevar conteo y progreso real sin afectar el flujo actual.
+                              Agrega etiquetas manuales por rollo (A/B/C... o el código que uses) para llevar conteo y progreso real.
                             </p>
-                            <div className="grid gap-2 sm:grid-cols-4">
-                              {ROLL_COLOR_QUICK_LABELS.map((label) => {
-                                const active = rollColorLabels.includes(label)
-                                return (
-                                  <button
-                                    key={label}
-                                    type="button"
-                                    onClick={() => (active ? removeRollColorLabel(label) : addRollColorLabel(label))}
-                                    className={`rounded-lg border px-3 py-2 text-sm font-semibold ${
-                                      active
-                                        ? "border-cyan-400 bg-cyan-500/20 text-cyan-100"
-                                        : "border-neutral-700 bg-neutral-900 text-neutral-200 hover:border-cyan-500/60"
-                                    }`}
-                                  >
-                                    {label}
-                                  </button>
-                                )
-                              })}
-                            </div>
 
                             <div className="flex flex-col gap-2 sm:flex-row">
                               <input
                                 type="text"
                                 value={rollColorInput}
                                 onChange={(event) => setRollColorInput(event.target.value)}
-                                placeholder="Add label (ex: J)"
+                                placeholder="Add manual label (ex: A, WT-3)"
                                 className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
                               />
                               <button
