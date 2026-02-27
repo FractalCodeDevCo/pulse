@@ -11,7 +11,7 @@ export default function HomePage() {
     >
       <section className="flex flex-wrap gap-3">
         <Link
-          href="/projects?flow=load"
+          href="/pulse-access"
           className="rounded-lg bg-cyan-600 px-4 py-2.5 text-sm font-semibold text-slate-100 hover:bg-cyan-700"
         >
           See Field Workflow
@@ -69,7 +69,7 @@ export default function HomePage() {
         <p className="mt-2 max-w-2xl text-sm text-cyan-100/90">Start with live zone capture in the field and build your own decision-grade operational baseline.</p>
         <div className="mt-5 flex flex-wrap gap-3">
           <Link
-            href="/projects?flow=load"
+            href="/pulse-access"
             className="inline-flex rounded-lg bg-cyan-600 px-4 py-2.5 text-sm font-semibold text-slate-100 hover:bg-cyan-700"
           >
             See Field Workflow

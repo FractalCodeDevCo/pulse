@@ -49,7 +49,7 @@ export default function SiteShell({ title, subtitle, children }: SiteShellProps)
               </Link>
             ))}
             <Link
-              href="/projects?flow=load"
+              href="/pulse-access"
               className="rounded-lg border border-cyan-500/60 px-3 py-1.5 text-sm font-semibold text-cyan-200 hover:bg-cyan-500/10"
             >
               Open Pulse
@@ -71,7 +71,7 @@ export default function SiteShell({ title, subtitle, children }: SiteShellProps)
                 </Link>
               ))}
               <Link
-                href="/projects?flow=load"
+                href="/pulse-access"
                 className="mt-2 rounded-md border border-cyan-500/70 px-3 py-2 text-sm font-semibold text-cyan-200 hover:bg-cyan-500/10"
                 onClick={() => setMenuOpen(false)}
               >
