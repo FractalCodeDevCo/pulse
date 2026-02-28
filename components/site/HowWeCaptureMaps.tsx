@@ -21,27 +21,27 @@ const SPORT_ZONES: Record<Sport, ZoneInfo[]> = {
     {
       id: "infield",
       title: "Infield",
-      detail: "High-traffic arc where seam tolerance and adhesive consistency define early quality.",
+      detail: "Primary high-traffic playing wedge where seam tolerance and adhesive control are most sensitive.",
     },
     {
       id: "outfield",
       title: "Outfield",
-      detail: "Largest continuous install surface. Controls long-run alignment, pairing, and spread rhythm.",
+      detail: "Main fair-territory body for long-run alignment, roll continuity, and production cadence.",
     },
     {
       id: "foul-territory",
       title: "Foul Territory",
-      detail: "Edge execution zone with frequent trims and corrections that affect labor efficiency.",
+      detail: "Side bands outside foul lines used to track trims, corrections, and edge efficiency.",
     },
     {
       id: "warning-track",
       title: "Warning Track",
-      detail: "Perimeter transition strip where geometry changes can create rework if not normalized.",
+      detail: "Perimeter arc strip near the fence where geometry transitions can trigger rework if unstable.",
     },
     {
       id: "bullpen",
       title: "Bullpen",
-      detail: "Separate practice block with its own cut logic and material tracking requirements.",
+      detail: "Auxiliary practice lane with separate cut logic and roll traceability.",
     },
   ],
   football: [
@@ -78,24 +78,24 @@ const SPORT_ZONES: Record<Sport, ZoneInfo[]> = {
   ],
   soccer: [
     {
-      id: "playing-surface",
-      title: "Playing Surface",
-      detail: "Main field rectangle where production rate and seam straightness are measured.",
+      id: "gaa",
+      title: "GAA",
+      detail: "Left attacking block starting at the large penalty area geometry.",
     },
     {
-      id: "goal-area-a",
-      title: "Goal Area A",
-      detail: "Detail-heavy goal-mouth zone with tighter tolerance and frequent correction passes.",
+      id: "pz",
+      title: "PZ",
+      detail: "Central playing zone used for main production rhythm and seam straightness checks.",
     },
     {
-      id: "goal-area-b",
-      title: "Goal Area B",
-      detail: "Mirrored goal-mouth zone used to compare execution consistency across both ends.",
+      id: "gao",
+      title: "GAO",
+      detail: "Right attacking block starting at the large penalty area geometry.",
     },
     {
       id: "perimeter-sideline",
       title: "Perimeter Sideline",
-      detail: "Outer sideline band for boundary lock, trimming control, and dimensional compliance.",
+      detail: "Outer sideline boundary for dimensional lock, corner trimming, and line integrity.",
     },
   ],
 }
@@ -159,15 +159,10 @@ export default function HowWeCaptureMaps() {
 
             {sport === "beisbol" ? (
               <>
-                <path
-                  d="M110 430 L110 170 Q110 120 160 120 L740 120 Q790 120 790 170 L790 430 Z"
-                  fill="rgba(10,22,38,0.8)"
-                  stroke={STROKE}
-                  strokeWidth="1.2"
-                />
+                <path d="M210 430 L210 70 A360 360 0 0 1 570 430 Z" fill="rgba(10,22,38,0.82)" stroke={STROKE} strokeWidth="1.2" />
 
                 <path
-                  d="M110 430 L110 170 Q110 120 160 120 L740 120 Q790 120 790 170 L790 430 Z M450 420 L180 150 A380 380 0 0 1 720 150 Z"
+                  d="M210 430 L210 70 A360 360 0 0 1 570 430 Z M210 430 L210 130 A300 300 0 0 1 510 430 Z"
                   fill={getZoneFill(activeZone.id, "foul-territory")}
                   fillRule="evenodd"
                   stroke={STROKE}
@@ -177,8 +172,9 @@ export default function HowWeCaptureMaps() {
                 />
 
                 <path
-                  d="M210 180 L180 150 A380 380 0 0 1 720 150 L690 180 A340 340 0 0 0 210 180 Z"
+                  d="M210 430 L210 130 A300 300 0 0 1 510 430 Z M210 430 L210 175 A255 255 0 0 1 465 430 Z"
                   fill={getZoneFill(activeZone.id, "warning-track")}
+                  fillRule="evenodd"
                   stroke={STROKE}
                   strokeWidth="1"
                   style={{ transition: "fill 180ms ease" }}
@@ -186,8 +182,9 @@ export default function HowWeCaptureMaps() {
                 />
 
                 <path
-                  d="M365 335 L224 194 A320 320 0 0 1 676 194 L535 335 A120 120 0 0 0 365 335 Z"
+                  d="M210 430 L210 175 A255 255 0 0 1 465 430 Z M210 430 L210 285 A145 145 0 0 1 355 430 Z"
                   fill={getZoneFill(activeZone.id, "outfield")}
+                  fillRule="evenodd"
                   stroke={STROKE}
                   strokeWidth="1"
                   style={{ transition: "fill 180ms ease" }}
@@ -195,7 +192,7 @@ export default function HowWeCaptureMaps() {
                 />
 
                 <path
-                  d="M365 335 A120 120 0 0 1 535 335 L450 420 Z"
+                  d="M210 430 L210 285 A145 145 0 0 1 355 430 Z"
                   fill={getZoneFill(activeZone.id, "infield")}
                   stroke={STROKE}
                   strokeWidth="1"
@@ -203,12 +200,8 @@ export default function HowWeCaptureMaps() {
                   onMouseEnter={() => setActiveZoneId("infield")}
                 />
 
-                <rect
-                  x="728"
-                  y="246"
-                  width="70"
-                  height="98"
-                  rx="6"
+                <path
+                  d="M594 294 C626 278 669 278 701 294 C713 305 713 332 701 343 C669 359 626 359 594 343 C582 332 582 305 594 294 Z"
                   fill={getZoneFill(activeZone.id, "bullpen")}
                   stroke={STROKE}
                   strokeWidth="1"
@@ -216,10 +209,12 @@ export default function HowWeCaptureMaps() {
                   onMouseEnter={() => setActiveZoneId("bullpen")}
                 />
 
-                <path d="M450 420 L180 150" stroke={STROKE} strokeWidth="1.2" strokeDasharray="4 6" />
-                <path d="M450 420 L720 150" stroke={STROKE} strokeWidth="1.2" strokeDasharray="4 6" />
-                <circle cx="450" cy="420" r="8" fill="none" stroke={STROKE} strokeWidth="1" />
-                <circle cx="450" cy="340" r="4" fill="none" stroke={STROKE} strokeWidth="1" />
+                <path d="M210 430 L210 130" stroke={STROKE} strokeWidth="1.2" strokeDasharray="4 6" />
+                <path d="M210 430 L510 430" stroke={STROKE} strokeWidth="1.2" strokeDasharray="4 6" />
+                <path d="M210 430 L280 360" stroke={STROKE} strokeWidth="1" />
+                <path d="M280 360 L350 290" stroke={STROKE} strokeWidth="1" />
+                <circle cx="278" cy="360" r="5" fill="none" stroke={STROKE} strokeWidth="1" />
+                <circle cx="320" cy="320" r="4" fill="none" stroke={STROKE} strokeWidth="1" />
               </>
             ) : null}
 
@@ -330,45 +325,53 @@ export default function HowWeCaptureMaps() {
                 />
 
                 <rect
-                  x="158"
+                  x="262"
                   y="78"
-                  width="584"
+                  width="376"
                   height="364"
-                  fill={getZoneFill(activeZone.id, "playing-surface")}
+                  fill={getZoneFill(activeZone.id, "pz")}
                   stroke={STROKE}
                   strokeWidth="1"
                   style={{ transition: "fill 180ms ease" }}
-                  onMouseEnter={() => setActiveZoneId("playing-surface")}
+                  onMouseEnter={() => setActiveZoneId("pz")}
                 />
 
                 <rect
                   x="158"
-                  y="188"
-                  width="52"
-                  height="144"
-                  fill={getZoneFill(activeZone.id, "goal-area-a")}
+                  y="140"
+                  width="104"
+                  height="240"
+                  fill={getZoneFill(activeZone.id, "gaa")}
                   stroke={STROKE}
                   strokeWidth="1"
                   style={{ transition: "fill 180ms ease" }}
-                  onMouseEnter={() => setActiveZoneId("goal-area-a")}
+                  onMouseEnter={() => setActiveZoneId("gaa")}
                 />
 
                 <rect
-                  x="690"
-                  y="188"
-                  width="52"
-                  height="144"
-                  fill={getZoneFill(activeZone.id, "goal-area-b")}
+                  x="638"
+                  y="140"
+                  width="104"
+                  height="240"
+                  fill={getZoneFill(activeZone.id, "gao")}
                   stroke={STROKE}
                   strokeWidth="1"
                   style={{ transition: "fill 180ms ease" }}
-                  onMouseEnter={() => setActiveZoneId("goal-area-b")}
+                  onMouseEnter={() => setActiveZoneId("gao")}
                 />
+
+                <rect x="158" y="188" width="52" height="144" fill="none" stroke={STROKE} strokeWidth="1" />
+                <rect x="690" y="188" width="52" height="144" fill="none" stroke={STROKE} strokeWidth="1" />
 
                 <line x1="450" y1="78" x2="450" y2="442" stroke={STROKE} strokeWidth="1" />
                 <circle cx="450" cy="260" r="56" fill="none" stroke={STROKE} strokeWidth="1" />
-                <rect x="158" y="140" width="104" height="240" fill="none" stroke={STROKE} strokeWidth="1" />
-                <rect x="638" y="140" width="104" height="240" fill="none" stroke={STROKE} strokeWidth="1" />
+                <path d="M262 204 A56 56 0 0 1 262 316" fill="none" stroke={STROKE} strokeWidth="1" />
+                <path d="M638 204 A56 56 0 0 0 638 316" fill="none" stroke={STROKE} strokeWidth="1" />
+
+                <path d="M172 78 A14 14 0 0 0 158 92" fill="none" stroke={STROKE} strokeWidth="1" />
+                <path d="M728 78 A14 14 0 0 1 742 92" fill="none" stroke={STROKE} strokeWidth="1" />
+                <path d="M172 442 A14 14 0 0 1 158 428" fill="none" stroke={STROKE} strokeWidth="1" />
+                <path d="M728 442 A14 14 0 0 0 742 428" fill="none" stroke={STROKE} strokeWidth="1" />
               </>
             ) : null}
           </svg>

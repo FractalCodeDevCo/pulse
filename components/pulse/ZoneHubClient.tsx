@@ -86,6 +86,12 @@ export default function ZoneHubClient({ projectId }: ZoneHubClientProps) {
 
         <div className="flex flex-col gap-3 sm:flex-row">
           <Link
+            href={`/projects/admin?edit=${encodeURIComponent(project.id)}`}
+            className="w-full rounded-xl border border-cyan-500 px-4 py-3 text-center font-semibold text-cyan-300 hover:bg-cyan-500/10"
+          >
+            Editar setup base
+          </Link>
+          <Link
             href="/projects?flow=load"
             className="w-full rounded-xl border border-neutral-600 px-4 py-3 text-center font-semibold hover:bg-neutral-800"
           >

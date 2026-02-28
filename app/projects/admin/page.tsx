@@ -81,8 +81,17 @@ function syncTargetsForSport(fieldType: FieldType, current: ZoneTarget[]): ZoneT
   })
 }
 
+function toSetupTargets(project: LocalProject): ZoneTarget[] {
+  const current = project.setup?.zoneTargets ?? buildEmptyZoneTargets(project.fieldType)
+  return syncTargetsForSport(project.fieldType, current)
+}
+
 export default function ProjectsAdminPage() {
+  const [requestedEditId, setRequestedEditId] = useState("")
   const [projects, setProjects] = useState<LocalProject[]>(() => readProjectsFromStorage())
+  const [editingProjectId, setEditingProjectId] = useState<string>(requestedEditId)
+  const [loadedProjectId, setLoadedProjectId] = useState<string>("")
+
   const [name, setName] = useState("")
   const [code, setCode] = useState("")
   const [fieldType, setFieldType] = useState<FieldType>("beisbol")
@@ -98,6 +107,17 @@ export default function ProjectsAdminPage() {
   const [message, setMessage] = useState("")
   const [error, setError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const editingProject = useMemo(
+    () => projects.find((project) => project.id === editingProjectId) ?? null,
+    [editingProjectId, projects],
+  )
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const params = new URLSearchParams(window.location.search)
+    setRequestedEditId(params.get("edit")?.trim() ?? "")
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -126,17 +146,56 @@ export default function ProjectsAdminPage() {
   }, [])
 
   useEffect(() => {
+    if (!requestedEditId) return
+    setEditingProjectId(requestedEditId)
+    setLoadedProjectId("")
+  }, [requestedEditId])
+
+  useEffect(() => {
     setZoneTargets((prev) => syncTargetsForSport(fieldType, prev))
   }, [fieldType])
 
+  useEffect(() => {
+    if (!editingProjectId) return
+    if (loadedProjectId === editingProjectId) return
+
+    const project = projects.find((item) => item.id === editingProjectId)
+    if (!project) return
+
+    const setup = project.setup
+    setName(project.name)
+    setCode(project.id)
+    setFieldType(project.fieldType)
+    setTotalSqft(setup?.totalSqft != null ? String(setup.totalSqft) : "")
+    setStartDate(setup?.startDate ?? "")
+    setCrewName(setup?.crewName ?? "")
+    setNotes(setup?.notes ?? "")
+    setZoneTargets(toSetupTargets(project))
+    setUploadedPlanUrls(setup?.planFiles ?? [])
+    setPlanFiles([])
+    setLoadedProjectId(editingProjectId)
+  }, [editingProjectId, loadedProjectId, projects])
+
   const previewSetupCompleted = useMemo(() => {
-    return inferSetupCompleted(
-      toNumberOrNull(totalSqft),
-      startDate || null,
-      crewName,
-      zoneTargets,
-    )
+    return inferSetupCompleted(toNumberOrNull(totalSqft), startDate || null, crewName, zoneTargets)
   }, [crewName, startDate, totalSqft, zoneTargets])
+
+  function resetFormForNewProject() {
+    setEditingProjectId("")
+    setLoadedProjectId("")
+    setName("")
+    setCode("")
+    setFieldType("beisbol")
+    setTotalSqft("")
+    setStartDate("")
+    setCrewName("")
+    setNotes("")
+    setZoneTargets(buildEmptyZoneTargets("beisbol"))
+    setPlanFiles([])
+    setUploadedPlanUrls([])
+    setError("")
+    setMessage("")
+  }
 
   function handleFieldTypeChange(next: FieldType) {
     setFieldType(next)
@@ -165,6 +224,10 @@ export default function ProjectsAdminPage() {
     setPlanFiles((current) => current.filter((_, i) => i !== index))
   }
 
+  function removeUploadedPlan(index: number) {
+    setUploadedPlanUrls((current) => current.filter((_, i) => i !== index))
+  }
+
   async function uploadPlans(projectId: string): Promise<UploadedPlanFile[]> {
     if (planFiles.length === 0) return []
 
@@ -182,8 +245,7 @@ export default function ProjectsAdminPage() {
     const data = (await response.json()) as { error?: string; files?: UploadedPlanFile[] }
     if (!response.ok) throw new Error(data.error ?? "No se pudieron subir los planos.")
 
-    const uploaded = (data.files ?? []).filter((item) => Boolean(item.url))
-    return uploaded
+    return (data.files ?? []).filter((item) => Boolean(item.url))
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -191,33 +253,45 @@ export default function ProjectsAdminPage() {
     setError("")
     setMessage("")
 
-    if (!name.trim()) {
+    const isEditing = Boolean(editingProjectId)
+    const existing = isEditing ? projects.find((project) => project.id === editingProjectId) ?? null : null
+
+    const projectName = name.trim() || existing?.name || ""
+    if (!projectName) {
       setError("Nombre del proyecto es requerido.")
       return
     }
 
-    const projectId = slugifyProjectName(code.trim() || name.trim())
+    const projectId = existing?.id ?? slugifyProjectName(code.trim() || projectName)
     if (!projectId) {
       setError("Código inválido.")
       return
     }
 
-    const nextProject = createProject({
-      id: projectId,
-      name: name.trim(),
-      fieldType,
-    })
+    const nextProject =
+      existing ??
+      createProject({
+        id: projectId,
+        name: projectName,
+        fieldType,
+      })
 
-    const nextProjects = [nextProject, ...projects.filter((project) => project.id !== nextProject.id)]
+    const hydratedProject: LocalProject = {
+      ...nextProject,
+      name: projectName,
+      fieldType,
+    }
+
+    const nextProjects = [hydratedProject, ...projects.filter((project) => project.id !== hydratedProject.id)]
     setProjects(nextProjects)
     saveProjects(nextProjects)
-    saveProjectFieldType(nextProject.id, nextProject.fieldType)
+    saveProjectFieldType(hydratedProject.id, hydratedProject.fieldType)
 
     setIsSubmitting(true)
 
     try {
       const uploadedPlans = await uploadPlans(projectId)
-      const allPlanUrls = [...uploadedPlanUrls, ...uploadedPlans.map((item) => item.url)]
+      const allPlanUrls = [...new Set([...uploadedPlanUrls, ...uploadedPlans.map((item) => item.url)])]
       setUploadedPlanUrls(allPlanUrls)
 
       let autoZoneTargets = zoneTargets
@@ -247,9 +321,9 @@ export default function ProjectsAdminPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          id: nextProject.id,
-          name: nextProject.name,
-          fieldType: nextProject.fieldType,
+          id: hydratedProject.id,
+          name: projectName,
+          fieldType,
           setup: {
             totalSqft: toNumberOrNull(totalSqft),
             startDate: startDate || null,
@@ -257,12 +331,7 @@ export default function ProjectsAdminPage() {
             notes,
             zoneTargets: autoZoneTargets,
             planFiles: allPlanUrls,
-            setupCompleted: inferSetupCompleted(
-              toNumberOrNull(totalSqft),
-              startDate || null,
-              crewName,
-              autoZoneTargets,
-            ),
+            setupCompleted: inferSetupCompleted(toNumberOrNull(totalSqft), startDate || null, crewName, autoZoneTargets),
           },
         }),
       })
@@ -275,8 +344,14 @@ export default function ProjectsAdminPage() {
         setProjects((current) => mergeProjects(current, [savedProject]))
       }
 
-      setMessage("Proyecto + setup base guardados. Ya aparece en Nuevo/Cargar proyecto.")
+      setLoadedProjectId(hydratedProject.id)
+      setEditingProjectId(hydratedProject.id)
       setPlanFiles([])
+      setMessage(
+        isEditing
+          ? "Setup actualizado. Puedes editar targets/planos a mitad del proyecto cuando quieras."
+          : "Proyecto + setup base guardados. Ya aparece en Nuevo/Cargar proyecto.",
+      )
     } catch (submitError) {
       const text = submitError instanceof Error ? submitError.message : "No se pudo guardar en nube"
       setMessage(`Guardado local OK. Error nube: ${text}`)
@@ -302,6 +377,48 @@ export default function ProjectsAdminPage() {
           dateLabel={new Date().toLocaleDateString("es-MX")}
         />
 
+        <section className="space-y-3 rounded-2xl border border-cyan-900/70 bg-cyan-950/20 p-4">
+          <h2 className="text-lg font-semibold text-cyan-100">Carga de plano y edición de setup</h2>
+          <p className="text-sm text-cyan-50/90">
+            Aquí se carga el plano inicial (normalmente una sola vez por PM/Admin) y aquí mismo puedes editar valores a mitad de
+            proyecto sin perder el flujo de captura.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+            <label className="space-y-2">
+              <span className="text-xs text-cyan-100">Proyecto a editar (opcional)</span>
+              <select
+                value={editingProjectId}
+                onChange={(event) => {
+                  const nextId = event.target.value
+                  if (!nextId) {
+                    resetFormForNewProject()
+                    return
+                  }
+                  setEditingProjectId(nextId)
+                  setLoadedProjectId("")
+                  setMessage("")
+                  setError("")
+                }}
+                className="w-full rounded-xl border border-cyan-800/70 bg-neutral-950 px-3 py-3"
+              >
+                <option value="">Crear nuevo proyecto</option>
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name} · {project.id}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              onClick={resetFormForNewProject}
+              className="self-end rounded-xl border border-cyan-700/80 px-4 py-3 text-sm font-semibold text-cyan-100 hover:bg-cyan-600/10"
+            >
+              Nuevo limpio
+            </button>
+          </div>
+        </section>
+
         <form onSubmit={handleSubmit} className="space-y-5 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
           <h2 className="text-xl font-semibold">1) Proyecto</h2>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -316,13 +433,14 @@ export default function ProjectsAdminPage() {
               />
             </label>
             <label className="space-y-2">
-              <span className="text-sm text-neutral-300">Código (opcional)</span>
+              <span className="text-sm text-neutral-300">Código {editingProject ? "(bloqueado en edición)" : "(opcional)"}</span>
               <input
                 type="text"
                 value={code}
                 onChange={(event) => setCode(event.target.value)}
+                disabled={Boolean(editingProject)}
                 placeholder="proyecto-navidad"
-                className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3"
+                className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3 disabled:cursor-not-allowed disabled:opacity-60"
               />
             </label>
           </div>
@@ -338,9 +456,7 @@ export default function ProjectsAdminPage() {
                     type="button"
                     onClick={() => handleFieldTypeChange(item)}
                     className={`rounded-xl px-3 py-3 text-sm font-semibold ${
-                      active
-                        ? "bg-emerald-600 text-white"
-                        : "border border-neutral-700 bg-neutral-950 hover:bg-neutral-800"
+                      active ? "bg-emerald-600 text-white" : "border border-neutral-700 bg-neutral-950 hover:bg-neutral-800"
                     }`}
                   >
                     {FIELD_TYPE_LABELS[item]}
@@ -444,7 +560,10 @@ export default function ProjectsAdminPage() {
             ))}
           </div>
 
-          <h2 className="pt-2 text-xl font-semibold">4) Planos</h2>
+          <h2 className="pt-2 text-xl font-semibold">4) Planos (PM/Admin)</h2>
+          <p className="text-sm text-neutral-400">
+            Cárgalos aquí al inicio del proyecto. También puedes agregar o quitar planos después en modo edición.
+          </p>
           <label className="block space-y-2">
             <span className="text-sm text-neutral-300">Agregar planos (PDF/Imagen)</span>
             <input
@@ -455,6 +574,26 @@ export default function ProjectsAdminPage() {
               className="block w-full rounded-xl border border-neutral-700 bg-neutral-950 p-2 text-sm"
             />
           </label>
+
+          {uploadedPlanUrls.length > 0 ? (
+            <div className="space-y-2 rounded-xl border border-cyan-900/60 bg-cyan-950/20 p-3">
+              <p className="text-xs uppercase tracking-wide text-cyan-100">Planos ya guardados en el proyecto</p>
+              {uploadedPlanUrls.map((url, index) => (
+                <div key={`${url}-${index}`} className="flex items-center justify-between gap-2 text-sm">
+                  <a href={url} target="_blank" rel="noreferrer" className="truncate text-cyan-200 underline">
+                    {url.split("/").pop() ?? `Plano ${index + 1}`}
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => removeUploadedPlan(index)}
+                    className="rounded-lg border border-cyan-700/80 px-2 py-1 text-cyan-100 hover:bg-cyan-700/20"
+                  >
+                    Quitar
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null}
 
           {planFiles.length > 0 ? (
             <div className="space-y-2 rounded-xl border border-neutral-700 bg-neutral-950 p-3">
@@ -488,7 +627,7 @@ export default function ProjectsAdminPage() {
             disabled={isSubmitting}
             className="w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold hover:bg-blue-700 disabled:opacity-50"
           >
-            Guardar proyecto + setup base
+            {editingProject ? "Actualizar setup base" : "Guardar proyecto + setup base"}
           </button>
 
           {error ? <p className="text-sm text-red-300">{error}</p> : null}
@@ -500,13 +639,23 @@ export default function ProjectsAdminPage() {
           <div className="space-y-2">
             {projects.map((project) => (
               <div key={project.id} className="rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-2">
-                <p className="font-semibold">{project.name}</p>
-                <p className="text-xs text-neutral-400">
-                  {project.id} · {FIELD_TYPE_LABELS[project.fieldType]} · Alta: {formatDate(project.createdAt)}
-                </p>
-                <p className={`text-xs ${project.setupCompleted ? "text-emerald-300" : "text-amber-300"}`}>
-                  Setup: {project.setupCompleted ? "Completo" : "Incompleto"}
-                </p>
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="font-semibold">{project.name}</p>
+                    <p className="text-xs text-neutral-400">
+                      {project.id} · {FIELD_TYPE_LABELS[project.fieldType]} · Alta: {formatDate(project.createdAt)}
+                    </p>
+                    <p className={`text-xs ${project.setupCompleted ? "text-emerald-300" : "text-amber-300"}`}>
+                      Setup: {project.setupCompleted ? "Completo" : "Incompleto"}
+                    </p>
+                  </div>
+                  <Link
+                    href={`/projects/admin?edit=${encodeURIComponent(project.id)}`}
+                    className="rounded-lg border border-cyan-700/80 px-3 py-2 text-xs font-semibold text-cyan-100 hover:bg-cyan-700/20"
+                  >
+                    Editar setup
+                  </Link>
+                </div>
               </div>
             ))}
           </div>
