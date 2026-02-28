@@ -108,6 +108,23 @@ function summarizePlannedSqft(rows: ZoneTarget[]): number {
   return rows.reduce((sum, row) => sum + (row.plannedSqft ?? 0), 0)
 }
 
+function countAutofilledCells(before: ZoneTarget[], after: ZoneTarget[]): number {
+  const afterByZone = new Map(after.map((row) => [row.zone, row]))
+  let count = 0
+
+  for (const prev of before) {
+    const next = afterByZone.get(prev.zone)
+    if (!next) continue
+
+    if (prev.plannedSqft == null && next.plannedSqft != null) count += 1
+    if (prev.plannedRolls == null && next.plannedRolls != null) count += 1
+    if (prev.plannedAdhesiveUnits == null && next.plannedAdhesiveUnits != null) count += 1
+    if (prev.plannedSeamFt == null && next.plannedSeamFt != null) count += 1
+  }
+
+  return count
+}
+
 export default function ProjectsAdminPage() {
   const [requestedEditId, setRequestedEditId] = useState("")
   const [projects, setProjects] = useState<LocalProject[]>(() => readProjectsFromStorage())
@@ -127,6 +144,12 @@ export default function ProjectsAdminPage() {
   const [uploadedPlanUrls, setUploadedPlanUrls] = useState<string[]>([])
   const [planAnalysis, setPlanAnalysis] = useState<PlanAnalysisResult | null>(null)
   const [isAnalyzingPlans, setIsAnalyzingPlans] = useState(false)
+  const [lastAutofill, setLastAutofill] = useState<{
+    updatedCells: number
+    analyzedAt: string
+    uniqueRolls: number
+    rollSegments: number
+  } | null>(null)
 
   const [message, setMessage] = useState("")
   const [error, setError] = useState("")
@@ -197,6 +220,7 @@ export default function ProjectsAdminPage() {
     setZoneTargets(toSetupTargets(project))
     setUploadedPlanUrls(setup?.planFiles ?? [])
     setPlanAnalysis(readPlanAnalysisCache(project.id))
+    setLastAutofill(null)
     setPlanFiles([])
     setLoadedProjectId(editingProjectId)
   }, [editingProjectId, loadedProjectId, projects])
@@ -220,6 +244,7 @@ export default function ProjectsAdminPage() {
     setUploadedPlanUrls([])
     setPlanAnalysis(null)
     setIsAnalyzingPlans(false)
+    setLastAutofill(null)
     setError("")
     setMessage("")
   }
@@ -279,15 +304,22 @@ export default function ProjectsAdminPage() {
     projectId: string,
     refs: PlanFileRef[],
     baseTargets: ZoneTarget[],
-  ): Promise<{ analysis: PlanAnalysisResult | null; suggestedTargets: ZoneTarget[] }> {
-    if (refs.length === 0) return { analysis: null, suggestedTargets: baseTargets }
+  ): Promise<{ analysis: PlanAnalysisResult | null; suggestedTargets: ZoneTarget[]; updatedCells: number }> {
+    if (refs.length === 0) return { analysis: null, suggestedTargets: baseTargets, updatedCells: 0 }
 
     setIsAnalyzingPlans(true)
     try {
       const analysis = await analyzePlanScaffold(projectId, refs)
       const suggestedTargets = suggestZoneTargetsFromPlanAnalysis(fieldType, baseTargets, analysis)
+      const updatedCells = countAutofilledCells(baseTargets, suggestedTargets)
       setPlanAnalysis(analysis)
       setZoneTargets(suggestedTargets)
+      setLastAutofill({
+        updatedCells,
+        analyzedAt: new Date().toISOString(),
+        uniqueRolls: analysis.stats.uniqueRollLabels,
+        rollSegments: analysis.stats.rollSegments,
+      })
       savePlanAnalysisCache(projectId, analysis)
 
       const currentTotalSqft = toNumberOrNull(totalSqft)
@@ -296,9 +328,9 @@ export default function ProjectsAdminPage() {
         setTotalSqft(String(suggestedTotalSqft))
       }
 
-      return { analysis, suggestedTargets }
+      return { analysis, suggestedTargets, updatedCells }
     } catch {
-      return { analysis: null, suggestedTargets: baseTargets }
+      return { analysis: null, suggestedTargets: baseTargets, updatedCells: 0 }
     } finally {
       setIsAnalyzingPlans(false)
     }
@@ -325,7 +357,7 @@ export default function ProjectsAdminPage() {
     }
 
     setMessage(
-      `Análisis actualizado: ${result.analysis.stats.uniqueRollLabels} rollos, ${result.analysis.stats.rollSegments} segmentos, CHOP ${result.analysis.stats.choppedSegments}, SPLIT ${result.analysis.stats.splitSegments}.`,
+      `Análisis actualizado: ${result.analysis.stats.uniqueRollLabels} rollos, ${result.analysis.stats.rollSegments} segmentos, CHOP ${result.analysis.stats.choppedSegments}, SPLIT ${result.analysis.stats.splitSegments}. Autofill en ${result.updatedCells} campos.`,
     )
   }
 
@@ -382,7 +414,7 @@ export default function ProjectsAdminPage() {
         const result = await analyzeAndApplyPlanData(projectId, refs, zoneTargets)
         autoZoneTargets = result.suggestedTargets
         if (result.analysis) {
-          analysisSummary = `IA: ${result.analysis.stats.uniqueRollLabels} rollos, CHOP ${result.analysis.stats.choppedSegments}, SPLIT ${result.analysis.stats.splitSegments}.`
+          analysisSummary = `IA: ${result.analysis.stats.uniqueRollLabels} rollos, CHOP ${result.analysis.stats.choppedSegments}, SPLIT ${result.analysis.stats.splitSegments}, Autofill ${result.updatedCells} campos.`
         }
       }
 
@@ -579,6 +611,16 @@ export default function ProjectsAdminPage() {
 
           <h2 className="pt-2 text-xl font-semibold">3) Targets por zona</h2>
           <p className="text-sm text-neutral-400">Sin estos targets no hay comparación real Plan vs Real.</p>
+          {lastAutofill ? (
+            <p className="rounded-lg border border-cyan-800/70 bg-cyan-950/20 px-3 py-2 text-xs text-cyan-100">
+              Último análisis: {new Date(lastAutofill.analyzedAt).toLocaleString("es-MX")} · Rollos detectados: {lastAutofill.uniqueRolls} · Segmentos: {lastAutofill.rollSegments} · Campos autollenados: {lastAutofill.updatedCells}
+            </p>
+          ) : null}
+          {planAnalysis && lastAutofill && lastAutofill.updatedCells === 0 ? (
+            <p className="rounded-lg border border-amber-700/70 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">
+              El plano se subió, pero no se autollenaron targets. Normalmente pasa cuando el PDF no trae texto extraíble de rollos/longitudes o usa otro formato. Puedes capturar targets manuales y mantener sugerencias en Roll Placement.
+            </p>
+          ) : null}
           <div className="space-y-3">
             {zoneTargets.map((row) => (
               <div key={row.zone} className="space-y-2 rounded-xl border border-neutral-700 bg-neutral-950 p-3">
