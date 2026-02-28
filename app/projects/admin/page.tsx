@@ -5,7 +5,8 @@ import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react"
 
 import ContextHeader from "../../../components/pulse/ContextHeader"
 import { analyzePlanScaffold } from "../../../lib/planIntelligence/client"
-import { savePlanAnalysisCache } from "../../../lib/planIntelligence/cache"
+import { readPlanAnalysisCache, savePlanAnalysisCache } from "../../../lib/planIntelligence/cache"
+import { PlanAnalysisResult, PlanFileRef } from "../../../lib/planIntelligence/types"
 import { createProject, readProjectsFromStorage, saveProjects, slugifyProjectName } from "../../../lib/projects"
 import { buildEmptyZoneTargets, getSetupZones, inferSetupCompleted, suggestZoneTargetsFromPlanAnalysis, ZoneTarget } from "../../../lib/projectSetup"
 import { FIELD_TYPE_LABELS, FieldType, saveProjectFieldType } from "../../../types/fieldType"
@@ -86,6 +87,27 @@ function toSetupTargets(project: LocalProject): ZoneTarget[] {
   return syncTargetsForSport(project.fieldType, current)
 }
 
+function buildPlanRefsFromUrls(urls: string[]): PlanFileRef[] {
+  return urls.map((url, index) => {
+    const fallbackName = `plan_${index + 1}.pdf`
+    try {
+      const parsed = new URL(url)
+      const name = parsed.pathname.split("/").pop() || fallbackName
+      return {
+        name,
+        url,
+        contentType: name.toLowerCase().endsWith(".pdf") ? "application/pdf" : undefined,
+      }
+    } catch {
+      return { name: fallbackName, url, contentType: "application/pdf" }
+    }
+  })
+}
+
+function summarizePlannedSqft(rows: ZoneTarget[]): number {
+  return rows.reduce((sum, row) => sum + (row.plannedSqft ?? 0), 0)
+}
+
 export default function ProjectsAdminPage() {
   const [requestedEditId, setRequestedEditId] = useState("")
   const [projects, setProjects] = useState<LocalProject[]>(() => readProjectsFromStorage())
@@ -103,6 +125,8 @@ export default function ProjectsAdminPage() {
   const [zoneTargets, setZoneTargets] = useState<ZoneTarget[]>(() => buildEmptyZoneTargets("beisbol"))
   const [planFiles, setPlanFiles] = useState<File[]>([])
   const [uploadedPlanUrls, setUploadedPlanUrls] = useState<string[]>([])
+  const [planAnalysis, setPlanAnalysis] = useState<PlanAnalysisResult | null>(null)
+  const [isAnalyzingPlans, setIsAnalyzingPlans] = useState(false)
 
   const [message, setMessage] = useState("")
   const [error, setError] = useState("")
@@ -172,6 +196,7 @@ export default function ProjectsAdminPage() {
     setNotes(setup?.notes ?? "")
     setZoneTargets(toSetupTargets(project))
     setUploadedPlanUrls(setup?.planFiles ?? [])
+    setPlanAnalysis(readPlanAnalysisCache(project.id))
     setPlanFiles([])
     setLoadedProjectId(editingProjectId)
   }, [editingProjectId, loadedProjectId, projects])
@@ -193,6 +218,8 @@ export default function ProjectsAdminPage() {
     setZoneTargets(buildEmptyZoneTargets("beisbol"))
     setPlanFiles([])
     setUploadedPlanUrls([])
+    setPlanAnalysis(null)
+    setIsAnalyzingPlans(false)
     setError("")
     setMessage("")
   }
@@ -248,6 +275,60 @@ export default function ProjectsAdminPage() {
     return (data.files ?? []).filter((item) => Boolean(item.url))
   }
 
+  async function analyzeAndApplyPlanData(
+    projectId: string,
+    refs: PlanFileRef[],
+    baseTargets: ZoneTarget[],
+  ): Promise<{ analysis: PlanAnalysisResult | null; suggestedTargets: ZoneTarget[] }> {
+    if (refs.length === 0) return { analysis: null, suggestedTargets: baseTargets }
+
+    setIsAnalyzingPlans(true)
+    try {
+      const analysis = await analyzePlanScaffold(projectId, refs)
+      const suggestedTargets = suggestZoneTargetsFromPlanAnalysis(fieldType, baseTargets, analysis)
+      setPlanAnalysis(analysis)
+      setZoneTargets(suggestedTargets)
+      savePlanAnalysisCache(projectId, analysis)
+
+      const currentTotalSqft = toNumberOrNull(totalSqft)
+      const suggestedTotalSqft = summarizePlannedSqft(suggestedTargets)
+      if (!currentTotalSqft && suggestedTotalSqft > 0) {
+        setTotalSqft(String(suggestedTotalSqft))
+      }
+
+      return { analysis, suggestedTargets }
+    } catch {
+      return { analysis: null, suggestedTargets: baseTargets }
+    } finally {
+      setIsAnalyzingPlans(false)
+    }
+  }
+
+  async function handleAnalyzeSavedPlans() {
+    const projectId = editingProjectId || slugifyProjectName(code.trim() || name.trim())
+    if (!projectId) {
+      setError("Primero define nombre/código del proyecto.")
+      return
+    }
+
+    const refs = buildPlanRefsFromUrls(uploadedPlanUrls)
+    if (refs.length === 0) {
+      setError("No hay planos guardados para analizar.")
+      return
+    }
+
+    setError("")
+    const result = await analyzeAndApplyPlanData(projectId, refs, zoneTargets)
+    if (!result.analysis) {
+      setMessage("No se pudo analizar el plano guardado. Revisa el archivo PDF o intenta de nuevo.")
+      return
+    }
+
+    setMessage(
+      `Análisis actualizado: ${result.analysis.stats.uniqueRollLabels} rollos, ${result.analysis.stats.rollSegments} segmentos, CHOP ${result.analysis.stats.choppedSegments}, SPLIT ${result.analysis.stats.splitSegments}.`,
+    )
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError("")
@@ -295,25 +376,13 @@ export default function ProjectsAdminPage() {
       setUploadedPlanUrls(allPlanUrls)
 
       let autoZoneTargets = zoneTargets
-      if (uploadedPlans.length > 0) {
-        try {
-          const analysis = await analyzePlanScaffold(
-            projectId,
-            uploadedPlans.map((file) => ({
-              name: file.name,
-              url: file.url,
-              contentType: file.contentType,
-              size: file.size,
-            })),
-          )
-          autoZoneTargets = suggestZoneTargetsFromPlanAnalysis(fieldType, zoneTargets, analysis)
-          setZoneTargets(autoZoneTargets)
-          savePlanAnalysisCache(projectId, analysis)
-          setMessage(
-            `IA draft: ${analysis.stats.uniqueRollLabels} roll labels detectados. Se sugirieron targets por zona (revisa antes de guardar).`,
-          )
-        } catch {
-          // fallback to manual targets
+      let analysisSummary = ""
+      if (allPlanUrls.length > 0 && uploadedPlans.length > 0) {
+        const refs = buildPlanRefsFromUrls(allPlanUrls)
+        const result = await analyzeAndApplyPlanData(projectId, refs, zoneTargets)
+        autoZoneTargets = result.suggestedTargets
+        if (result.analysis) {
+          analysisSummary = `IA: ${result.analysis.stats.uniqueRollLabels} rollos, CHOP ${result.analysis.stats.choppedSegments}, SPLIT ${result.analysis.stats.splitSegments}.`
         }
       }
 
@@ -348,9 +417,9 @@ export default function ProjectsAdminPage() {
       setEditingProjectId(hydratedProject.id)
       setPlanFiles([])
       setMessage(
-        isEditing
+        `${isEditing
           ? "Setup actualizado. Puedes editar targets/planos a mitad del proyecto cuando quieras."
-          : "Proyecto + setup base guardados. Ya aparece en Nuevo/Cargar proyecto.",
+          : "Proyecto + setup base guardados. Ya aparece en Nuevo/Cargar proyecto."}${analysisSummary ? ` ${analysisSummary}` : ""}`,
       )
     } catch (submitError) {
       const text = submitError instanceof Error ? submitError.message : "No se pudo guardar en nube"
@@ -592,6 +661,16 @@ export default function ProjectsAdminPage() {
                   </button>
                 </div>
               ))}
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={handleAnalyzeSavedPlans}
+                  disabled={isAnalyzingPlans}
+                  className="rounded-lg border border-cyan-700/80 px-3 py-2 text-xs font-semibold text-cyan-100 hover:bg-cyan-700/20 disabled:opacity-60"
+                >
+                  {isAnalyzingPlans ? "Analizando planos..." : "Analizar planos guardados"}
+                </button>
+              </div>
             </div>
           ) : null}
 
@@ -609,6 +688,36 @@ export default function ProjectsAdminPage() {
                   </button>
                 </div>
               ))}
+            </div>
+          ) : null}
+
+          {planAnalysis ? (
+            <div className="space-y-3 rounded-xl border border-cyan-900/60 bg-cyan-950/15 p-3">
+              <p className="text-xs uppercase tracking-wide text-cyan-100">Plan Intelligence por proyecto</p>
+              <div className="grid gap-2 text-xs text-cyan-100 sm:grid-cols-2 lg:grid-cols-4">
+                <p>Rollos detectados: {planAnalysis.stats.uniqueRollLabels}</p>
+                <p>Segmentos: {planAnalysis.stats.rollSegments}</p>
+                <p>CHOP: {planAnalysis.stats.choppedSegments}</p>
+                <p>SPLIT: {planAnalysis.stats.splitSegments}</p>
+                <p>Ft lineales: {planAnalysis.stats.totalLinearFt ?? "-"}</p>
+                <p>Promedio ft/rollo: {planAnalysis.stats.avgLinearFtPerRoll ?? "-"}</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {planAnalysis.detectedRolls.slice(0, 18).map((roll) => (
+                  <span
+                    key={roll.label}
+                    className="rounded-full border border-cyan-700/70 bg-cyan-500/10 px-3 py-1 text-xs text-cyan-100"
+                  >
+                    {roll.label}
+                    {roll.totalLinearFt ? ` · ${roll.totalLinearFt}ft` : ""}
+                    {roll.chopCount > 0 ? ` · CH${roll.chopCount}` : ""}
+                    {roll.splitCount > 0 ? ` · SP${roll.splitCount}` : ""}
+                  </span>
+                ))}
+                {planAnalysis.detectedRolls.length === 0 ? (
+                  <p className="text-xs text-cyan-100/80">Sin rollos detectados automáticamente. Puedes cargar datos manuales.</p>
+                ) : null}
+              </div>
             </div>
           ) : null}
 

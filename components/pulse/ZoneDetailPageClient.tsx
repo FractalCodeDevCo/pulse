@@ -148,6 +148,13 @@ function inferPlanZoneKeys(macroZone: string, microZone: string): string[] {
   return [...keys]
 }
 
+type PlanSuggestedRoll = {
+  label: string
+  totalLinearFt: number | null
+  chopCount: number
+  splitCount: number
+}
+
 export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneDetailPageClientProps) {
   const project = useMemo(() => (projectId ? getProjectById(projectId) : null), [projectId])
   const [zone, setZone] = useState(() => (projectId ? getProjectZoneById(projectId, projectZoneId) : null))
@@ -224,19 +231,37 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   const expectedRolls = totalRollsUsed.trim() === "" ? null : Number(totalRollsUsed)
   const hasValidExpectedRolls = expectedRolls !== null && Number.isInteger(expectedRolls) && expectedRolls >= 0
   const rollLabelProgress = hasValidExpectedRolls && expectedRolls > 0 ? Math.min(100, Math.round((rollColorLabels.length / expectedRolls) * 100)) : null
-  const planSuggestedRollLabels = useMemo(() => {
+  const planSuggestedRolls = useMemo<PlanSuggestedRoll[]>(() => {
     if (!projectId || !zone) return []
     const analysis = readPlanAnalysisCache(projectId)
     if (!analysis) return []
     const zoneKeys = inferPlanZoneKeys(zone.macroZone, zone.microZone)
     const labels = new Set<string>()
+    const rollDetails = new Map(
+      analysis.detectedRolls.map((roll) => [
+        roll.label,
+        {
+          totalLinearFt: roll.totalLinearFt,
+          chopCount: roll.chopCount ?? 0,
+          splitCount: roll.splitCount ?? 0,
+        },
+      ]),
+    )
 
     for (const key of zoneKeys) {
       const found = analysis.rollZoneMap.find((entry) => entry.zoneKey === key)
       for (const label of found?.labels ?? []) labels.add(label)
     }
 
-    return [...labels].filter((label) => !rollColorLabels.includes(label)).slice(0, 30)
+    return [...labels]
+      .filter((label) => !rollColorLabels.includes(label))
+      .slice(0, 30)
+      .map((label) => ({
+        label,
+        totalLinearFt: rollDetails.get(label)?.totalLinearFt ?? null,
+        chopCount: rollDetails.get(label)?.chopCount ?? 0,
+        splitCount: rollDetails.get(label)?.splitCount ?? 0,
+      }))
   }, [projectId, rollColorLabels, zone])
 
   useEffect(() => {
@@ -1024,20 +1049,36 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                               </button>
                             </div>
 
-                            {planSuggestedRollLabels.length > 0 ? (
+                            {planSuggestedRolls.length > 0 ? (
                               <div className="space-y-2">
                                 <p className="text-xs text-cyan-300">
                                   Sugeridos por plano para esta zona (opcional):
                                 </p>
                                 <div className="flex flex-wrap gap-2">
-                                  {planSuggestedRollLabels.map((label) => (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const parsedCurrent = Number.parseInt(totalRollsUsed, 10)
+                                      const baseline = Number.isFinite(parsedCurrent) ? parsedCurrent : 0
+                                      setTotalRollsUsed(String(Math.max(baseline, planSuggestedRolls.length)))
+                                    }}
+                                    className="rounded-full border border-neutral-600 px-3 py-1 text-xs font-semibold text-neutral-200 hover:bg-neutral-800"
+                                  >
+                                    Usar conteo sugerido ({planSuggestedRolls.length})
+                                  </button>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  {planSuggestedRolls.map((roll) => (
                                     <button
-                                      key={label}
+                                      key={roll.label}
                                       type="button"
-                                      onClick={() => addRollColorLabel(label)}
+                                      onClick={() => addRollColorLabel(roll.label)}
                                       className="rounded-full border border-cyan-500/60 bg-cyan-500/10 px-3 py-1 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/20"
                                     >
-                                      + {label}
+                                      + {roll.label}
+                                      {roll.totalLinearFt ? ` · ${roll.totalLinearFt}ft` : ""}
+                                      {roll.chopCount > 0 ? ` · CH${roll.chopCount}` : ""}
+                                      {roll.splitCount > 0 ? ` · SP${roll.splitCount}` : ""}
                                     </button>
                                   ))}
                                 </div>

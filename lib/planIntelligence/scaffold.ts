@@ -17,7 +17,7 @@ const ZONE_KEYWORDS: Array<{ key: ZoneKey; patterns: RegExp[] }> = [
 ]
 
 const ROLL_PATTERN =
-  /(?:CHOP\s+|SPLIT\s+)?ROLL\s+'?([A-Z0-9]+)'?\s*-\s*([0-9]{1,3}(?:'[\s-]?[0-9]{1,2}"?)?|[0-9]+(?:\.[0-9]+)?)/gi
+  /(?:(CHOP|SPLIT)\s+)?ROLL\s+'?([A-Z0-9]+)'?\s*-\s*([0-9]{1,3}(?:'[\s-]?[0-9]{1,2}"?)?|[0-9]+(?:\.[0-9]+)?)/gi
 
 function inferPageKind(fileName: string): { kind: PlanPageKind; confidence: number; signals: string[] } {
   const signals: string[] = []
@@ -118,6 +118,8 @@ function buildBaseResult(projectId: string, files: PlanFileRef[]): PlanAnalysisR
     stats: {
       uniqueRollLabels: 0,
       rollSegments: 0,
+      choppedSegments: 0,
+      splitSegments: 0,
       totalLinearFt: null,
       avgLinearFtPerRoll: null,
     },
@@ -149,6 +151,8 @@ export async function enrichPlanAnalysisFromPdfs(
   const { PDFParse } = await import("pdf-parse")
   const rollMap = new Map<string, DetectedRoll>()
   let segmentCount = 0
+  let choppedSegments = 0
+  let splitSegments = 0
 
   for (const file of candidateFiles) {
     if (!file.url) continue
@@ -163,16 +167,27 @@ export async function enrichPlanAnalysisFromPdfs(
 
       let match: RegExpExecArray | null = ROLL_PATTERN.exec(text)
       while (match) {
-        const label = String(match[1] ?? "").trim().toUpperCase()
-        const lengthFt = parseFeetNotation(String(match[2] ?? ""))
+        const modifier = String(match[1] ?? "").trim().toUpperCase()
+        const label = String(match[2] ?? "").trim().toUpperCase()
+        const lengthFt = parseFeetNotation(String(match[3] ?? ""))
         if (label) {
           const existing = rollMap.get(label) ?? {
             label,
             totalLinearFt: 0,
             segmentCount: 0,
+            chopCount: 0,
+            splitCount: 0,
             sourceFiles: [],
           }
           existing.segmentCount += 1
+          if (modifier === "CHOP") {
+            existing.chopCount += 1
+            choppedSegments += 1
+          }
+          if (modifier === "SPLIT") {
+            existing.splitCount += 1
+            splitSegments += 1
+          }
           if (lengthFt !== null) {
             existing.totalLinearFt = (existing.totalLinearFt ?? 0) + lengthFt
           }
@@ -216,6 +231,8 @@ export async function enrichPlanAnalysisFromPdfs(
     stats: {
       uniqueRollLabels,
       rollSegments: segmentCount,
+      choppedSegments,
+      splitSegments,
       totalLinearFt: totalLinearFt > 0 ? Number(totalLinearFt.toFixed(2)) : null,
       avgLinearFtPerRoll:
         uniqueRollLabels > 0 && totalLinearFt > 0

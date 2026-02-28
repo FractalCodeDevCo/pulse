@@ -39,12 +39,16 @@ export type DetectedRoll = {
   label: string
   totalLinearFt: number | null
   segmentCount: number
+  chopCount: number
+  splitCount: number
   sourceFiles: string[]
 }
 
 export type PlanStats = {
   uniqueRollLabels: number
   rollSegments: number
+  choppedSegments: number
+  splitSegments: number
   totalLinearFt: number | null
   avgLinearFtPerRoll: number | null
 }

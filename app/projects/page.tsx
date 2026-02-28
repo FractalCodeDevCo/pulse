@@ -162,7 +162,7 @@ function ProjectsPageContent() {
           dateLabel={new Date().toLocaleDateString("es-MX")}
         />
         <Link href="/projects/admin" className="inline-block text-sm font-semibold text-amber-300 hover:underline">
-          Admin: agregar proyecto manual
+          PM/Admin: crear/editar setup + cargar plano
         </Link>
 
         <section className="space-y-4 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
