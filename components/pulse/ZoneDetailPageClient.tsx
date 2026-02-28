@@ -7,6 +7,7 @@ import { ChangeEvent, useEffect, useMemo, useState } from "react"
 import { createCaptureSessionId } from "../../lib/captureSession"
 import { clearCaptureDraft, readCaptureDraft, saveCaptureDraft } from "../../lib/captureDraft"
 import { IMAGE_INPUT_ACCEPT, processImageFiles } from "../../lib/clientImage"
+import { readPlanAnalysisCache } from "../../lib/planIntelligence/cache"
 import { saveZonePhotosCache } from "../../lib/zonePhotoCache"
 import ContextHeader from "./ContextHeader"
 import {
@@ -131,6 +132,22 @@ const SPORT_CRITICAL_OPTIONS: Record<string, string[]> = {
 }
 const LINEAR_OPTION = "Unión lineal"
 
+function inferPlanZoneKeys(macroZone: string, microZone: string): string[] {
+  const macro = macroZone.toLowerCase()
+  const micro = microZone.toLowerCase()
+  const merged = `${macro} ${micro}`
+  const keys = new Set<string>()
+
+  if (merged.includes("outfield")) keys.add("outfield")
+  if (merged.includes("infield")) keys.add("infield")
+  if (merged.includes("warning")) keys.add("warning_track")
+  if (merged.includes("sideline")) keys.add("sideline")
+  if (merged.includes("endzone")) keys.add("endzone")
+  if (keys.size === 0) keys.add("generic")
+
+  return [...keys]
+}
+
 export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneDetailPageClientProps) {
   const project = useMemo(() => (projectId ? getProjectById(projectId) : null), [projectId])
   const [zone, setZone] = useState(() => (projectId ? getProjectZoneById(projectId, projectZoneId) : null))
@@ -185,6 +202,10 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   const [stepSavingKey, setStepSavingKey] = useState<ZoneStepKey | null>(null)
   const [stepSaveMessages, setStepSaveMessages] = useState<Record<string, string>>({})
   const [stepSaveErrors, setStepSaveErrors] = useState<Record<string, string>>({})
+  const [flowSessionId, setFlowSessionId] = useState(() => createCaptureSessionId())
+  const [isSavingFlow, setIsSavingFlow] = useState(false)
+  const [flowMessage, setFlowMessage] = useState("")
+  const [flowError, setFlowError] = useState("")
   const [draftReady, setDraftReady] = useState(false)
   const [draftRecovered, setDraftRecovered] = useState(false)
   const draftKey = useMemo(
@@ -203,6 +224,20 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   const expectedRolls = totalRollsUsed.trim() === "" ? null : Number(totalRollsUsed)
   const hasValidExpectedRolls = expectedRolls !== null && Number.isInteger(expectedRolls) && expectedRolls >= 0
   const rollLabelProgress = hasValidExpectedRolls && expectedRolls > 0 ? Math.min(100, Math.round((rollColorLabels.length / expectedRolls) * 100)) : null
+  const planSuggestedRollLabels = useMemo(() => {
+    if (!projectId || !zone) return []
+    const analysis = readPlanAnalysisCache(projectId)
+    if (!analysis) return []
+    const zoneKeys = inferPlanZoneKeys(zone.macroZone, zone.microZone)
+    const labels = new Set<string>()
+
+    for (const key of zoneKeys) {
+      const found = analysis.rollZoneMap.find((entry) => entry.zoneKey === key)
+      for (const label of found?.labels ?? []) labels.add(label)
+    }
+
+    return [...labels].filter((label) => !rollColorLabels.includes(label)).slice(0, 30)
+  }, [projectId, rollColorLabels, zone])
 
   useEffect(() => {
     if (!projectId || !zone) return
@@ -717,6 +752,68 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
     }
   }
 
+  async function submitFlowSession() {
+    if (!projectId || !zone) return
+    const phasesCompleted = zone.stepKeys.filter((key) => zone.completedStepKeys.includes(key))
+    if (phasesCompleted.length === 0) {
+      setFlowError("Marca al menos una fase antes de guardar flujo.")
+      setFlowMessage("")
+      return
+    }
+
+    setFlowError("")
+    setFlowMessage("")
+    setIsSavingFlow(true)
+
+    try {
+      const response = await fetch("/api/flow-sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          fieldType: zone.fieldType,
+          projectZoneId: zone.id,
+          zone: zone.microZone,
+          macroZone: zone.macroZone,
+          microZone: zone.microZone,
+          zoneType: zone.zoneType,
+          flowSessionId,
+          phasesCompleted,
+          phaseSessionIds: stepSessionIds,
+          flowMetadata: {
+            rollPlacement: {
+              totalRollsUsed: totalRollsUsed.trim() || null,
+              rollLengthFit: rollLengthFit || null,
+              compactionMethod: compactionMethod || null,
+              rollLabelsCount: rollColorLabels.length,
+            },
+            sewing: {
+              totalSeams: sewingTotalSeams.trim() || null,
+            },
+            adhesive: {
+              botesUsados: adhesiveBotes.trim() || null,
+              condicion: adhesiveCondicion || null,
+            },
+            material: {
+              tipo: materialTipo || null,
+              pasada: materialPasada || null,
+            },
+          },
+        }),
+      })
+      const data = (await response.json()) as { error?: string; phases_completed?: string[] }
+      if (!response.ok) throw new Error(data.error ?? "No se pudo guardar flujo.")
+
+      const savedPhases = data.phases_completed ?? phasesCompleted
+      setFlowMessage(`Flujo guardado: ${savedPhases.join(" -> ")}`)
+      setFlowSessionId(createCaptureSessionId())
+    } catch (err) {
+      setFlowError(err instanceof Error ? err.message : "Error al guardar flujo.")
+    } finally {
+      setIsSavingFlow(false)
+    }
+  }
+
   if (!projectId || !project || !zone) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-neutral-950 px-4 text-white">
@@ -926,6 +1023,26 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                                 Sync Totals
                               </button>
                             </div>
+
+                            {planSuggestedRollLabels.length > 0 ? (
+                              <div className="space-y-2">
+                                <p className="text-xs text-cyan-300">
+                                  Sugeridos por plano para esta zona (opcional):
+                                </p>
+                                <div className="flex flex-wrap gap-2">
+                                  {planSuggestedRollLabels.map((label) => (
+                                    <button
+                                      key={label}
+                                      type="button"
+                                      onClick={() => addRollColorLabel(label)}
+                                      className="rounded-full border border-cyan-500/60 bg-cyan-500/10 px-3 py-1 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/20"
+                                    >
+                                      + {label}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
 
                             {rollColorLabels.length > 0 ? (
                               <div className="flex flex-wrap gap-2">
@@ -1440,6 +1557,26 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                 </div>
               )
             })}
+          </div>
+
+          <div className={`space-y-2 rounded-xl border border-neutral-700 bg-neutral-950 p-3 ${canOpenProcesses ? "" : "opacity-60"}`}>
+            <p className="text-xs text-neutral-400">
+              Fases marcadas: {zone.completedStepKeys.length > 0 ? zone.completedStepKeys.join(", ") : "ninguna"}
+            </p>
+            <button
+              type="button"
+              onClick={() => void submitFlowSession()}
+              disabled={!canOpenProcesses || isSavingFlow}
+              className="w-full rounded-xl bg-cyan-600 py-3 font-semibold hover:bg-cyan-700 disabled:opacity-50"
+            >
+              {isSavingFlow ? "Guardando flujo..." : "Guardar flujo"}
+            </button>
+            {flowError ? (
+              <p className="rounded-xl border border-red-500/70 bg-red-500/10 p-3 text-sm text-red-300">{flowError}</p>
+            ) : null}
+            {flowMessage ? (
+              <p className="rounded-xl border border-emerald-500/70 bg-emerald-500/10 p-3 text-sm text-emerald-300">{flowMessage}</p>
+            ) : null}
           </div>
         </section>
 

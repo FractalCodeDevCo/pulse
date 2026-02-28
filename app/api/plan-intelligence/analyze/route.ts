@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 
-import { buildPlanAnalysisScaffold } from "../../../../lib/planIntelligence/scaffold"
+import { buildPlanAnalysisScaffold, enrichPlanAnalysisFromPdfs } from "../../../../lib/planIntelligence/scaffold"
 import { PlanFileRef } from "../../../../lib/planIntelligence/types"
 
 export const runtime = "nodejs"
@@ -29,7 +29,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "files[].name is required" }, { status: 400 })
     }
 
-    const analysis = buildPlanAnalysisScaffold(projectId, sanitizedFiles)
+    const scaffold = buildPlanAnalysisScaffold(projectId, sanitizedFiles)
+    const analysis = await enrichPlanAnalysisFromPdfs(scaffold, sanitizedFiles)
 
     return NextResponse.json({
       analysis,

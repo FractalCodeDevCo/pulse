@@ -23,6 +23,7 @@ export type ZoneKey =
 export type RollZoneMapEntry = {
   zoneKey: ZoneKey
   labels: string[]
+  totalLinearFt: number | null
 }
 
 export type PlanPageCandidate = {
@@ -34,12 +35,28 @@ export type PlanPageCandidate = {
   signals: string[]
 }
 
+export type DetectedRoll = {
+  label: string
+  totalLinearFt: number | null
+  segmentCount: number
+  sourceFiles: string[]
+}
+
+export type PlanStats = {
+  uniqueRollLabels: number
+  rollSegments: number
+  totalLinearFt: number | null
+  avgLinearFtPerRoll: number | null
+}
+
 export type PlanAnalysisResult = {
   projectId: string
-  status: "scaffold"
+  status: "scaffold" | "parsed"
   version: "v0"
   createdAt: string
   pages: PlanPageCandidate[]
+  detectedRolls: DetectedRoll[]
+  stats: PlanStats
   rollZoneMap: RollZoneMapEntry[]
   notes: string[]
   nextActions: string[]

@@ -4,8 +4,10 @@ import Link from "next/link"
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react"
 
 import ContextHeader from "../../../components/pulse/ContextHeader"
+import { analyzePlanScaffold } from "../../../lib/planIntelligence/client"
+import { savePlanAnalysisCache } from "../../../lib/planIntelligence/cache"
 import { createProject, readProjectsFromStorage, saveProjects, slugifyProjectName } from "../../../lib/projects"
-import { buildEmptyZoneTargets, getSetupZones, inferSetupCompleted, ZoneTarget } from "../../../lib/projectSetup"
+import { buildEmptyZoneTargets, getSetupZones, inferSetupCompleted, suggestZoneTargetsFromPlanAnalysis, ZoneTarget } from "../../../lib/projectSetup"
 import { FIELD_TYPE_LABELS, FieldType, saveProjectFieldType } from "../../../types/fieldType"
 
 type ProjectSetupView = {
@@ -25,6 +27,14 @@ type LocalProject = {
   createdAt: string
   setup?: ProjectSetupView
   setupCompleted?: boolean
+}
+
+type UploadedPlanFile = {
+  name: string
+  url: string
+  contentType: string
+  size: number
+  uploadedAt: string
 }
 
 function mergeProjects(localProjects: LocalProject[], remoteProjects: LocalProject[]): LocalProject[] {
@@ -155,8 +165,8 @@ export default function ProjectsAdminPage() {
     setPlanFiles((current) => current.filter((_, i) => i !== index))
   }
 
-  async function uploadPlans(projectId: string): Promise<string[]> {
-    if (planFiles.length === 0) return uploadedPlanUrls
+  async function uploadPlans(projectId: string): Promise<UploadedPlanFile[]> {
+    if (planFiles.length === 0) return []
 
     const form = new FormData()
     form.append("projectId", projectId)
@@ -169,11 +179,11 @@ export default function ProjectsAdminPage() {
       body: form,
     })
 
-    const data = (await response.json()) as { error?: string; files?: Array<{ url: string }> }
+    const data = (await response.json()) as { error?: string; files?: UploadedPlanFile[] }
     if (!response.ok) throw new Error(data.error ?? "No se pudieron subir los planos.")
 
-    const urls = (data.files ?? []).map((item) => item.url).filter(Boolean)
-    return [...uploadedPlanUrls, ...urls]
+    const uploaded = (data.files ?? []).filter((item) => Boolean(item.url))
+    return uploaded
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -206,8 +216,32 @@ export default function ProjectsAdminPage() {
     setIsSubmitting(true)
 
     try {
-      const allPlanUrls = await uploadPlans(projectId)
+      const uploadedPlans = await uploadPlans(projectId)
+      const allPlanUrls = [...uploadedPlanUrls, ...uploadedPlans.map((item) => item.url)]
       setUploadedPlanUrls(allPlanUrls)
+
+      let autoZoneTargets = zoneTargets
+      if (uploadedPlans.length > 0) {
+        try {
+          const analysis = await analyzePlanScaffold(
+            projectId,
+            uploadedPlans.map((file) => ({
+              name: file.name,
+              url: file.url,
+              contentType: file.contentType,
+              size: file.size,
+            })),
+          )
+          autoZoneTargets = suggestZoneTargetsFromPlanAnalysis(fieldType, zoneTargets, analysis)
+          setZoneTargets(autoZoneTargets)
+          savePlanAnalysisCache(projectId, analysis)
+          setMessage(
+            `IA draft: ${analysis.stats.uniqueRollLabels} roll labels detectados. Se sugirieron targets por zona (revisa antes de guardar).`,
+          )
+        } catch {
+          // fallback to manual targets
+        }
+      }
 
       const response = await fetch("/api/projects", {
         method: "POST",
@@ -221,9 +255,14 @@ export default function ProjectsAdminPage() {
             startDate: startDate || null,
             crewName,
             notes,
-            zoneTargets,
+            zoneTargets: autoZoneTargets,
             planFiles: allPlanUrls,
-            setupCompleted: previewSetupCompleted,
+            setupCompleted: inferSetupCompleted(
+              toNumberOrNull(totalSqft),
+              startDate || null,
+              crewName,
+              autoZoneTargets,
+            ),
           },
         }),
       })

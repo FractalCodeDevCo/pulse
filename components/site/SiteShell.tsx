@@ -11,6 +11,7 @@ type SiteShellProps = {
 
 const navItems = [
   { href: "/", label: "Home" },
+  { href: "/how-we-capture", label: "How We Capture" },
   { href: "/system", label: "System" },
   { href: "/pulse-platform", label: "Pulse" },
   { href: "/insights", label: "Insights" },

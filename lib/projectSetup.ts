@@ -1,4 +1,5 @@
 import { FieldType } from "../types/fieldType"
+import { PlanAnalysisResult, ZoneKey } from "./planIntelligence/types"
 
 export type ZoneTarget = {
   zone: string
@@ -81,5 +82,79 @@ export function inferSetupCompleted(
       typeof row.plannedSeamFt === "number" &&
       row.plannedSeamFt >= 0
     )
+  })
+}
+
+function inferZoneKeyFromSetupZone(fieldType: FieldType, zone: string): ZoneKey {
+  const normalized = zone.trim().toLowerCase()
+  if (normalized.includes("outfield")) return "outfield"
+  if (normalized.includes("infield")) return "infield"
+  if (normalized.includes("warning")) return "warning_track"
+  if (normalized.includes("sideline")) return "sideline"
+  if (normalized.includes("endzone")) return "endzone"
+  if (fieldType === "football" && normalized.includes("central")) return "generic"
+  if (fieldType === "soccer" && normalized.includes("midfield")) return "generic"
+  return "generic"
+}
+
+export function suggestZoneTargetsFromPlanAnalysis(
+  fieldType: FieldType,
+  current: ZoneTarget[],
+  analysis: PlanAnalysisResult,
+): ZoneTarget[] {
+  const zoneMap = new Map(analysis.rollZoneMap.map((row) => [row.zoneKey, row]))
+  const stats = analysis.stats
+  const uniqueRolls = stats.uniqueRollLabels
+  const totalLinearFt = stats.totalLinearFt ?? 0
+
+  const fallbackDistribution: Record<FieldType, number[]> = {
+    beisbol: [0.28, 0.57, 0.15],
+    softbol: [0.28, 0.57, 0.15],
+    football: [0.5, 0.3, 0.2],
+    soccer: [0.2, 0.6, 0.2],
+  }
+  const distribution = fallbackDistribution[fieldType]
+
+  return current.map((row, index) => {
+    const key = inferZoneKeyFromSetupZone(fieldType, row.zone)
+    const fromZone = zoneMap.get(key)
+    const zoneRollCount = fromZone?.labels.length ?? 0
+    const zoneLinearFt = fromZone?.totalLinearFt ?? 0
+
+    const fallbackRolls =
+      uniqueRolls > 0 ? Math.max(0, Math.round(uniqueRolls * (distribution[index] ?? 0))) : null
+    const fallbackLinearFt =
+      totalLinearFt > 0 ? Math.max(0, Math.round(totalLinearFt * (distribution[index] ?? 0))) : null
+
+    const plannedRolls = row.plannedRolls ?? (zoneRollCount > 0 ? zoneRollCount : fallbackRolls)
+    const plannedSqft =
+      row.plannedSqft ??
+      (() => {
+        const linear = zoneLinearFt > 0 ? zoneLinearFt : fallbackLinearFt
+        if (!linear || linear <= 0) return null
+        return Math.round(linear * 15)
+      })()
+    const plannedSeamFt =
+      row.plannedSeamFt ??
+      (() => {
+        if (zoneLinearFt > 0) return Math.round(zoneLinearFt * 0.88)
+        if (fallbackLinearFt && fallbackLinearFt > 0) return Math.round(fallbackLinearFt * 0.88)
+        if (plannedRolls && plannedRolls > 1) return plannedRolls - 1
+        return null
+      })()
+    const plannedAdhesiveUnits =
+      row.plannedAdhesiveUnits ??
+      (() => {
+        if (plannedSqft && plannedSqft > 0) return Math.max(0, Math.round(plannedSqft / 900))
+        return null
+      })()
+
+    return {
+      ...row,
+      plannedSqft,
+      plannedRolls,
+      plannedAdhesiveUnits,
+      plannedSeamFt,
+    }
   })
 }

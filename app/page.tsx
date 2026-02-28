@@ -1,6 +1,6 @@
 import Link from "next/link"
 
-import PlanIntelligencePreviewSection from "../components/site/PlanIntelligencePreviewSection"
+import HowWeCaptureMaps from "../components/site/HowWeCaptureMaps"
 import SiteShell from "../components/site/SiteShell"
 
 export default function HomePage() {
@@ -34,7 +34,18 @@ export default function HomePage() {
         </ul>
       </section>
 
-      <PlanIntelligencePreviewSection />
+      <section className="mt-10">
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+          <h2 className="font-heading text-2xl text-slate-100 md:text-3xl">How We Capture</h2>
+          <Link
+            href="/how-we-capture"
+            className="rounded-lg border border-cyan-500/60 px-3 py-2 text-sm font-semibold text-cyan-200 hover:bg-cyan-500/10"
+          >
+            Open Full Capture Maps
+          </Link>
+        </div>
+        <HowWeCaptureMaps />
+      </section>
 
       <section className="mt-10">
         <h2 className="font-heading text-2xl text-slate-100 md:text-3xl">How It Works</h2>
