@@ -159,12 +159,19 @@ export default function HowWeCaptureMaps() {
 
             {sport === "beisbol" ? (
               <>
-                <path d="M210 430 L210 70 A360 360 0 0 1 570 430 Z" fill="rgba(10,22,38,0.82)" stroke={STROKE} strokeWidth="1.2" />
+                <path d="M220 430 L220 120 A310 310 0 0 1 530 430 Z" fill="rgba(10,22,38,0.82)" stroke={STROKE} strokeWidth="1.2" />
 
                 <path
-                  d="M210 430 L210 70 A360 360 0 0 1 570 430 Z M210 430 L210 130 A300 300 0 0 1 510 430 Z"
+                  d="M220 430 L220 140 L175 102 L132 102 L132 462 Z"
                   fill={getZoneFill(activeZone.id, "foul-territory")}
-                  fillRule="evenodd"
+                  stroke={STROKE}
+                  strokeWidth="1"
+                  style={{ transition: "fill 180ms ease" }}
+                  onMouseEnter={() => setActiveZoneId("foul-territory")}
+                />
+                <path
+                  d="M220 430 L510 430 L548 468 L548 500 L166 500 L132 462 Z"
+                  fill={getZoneFill(activeZone.id, "foul-territory")}
                   stroke={STROKE}
                   strokeWidth="1"
                   style={{ transition: "fill 180ms ease" }}
@@ -172,7 +179,7 @@ export default function HowWeCaptureMaps() {
                 />
 
                 <path
-                  d="M210 430 L210 130 A300 300 0 0 1 510 430 Z M210 430 L210 175 A255 255 0 0 1 465 430 Z"
+                  d="M220 430 L220 140 A290 290 0 0 1 510 430 Z M220 430 L220 182 A248 248 0 0 1 468 430 Z"
                   fill={getZoneFill(activeZone.id, "warning-track")}
                   fillRule="evenodd"
                   stroke={STROKE}
@@ -182,7 +189,7 @@ export default function HowWeCaptureMaps() {
                 />
 
                 <path
-                  d="M210 430 L210 175 A255 255 0 0 1 465 430 Z M210 430 L210 285 A145 145 0 0 1 355 430 Z"
+                  d="M220 430 L220 182 A248 248 0 0 1 468 430 Z M220 430 L220 282 A148 148 0 0 1 368 430 Z"
                   fill={getZoneFill(activeZone.id, "outfield")}
                   fillRule="evenodd"
                   stroke={STROKE}
@@ -192,7 +199,7 @@ export default function HowWeCaptureMaps() {
                 />
 
                 <path
-                  d="M210 430 L210 285 A145 145 0 0 1 355 430 Z"
+                  d="M220 430 L220 282 A148 148 0 0 1 368 430 Z"
                   fill={getZoneFill(activeZone.id, "infield")}
                   stroke={STROKE}
                   strokeWidth="1"
@@ -201,7 +208,7 @@ export default function HowWeCaptureMaps() {
                 />
 
                 <path
-                  d="M594 294 C626 278 669 278 701 294 C713 305 713 332 701 343 C669 359 626 359 594 343 C582 332 582 305 594 294 Z"
+                  d="M596 300 C627 284 667 284 698 300 C709 310 709 334 698 344 C667 360 627 360 596 344 C585 334 585 310 596 300 Z"
                   fill={getZoneFill(activeZone.id, "bullpen")}
                   stroke={STROKE}
                   strokeWidth="1"
@@ -209,12 +216,12 @@ export default function HowWeCaptureMaps() {
                   onMouseEnter={() => setActiveZoneId("bullpen")}
                 />
 
-                <path d="M210 430 L210 130" stroke={STROKE} strokeWidth="1.2" strokeDasharray="4 6" />
-                <path d="M210 430 L510 430" stroke={STROKE} strokeWidth="1.2" strokeDasharray="4 6" />
-                <path d="M210 430 L280 360" stroke={STROKE} strokeWidth="1" />
-                <path d="M280 360 L350 290" stroke={STROKE} strokeWidth="1" />
-                <circle cx="278" cy="360" r="5" fill="none" stroke={STROKE} strokeWidth="1" />
-                <circle cx="320" cy="320" r="4" fill="none" stroke={STROKE} strokeWidth="1" />
+                <path d="M220 430 L220 140" stroke={STROKE} strokeWidth="1.2" />
+                <path d="M220 430 L510 430" stroke={STROKE} strokeWidth="1.2" />
+                <path d="M220 430 L290 360" stroke={STROKE} strokeWidth="1" />
+                <path d="M290 360 L360 290" stroke={STROKE} strokeWidth="1" />
+                <circle cx="288" cy="360" r="5" fill="none" stroke={STROKE} strokeWidth="1" />
+                <circle cx="330" cy="320" r="4" fill="none" stroke={STROKE} strokeWidth="1" />
               </>
             ) : null}
 
