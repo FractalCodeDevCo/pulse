@@ -17,6 +17,41 @@ type RequestBody = {
   phasesCompleted?: string[]
   phaseSessionIds?: Record<string, string>
   flowMetadata?: Record<string, unknown>
+  photos?: string[]
+}
+
+function parseDataUrl(dataUrl: string): { mimeType: string; bytes: Uint8Array } | null {
+  const match = dataUrl.match(/^data:(.*?);base64,(.*)$/)
+  if (!match) return null
+  return {
+    mimeType: match[1],
+    bytes: Uint8Array.from(Buffer.from(match[2], "base64")),
+  }
+}
+
+async function uploadDataUrl(
+  supabase: ReturnType<typeof getSupabaseAdminClient>,
+  dataUrlOrUrl: string,
+  projectId: string,
+  keyPath: string,
+): Promise<string> {
+  if (!dataUrlOrUrl.startsWith("data:image/")) return dataUrlOrUrl
+  const parsed = parseDataUrl(dataUrlOrUrl)
+  if (!parsed) return dataUrlOrUrl
+
+  const bucket = process.env.SUPABASE_STORAGE_BUCKET || "pulse-evidence"
+  const extension = parsed.mimeType.split("/")[1] || "jpg"
+  const safeKey = keyPath.replace(/[^a-z0-9-_/.]/gi, "_")
+  const filePath = `${projectId}/flow/${Date.now()}-${safeKey}.${extension}`
+
+  const { error } = await supabase.storage.from(bucket).upload(filePath, parsed.bytes, {
+    contentType: parsed.mimeType,
+    upsert: true,
+  })
+  if (error) throw new Error(`Upload failed: ${error.message}`)
+
+  const { data } = supabase.storage.from(bucket).getPublicUrl(filePath)
+  return data.publicUrl
 }
 
 export async function POST(request: Request) {
@@ -28,6 +63,14 @@ export async function POST(request: Request) {
 
     const supabase = getSupabaseAdminClient()
     const captureSessionId = body.flowSessionId?.trim() || randomUUID()
+    const sourcePhotos = Array.isArray(body.photos)
+      ? body.photos.filter((photo): photo is string => typeof photo === "string" && photo.length > 0).slice(0, 8)
+      : []
+    const photosUrls: string[] = []
+    for (let index = 0; index < sourcePhotos.length; index += 1) {
+      photosUrls.push(await uploadDataUrl(supabase, sourcePhotos[index], body.projectId, `${captureSessionId}_${index}`))
+    }
+
     const metadata = {
       flow_session_id: captureSessionId,
       flow_type: "zone_flow",
@@ -58,7 +101,7 @@ export async function POST(request: Request) {
           captureSessionId,
           captureStatus: "complete",
           metadata,
-          photosUrls: [],
+          photosUrls,
           createdAt: new Date().toISOString(),
         },
       })

@@ -223,6 +223,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   const stepTemplates = useMemo(() => (zone ? getZoneStepTemplates(zone.zoneType) : []), [zone])
   const progress = zone ? getZoneProgress(zone) : 0
   const canOpenProcesses = zonePhotos.length > 0
+  const showIndividualCaptureButtons = false
   const adhesiveCriticalOptions = zone ? SPORT_CRITICAL_OPTIONS[zone.fieldType] ?? [] : []
   const hasAdhesiveCriticalSelection = adhesiveCriticalInfieldAreas.length > 0
   const isAdhesiveLinearOnlySelection =
@@ -791,6 +792,10 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
     setIsSavingFlow(true)
 
     try {
+      const photos = [...zonePhotos, ...materialPhotos]
+        .filter((photo, index, arr) => typeof photo === "string" && photo.length > 0 && arr.indexOf(photo) === index)
+        .slice(0, 8)
+
       const response = await fetch("/api/flow-sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -805,7 +810,9 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
           flowSessionId,
           phasesCompleted,
           phaseSessionIds: stepSessionIds,
+          photos,
           flowMetadata: {
+            quickNotes,
             rollPlacement: {
               totalRollsUsed: totalRollsUsed.trim() || null,
               rollLengthFit: rollLengthFit || null,
@@ -830,7 +837,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
       if (!response.ok) throw new Error(data.error ?? "No se pudo guardar flujo.")
 
       const savedPhases = data.phases_completed ?? phasesCompleted
-      setFlowMessage(`Flujo guardado: ${savedPhases.join(" -> ")}`)
+      setFlowMessage(`Flujo guardado: ${savedPhases.join(" -> ")} · fotos: ${photos.length}`)
       setFlowSessionId(createCaptureSessionId())
     } catch (err) {
       setFlowError(err instanceof Error ? err.message : "Error al guardar flujo.")
@@ -1154,14 +1161,20 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                           </p>
 
                           <div className="grid gap-2 sm:grid-cols-2">
-                            <button
-                              type="button"
-                              onClick={() => void submitRollPlacementInline()}
-                              disabled={isSavingRollPlacement}
-                              className="rounded-xl bg-orange-600 py-3 font-semibold hover:bg-orange-700 disabled:opacity-50"
-                            >
-                              Guardar Roll Placement
-                            </button>
+                            {showIndividualCaptureButtons ? (
+                              <button
+                                type="button"
+                                onClick={() => void submitRollPlacementInline()}
+                                disabled={isSavingRollPlacement}
+                                className="rounded-xl bg-orange-600 py-3 font-semibold hover:bg-orange-700 disabled:opacity-50"
+                              >
+                                Guardar Roll Placement
+                              </button>
+                            ) : (
+                              <div className="rounded-xl border border-neutral-700 px-3 py-3 text-center text-xs text-neutral-400">
+                                Roll Placement se guarda con Guardar flujo
+                              </div>
+                            )}
                             <Link
                               href={`/pulse/roll-verification?${query}`}
                               className="rounded-xl border border-cyan-500 py-3 text-center font-semibold text-cyan-300 hover:bg-cyan-500/10"
@@ -1307,14 +1320,20 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                             />
                           </label>
 
-                          <button
-                            type="button"
-                            onClick={() => void submitAdhesiveInline()}
-                            disabled={isSavingAdhesive}
-                            className="w-full rounded-xl bg-green-600 py-3 font-semibold hover:bg-green-700 disabled:opacity-50"
-                          >
-                            Guardar Adhesive
-                          </button>
+                          {showIndividualCaptureButtons ? (
+                            <button
+                              type="button"
+                              onClick={() => void submitAdhesiveInline()}
+                              disabled={isSavingAdhesive}
+                              className="w-full rounded-xl bg-green-600 py-3 font-semibold hover:bg-green-700 disabled:opacity-50"
+                            >
+                              Guardar Adhesive
+                            </button>
+                          ) : (
+                            <p className="rounded-xl border border-neutral-700 px-3 py-3 text-center text-xs text-neutral-400">
+                              Adhesive se guarda con Guardar flujo
+                            </p>
+                          )}
 
                           <Link
                             href={`/capture/pegada?${query}&prefill=1`}
@@ -1476,14 +1495,20 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                                 >
                                   Volver a fotos
                                 </button>
-                                <button
-                                  type="button"
-                                  onClick={() => void submitMaterialInline()}
-                                  disabled={isSavingMaterial}
-                                  className="w-full rounded-xl bg-emerald-600 py-3 font-semibold hover:bg-emerald-700 disabled:opacity-50"
-                                >
-                                  {isSavingMaterial ? "Guardando..." : "Guardar Material"}
-                                </button>
+                                {showIndividualCaptureButtons ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => void submitMaterialInline()}
+                                    disabled={isSavingMaterial}
+                                    className="w-full rounded-xl bg-emerald-600 py-3 font-semibold hover:bg-emerald-700 disabled:opacity-50"
+                                  >
+                                    {isSavingMaterial ? "Guardando..." : "Guardar Material"}
+                                  </button>
+                                ) : (
+                                  <div className="w-full rounded-xl border border-neutral-700 px-3 py-3 text-center text-xs text-neutral-400">
+                                    Material se guarda con Guardar flujo
+                                  </div>
+                                )}
                               </div>
                             </div>
                           )}
@@ -1531,14 +1556,20 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                             />
                           </label>
 
-                          <button
-                            type="button"
-                            onClick={() => void submitSewingInline()}
-                            disabled={stepSavingKey === "SEWING"}
-                            className="w-full rounded-xl bg-orange-600 py-3 font-semibold hover:bg-orange-700 disabled:opacity-50"
-                          >
-                            {stepSavingKey === "SEWING" ? "Guardando..." : "Guardar Sewing"}
-                          </button>
+                          {showIndividualCaptureButtons ? (
+                            <button
+                              type="button"
+                              onClick={() => void submitSewingInline()}
+                              disabled={stepSavingKey === "SEWING"}
+                              className="w-full rounded-xl bg-orange-600 py-3 font-semibold hover:bg-orange-700 disabled:opacity-50"
+                            >
+                              {stepSavingKey === "SEWING" ? "Guardando..." : "Guardar Sewing"}
+                            </button>
+                          ) : (
+                            <p className="rounded-xl border border-neutral-700 px-3 py-3 text-center text-xs text-neutral-400">
+                              Sewing se guarda con Guardar flujo
+                            </p>
+                          )}
 
                           {stepSaveErrors[step.key] ? (
                             <p className="rounded-xl border border-red-500/70 bg-red-500/10 p-3 text-sm text-red-300">
@@ -1573,14 +1604,20 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                           >
                             Marcar paso {step.label}
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => void submitSimpleStep(step.key)}
-                            disabled={stepSavingKey === step.key}
-                            className="w-full rounded-xl bg-blue-600 py-3 font-semibold hover:bg-blue-700 disabled:opacity-50"
-                          >
-                            {stepSavingKey === step.key ? "Guardando..." : `Guardar captura ${step.label}`}
-                          </button>
+                          {showIndividualCaptureButtons ? (
+                            <button
+                              type="button"
+                              onClick={() => void submitSimpleStep(step.key)}
+                              disabled={stepSavingKey === step.key}
+                              className="w-full rounded-xl bg-blue-600 py-3 font-semibold hover:bg-blue-700 disabled:opacity-50"
+                            >
+                              {stepSavingKey === step.key ? "Guardando..." : `Guardar captura ${step.label}`}
+                            </button>
+                          ) : (
+                            <p className="rounded-xl border border-neutral-700 px-3 py-3 text-center text-xs text-neutral-400">
+                              Este paso se guarda con Guardar flujo
+                            </p>
+                          )}
                           {stepSaveErrors[step.key] ? (
                             <p className="rounded-xl border border-red-500/70 bg-red-500/10 p-3 text-sm text-red-300">
                               {stepSaveErrors[step.key]}

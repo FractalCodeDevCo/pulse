@@ -14,6 +14,8 @@ type CaptureItem = {
   photos: string[]
   summary: string
   metadata: Record<string, unknown>
+  sourceTable: string
+  editable: boolean
 }
 
 type FieldRecordRow = {
@@ -110,7 +112,26 @@ function isMissingRelationError(error: unknown): boolean {
   return error.code === "42P01"
 }
 
+function resolveCaptureTable(module: string): { table: string; isFieldRecord: boolean } | null {
+  if (module === "flow" || module === "pegada" || module === "rollos" || module === "compactacion" || module === "field_record") {
+    return { table: "field_records", isFieldRecord: true }
+  }
+  if (module === "roll_installation") return { table: "roll_installation", isFieldRecord: false }
+  if (module === "material") return { table: "material_records", isFieldRecord: false }
+  if (module === "incidence") return { table: "incidences", isFieldRecord: false }
+  if (module === "roll_verification") return { table: "roll_verification", isFieldRecord: false }
+  if (module === "roll_verifications") return { table: "roll_verifications", isFieldRecord: false }
+  return null
+}
+
 function formatFieldRecordSummary(module: string | null, metadata: Record<string, unknown>): string {
+  if (module === "flow") {
+    const phases = Array.isArray(metadata.phases_completed)
+      ? metadata.phases_completed.filter((item): item is string => typeof item === "string" && item.length > 0)
+      : []
+    return phases.length > 0 ? `Flow: ${phases.join(" -> ")}` : "Flow guardado"
+  }
+
   if (module === "pegada") {
     const ft = metadata.ftTotales
     const botes = metadata.botesUsados
@@ -220,6 +241,8 @@ export async function GET(request: Request) {
         photos,
         summary: formatFieldRecordSummary(row.module, metadata),
         metadata,
+        sourceTable: "field_records",
+        editable: true,
       })
     }
 
@@ -234,6 +257,8 @@ export async function GET(request: Request) {
         photos: toRollInstallationPhotoArray(row.photos),
         summary: `Roll Fit: ${row.roll_length_fit ?? "-"} · Rollos: ${row.total_rolls_used ?? "-"} · Costuras: ${row.total_seams ?? "-"}`,
         metadata: {},
+        sourceTable: "roll_installation",
+        editable: false,
       })
     }
 
@@ -248,6 +273,8 @@ export async function GET(request: Request) {
         photos: toStringArray(row.fotos),
         summary: `Material: ${row.tipo_material ?? "-"} · Pasada: ${row.tipo_pasada ?? "-"} · Válvula: ${row.valvula ?? "-"}`,
         metadata: {},
+        sourceTable: "material_records",
+        editable: false,
       })
     }
 
@@ -262,6 +289,8 @@ export async function GET(request: Request) {
         photos: toStringArray(row.photos),
         summary: `Incidencia: ${row.type_of_incidence ?? "-"}`,
         metadata: {},
+        sourceTable: "incidences",
+        editable: false,
       })
     }
 
@@ -276,6 +305,8 @@ export async function GET(request: Request) {
         photos: row.photo_url ? [row.photo_url] : [],
         summary: `Verificación: ${row.status ?? "-"}`,
         metadata: {},
+        sourceTable: "roll_verification",
+        editable: false,
       })
     }
 
@@ -290,6 +321,8 @@ export async function GET(request: Request) {
         photos: row.label_photo_url ? [row.label_photo_url] : [],
         summary: `Verificación: ${row.status ?? "-"}`,
         metadata: {},
+        sourceTable: "roll_verifications",
+        editable: false,
       })
     }
 
@@ -308,6 +341,91 @@ export async function GET(request: Request) {
       captures: sorted,
       zones: [...zonesMap.values()],
     })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unexpected error"
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+type MutationBody = {
+  projectId?: string
+  id?: string
+  module?: string
+  metadata?: Record<string, unknown>
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const body = (await request.json()) as MutationBody
+    const projectId = toStringSafe(body.projectId)
+    const id = toStringSafe(body.id)
+    const module = toStringSafe(body.module)
+    if (!projectId || !id || !module) {
+      return NextResponse.json({ error: "projectId, id, module are required" }, { status: 400 })
+    }
+
+    const target = resolveCaptureTable(module)
+    if (!target) return NextResponse.json({ error: "Unsupported module" }, { status: 400 })
+
+    const supabase = getSupabaseAdminClient()
+    let query = supabase.from(target.table).delete().eq("id", id).eq("project_id", projectId)
+    if (target.isFieldRecord && module !== "field_record") {
+      query = query.eq("module", module)
+    }
+
+    const { error } = await query
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    return NextResponse.json({ ok: true })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unexpected error"
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const body = (await request.json()) as MutationBody
+    const projectId = toStringSafe(body.projectId)
+    const id = toStringSafe(body.id)
+    const module = toStringSafe(body.module)
+    const metadata = isObject(body.metadata) ? body.metadata : null
+
+    if (!projectId || !id || !module || !metadata) {
+      return NextResponse.json({ error: "projectId, id, module, metadata are required" }, { status: 400 })
+    }
+
+    const target = resolveCaptureTable(module)
+    if (!target || !target.isFieldRecord) {
+      return NextResponse.json({ error: "Only field_record captures are editable for now." }, { status: 400 })
+    }
+
+    const supabase = getSupabaseAdminClient()
+    let currentQuery = supabase
+      .from("field_records")
+      .select("payload")
+      .eq("id", id)
+      .eq("project_id", projectId)
+    if (module !== "field_record") currentQuery = currentQuery.eq("module", module)
+    const currentRes = await currentQuery.single()
+    if (currentRes.error) return NextResponse.json({ error: currentRes.error.message }, { status: 500 })
+
+    const currentPayload = isObject(currentRes.data?.payload) ? currentRes.data.payload : {}
+    const nextPayload = {
+      ...currentPayload,
+      metadata,
+    }
+
+    let updateQuery = supabase
+      .from("field_records")
+      .update({ payload: nextPayload })
+      .eq("id", id)
+      .eq("project_id", projectId)
+    if (module !== "field_record") updateQuery = updateQuery.eq("module", module)
+    const { error } = await updateQuery
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ ok: true, metadata })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error"
     return NextResponse.json({ error: message }, { status: 500 })
