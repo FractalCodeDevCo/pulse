@@ -245,6 +245,19 @@ function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata 
               >
                 {editing ? "Cerrar detalle" : "Ver/editar datos"}
               </button>
+              {isFlowEditable ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAdvancedMode((prev) => !prev)
+                    setEditing(true)
+                    setShowMenu(false)
+                  }}
+                  className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-neutral-800"
+                >
+                  {advancedMode ? "Modo simple" : "Modo JSON"}
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => {
@@ -455,15 +468,6 @@ function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata 
               >
                 Revertir
               </button>
-              {isFlowEditable ? (
-                <button
-                  type="button"
-                  onClick={() => setAdvancedMode((prev) => !prev)}
-                  className="rounded-lg border border-neutral-600 px-3 py-2 text-xs font-semibold hover:bg-neutral-800"
-                >
-                  {advancedMode ? "Modo simple" : "Modo JSON"}
-                </button>
-              ) : null}
             </div>
           </div>
         ) : null}
