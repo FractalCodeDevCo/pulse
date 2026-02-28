@@ -1,6 +1,6 @@
 import Link from "next/link"
 
-import BlueprintSection from "../components/site/BlueprintSection"
+import PlanIntelligencePreviewSection from "../components/site/PlanIntelligencePreviewSection"
 import SiteShell from "../components/site/SiteShell"
 
 export default function HomePage() {
@@ -34,7 +34,7 @@ export default function HomePage() {
         </ul>
       </section>
 
-      <BlueprintSection />
+      <PlanIntelligencePreviewSection />
 
       <section className="mt-10">
         <h2 className="font-heading text-2xl text-slate-100 md:text-3xl">How It Works</h2>

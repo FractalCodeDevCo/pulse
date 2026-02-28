@@ -56,7 +56,7 @@ type ZoneDetailDraft = {
   zonePhotos: string[]
   rollLengthFit: "green" | "yellow" | "red" | ""
   totalRollsUsed: string
-  totalSeams: string
+  sewingTotalSeams: string
   rollColorLabels: string[]
   rollColorInput: string
   compactionMethod: "Plate" | "Roller" | "Manual" | ""
@@ -142,7 +142,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   // Roll Placement inline metadata
   const [rollLengthFit, setRollLengthFit] = useState<"green" | "yellow" | "red" | "">("")
   const [totalRollsUsed, setTotalRollsUsed] = useState("")
-  const [totalSeams, setTotalSeams] = useState("")
+  const [sewingTotalSeams, setSewingTotalSeams] = useState("")
   const [rollColorLabels, setRollColorLabels] = useState<string[]>([])
   const [rollColorInput, setRollColorInput] = useState("")
   const [compactionMethod, setCompactionMethod] = useState<"Plate" | "Roller" | "Manual" | "">("")
@@ -218,7 +218,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
       setZonePhotos(draft.zonePhotos)
       setRollLengthFit(draft.rollLengthFit)
       setTotalRollsUsed(draft.totalRollsUsed)
-      setTotalSeams(draft.totalSeams)
+      setSewingTotalSeams(draft.sewingTotalSeams ?? "")
       setRollColorLabels(draft.rollColorLabels ?? [])
       setRollColorInput(draft.rollColorInput ?? "")
       setCompactionMethod(draft.compactionMethod)
@@ -258,7 +258,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
         zonePhotos.length > 0 ||
         rollLengthFit ||
         totalRollsUsed ||
-        totalSeams ||
+        sewingTotalSeams ||
         rollColorLabels.length > 0 ||
         rollColorInput.trim().length > 0 ||
         compactionMethod ||
@@ -289,7 +289,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
       zonePhotos,
       rollLengthFit,
       totalRollsUsed,
-      totalSeams,
+      sewingTotalSeams,
       rollColorLabels,
       rollColorInput,
       compactionMethod,
@@ -344,9 +344,9 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
     rollColorInput,
     rollColorLabels,
     rollPlacementSessionId,
+    sewingTotalSeams,
     surfaceFirm,
     totalRollsUsed,
-    totalSeams,
     zonePhotos,
   ])
 
@@ -372,7 +372,6 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   function syncRollPlacementTotalsFromLabels() {
     const total = rollColorLabels.length
     setTotalRollsUsed(String(total))
-    setTotalSeams(String(Math.max(total - 1, 0)))
   }
 
   function toggleStep(stepKey: ZoneStepKey) {
@@ -485,18 +484,13 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   async function submitRollPlacementInline() {
     if (!projectId || !zone) return
     const parsedRolls = totalRollsUsed.trim() === "" ? null : Number(totalRollsUsed)
-    const parsedSeams = totalSeams.trim() === "" ? null : Number(totalSeams)
     if (parsedRolls !== null && (!Number.isInteger(parsedRolls) || parsedRolls < 0)) {
       return setRollPlacementError("Total rolls debe ser entero >= 0.")
-    }
-    if (parsedSeams !== null && (!Number.isInteger(parsedSeams) || parsedSeams < 0)) {
-      return setRollPlacementError("Total seams debe ser entero >= 0.")
     }
 
     const isCompleteCapture =
       Boolean(rollLengthFit) &&
       parsedRolls !== null &&
-      parsedSeams !== null &&
       Boolean(compactionMethod)
 
     const compactingPhoto = zonePhotos[0] ?? null
@@ -522,7 +516,6 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
           zone: zone.microZone,
           roll_length_fit: rollLengthFit || undefined,
           total_rolls_used: parsedRolls ?? undefined,
-          total_seams: parsedSeams ?? undefined,
           roll_color_labels: rollColorLabels,
           roll_color_count: rollColorLabels.length,
           compaction_surface_firm: surfaceFirm,
@@ -550,6 +543,63 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
       setRollPlacementError(err instanceof Error ? err.message : "Error al guardar Roll Placement.")
     } finally {
       setIsSavingRollPlacement(false)
+    }
+  }
+
+  async function submitSewingInline() {
+    if (!projectId || !zone) return
+    const parsedSeams = sewingTotalSeams.trim() === "" ? null : Number(sewingTotalSeams)
+    if (parsedSeams === null || !Number.isInteger(parsedSeams) || parsedSeams < 0) {
+      return setStepSaveErrors((prev) => ({ ...prev, SEWING: "Total seams debe ser entero >= 0." }))
+    }
+
+    const stepKey: ZoneStepKey = "SEWING"
+    const sessionId = getStepSessionId(stepKey)
+    const note = (quickNotes[stepKey] ?? "").trim()
+    const stepPhotos = zonePhotos.slice(0, 3)
+
+    setStepSaveErrors((prev) => ({ ...prev, [stepKey]: "" }))
+    setStepSaveMessages((prev) => ({ ...prev, [stepKey]: "" }))
+    setStepSavingKey(stepKey)
+
+    try {
+      const response = await fetch("/api/records", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          module: "rollos",
+          projectId,
+          fieldType: zone.fieldType,
+          payload: {
+            zone: zone.microZone,
+            macro_zone: zone.macroZone,
+            micro_zone: zone.microZone,
+            zone_type: zone.zoneType,
+            project_zone_id: zone.id,
+            capture_session_id: sessionId,
+            capture_status: "complete",
+            step_key: stepKey,
+            step_label: stepTemplates.find((step) => step.key === stepKey)?.label ?? stepKey,
+            total_seams: parsedSeams,
+            note,
+            photos: stepPhotos,
+          },
+        }),
+      })
+      const data = (await response.json()) as { error?: string }
+      if (!response.ok) throw new Error(data.error ?? "No se pudo guardar Sewing.")
+
+      setStepSaveMessages((prev) => ({ ...prev, [stepKey]: "Sewing guardado en nube." }))
+      setStepSessionIds((prev) => ({ ...prev, [stepKey]: createCaptureSessionId() }))
+      setZonePhotos([])
+      if (!zone.completedStepKeys.includes(stepKey)) toggleStep(stepKey)
+    } catch (err) {
+      setStepSaveErrors((prev) => ({
+        ...prev,
+        [stepKey]: err instanceof Error ? err.message : "Error al guardar Sewing.",
+      }))
+    } finally {
+      setStepSavingKey(null)
     }
   }
 
@@ -835,28 +885,16 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                             </label>
                           </div>
 
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            <label className="block space-y-2">
-                              <span className="text-sm text-neutral-300">Total Rolls Used</span>
-                              <input
-                                type="number"
-                                min={0}
-                                value={totalRollsUsed}
-                                onChange={(event) => setTotalRollsUsed(event.target.value)}
-                                className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
-                              />
-                            </label>
-                            <label className="block space-y-2">
-                              <span className="text-sm text-neutral-300">Total Seams</span>
-                              <input
-                                type="number"
-                                min={0}
-                                value={totalSeams}
-                                onChange={(event) => setTotalSeams(event.target.value)}
-                                className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
-                              />
-                            </label>
-                          </div>
+                          <label className="block space-y-2">
+                            <span className="text-sm text-neutral-300">Total Rolls Used</span>
+                            <input
+                              type="number"
+                              min={0}
+                              value={totalRollsUsed}
+                              onChange={(event) => setTotalRollsUsed(event.target.value)}
+                              className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
+                            />
+                          </label>
 
                           <div className="space-y-3 rounded-xl border border-neutral-700 bg-neutral-950 p-3">
                             <p className="text-sm text-neutral-300">Roll Color Labels (optional)</p>
@@ -908,7 +946,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
 
                             <div className="space-y-1">
                               <p className="text-xs text-neutral-400">
-                                Capturados: {rollColorLabels.length} rollos · Costuras sugeridas: {Math.max(rollColorLabels.length - 1, 0)}
+                                Capturados: {rollColorLabels.length} rollos · Costuras sugeridas para Sewing: {Math.max(rollColorLabels.length - 1, 0)}
                               </p>
                               {rollLabelProgress !== null ? (
                                 <>
@@ -1311,7 +1349,53 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                         </>
                       ) : null}
 
-                      {step.key !== "ROLL_PLACEMENT" && step.key !== "ADHESIVE" && step.key !== "MATERIAL" ? (
+                      {step.key === "SEWING" ? (
+                        <>
+                          <p className="text-sm text-neutral-300">Cuestionario de Sewing (inline).</p>
+                          <label className="block space-y-2">
+                            <span className="text-sm text-neutral-300">Total Seams</span>
+                            <input
+                              type="number"
+                              min={0}
+                              value={sewingTotalSeams}
+                              onChange={(event) => setSewingTotalSeams(event.target.value)}
+                              className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
+                            />
+                          </label>
+
+                          <label className="block space-y-2">
+                            <span className="text-sm text-neutral-300">Nota rápida (opcional)</span>
+                            <textarea
+                              rows={2}
+                              value={quickNotes[step.key] ?? ""}
+                              onChange={(event) => setQuickNotes((prev) => ({ ...prev, [step.key]: event.target.value }))}
+                              className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
+                            />
+                          </label>
+
+                          <button
+                            type="button"
+                            onClick={() => void submitSewingInline()}
+                            disabled={stepSavingKey === "SEWING"}
+                            className="w-full rounded-xl bg-orange-600 py-3 font-semibold hover:bg-orange-700 disabled:opacity-50"
+                          >
+                            {stepSavingKey === "SEWING" ? "Guardando..." : "Guardar Sewing"}
+                          </button>
+
+                          {stepSaveErrors[step.key] ? (
+                            <p className="rounded-xl border border-red-500/70 bg-red-500/10 p-3 text-sm text-red-300">
+                              {stepSaveErrors[step.key]}
+                            </p>
+                          ) : null}
+                          {stepSaveMessages[step.key] ? (
+                            <p className="rounded-xl border border-emerald-500/70 bg-emerald-500/10 p-3 text-sm text-emerald-300">
+                              {stepSaveMessages[step.key]}
+                            </p>
+                          ) : null}
+                        </>
+                      ) : null}
+
+                      {step.key !== "ROLL_PLACEMENT" && step.key !== "ADHESIVE" && step.key !== "MATERIAL" && step.key !== "SEWING" ? (
                         <>
                           <label className="block space-y-2">
                             <span className="text-sm text-neutral-300">Nota rápida (opcional)</span>
