@@ -12,33 +12,113 @@ type ZoneInfo = {
 
 const SPORT_LABELS: Record<Sport, string> = {
   beisbol: "Baseball",
-  soccer: "Soccer",
   football: "Football",
+  soccer: "Soccer",
 }
 
 const SPORT_ZONES: Record<Sport, ZoneInfo[]> = {
   beisbol: [
-    { id: "infield", title: "Infield", detail: "Highest foot traffic and cut density. Critical for seam stability and adhesive consistency." },
-    { id: "outfield", title: "Outfield", detail: "Large continuous area. Key for spread-rate consistency and long-run seam control." },
-    { id: "warning-track", title: "Warning Track", detail: "Transition band with high correction probability. Monitor material continuity." },
-  ],
-  soccer: [
-    { id: "center", title: "Center Corridor", detail: "High interaction strip. Prioritize alignment consistency and seam compression checks." },
-    { id: "wings", title: "Wings", detail: "Long lateral runs. Track roll pairing and seam drift across side bands." },
-    { id: "boxes", title: "Penalty Boxes", detail: "Frequent high-load area. Watch local deformation and correction frequency." },
+    {
+      id: "infield",
+      title: "Infield",
+      detail: "High-traffic arc where seam tolerance and adhesive consistency define early quality.",
+    },
+    {
+      id: "outfield",
+      title: "Outfield",
+      detail: "Largest continuous install surface. Controls long-run alignment, pairing, and spread rhythm.",
+    },
+    {
+      id: "foul-territory",
+      title: "Foul Territory",
+      detail: "Edge execution zone with frequent trims and corrections that affect labor efficiency.",
+    },
+    {
+      id: "warning-track",
+      title: "Warning Track",
+      detail: "Perimeter transition strip where geometry changes can create rework if not normalized.",
+    },
+    {
+      id: "bullpen",
+      title: "Bullpen",
+      detail: "Separate practice block with its own cut logic and material tracking requirements.",
+    },
   ],
   football: [
-    { id: "midfield", title: "Midfield Core", detail: "Reference zone for installation consistency and baseline behavior." },
-    { id: "endzones", title: "Endzones", detail: "High cut/detail complexity. Increased risk of deviation and rework time." },
-    { id: "sidelines", title: "Sidelines", detail: "Operational wear boundary. Good indicator for seam opening over usage." },
+    {
+      id: "playing-field",
+      title: "Playing Field",
+      detail: "Primary 100-yard execution body used as baseline for production cadence and quality drift.",
+    },
+    {
+      id: "end-zone-a",
+      title: "End Zone A",
+      detail: "Terminal zone with tighter graphic/detail risk and higher rework sensitivity.",
+    },
+    {
+      id: "end-zone-b",
+      title: "End Zone B",
+      detail: "Second terminal zone tracked independently to detect crew-side execution asymmetry.",
+    },
+    {
+      id: "sideline-a",
+      title: "Sideline A",
+      detail: "Upper boundary lane where long seams and edge handling expose consistency gaps.",
+    },
+    {
+      id: "sideline-b",
+      title: "Sideline B",
+      detail: "Lower boundary lane monitored against Sideline A for directional variance.",
+    },
+    {
+      id: "perimeter",
+      title: "Perimeter Boundary",
+      detail: "Outer control ring for offsets, dimensional checks, and final geometry protection.",
+    },
   ],
+  soccer: [
+    {
+      id: "playing-surface",
+      title: "Playing Surface",
+      detail: "Main field rectangle where production rate and seam straightness are measured.",
+    },
+    {
+      id: "goal-area-a",
+      title: "Goal Area A",
+      detail: "Detail-heavy goal-mouth zone with tighter tolerance and frequent correction passes.",
+    },
+    {
+      id: "goal-area-b",
+      title: "Goal Area B",
+      detail: "Mirrored goal-mouth zone used to compare execution consistency across both ends.",
+    },
+    {
+      id: "perimeter-sideline",
+      title: "Perimeter Sideline",
+      detail: "Outer sideline band for boundary lock, trimming control, and dimensional compliance.",
+    },
+  ],
+}
+
+const BASE_FILL = "rgba(73, 182, 255, 0.1)"
+const ACTIVE_FILL = "rgba(73, 182, 255, 0.32)"
+const STROKE = "#d9eeff"
+
+function getZoneFill(activeZoneId: string, zoneId: string) {
+  return activeZoneId === zoneId ? ACTIVE_FILL : BASE_FILL
 }
 
 export default function HowWeCaptureMaps() {
   const [sport, setSport] = useState<Sport>("beisbol")
-  const [activeZoneId, setActiveZoneId] = useState<string>("")
+  const [activeZoneId, setActiveZoneId] = useState<string>(SPORT_ZONES.beisbol[0].id)
+
   const zones = useMemo(() => SPORT_ZONES[sport], [sport])
   const activeZone = zones.find((zone) => zone.id === activeZoneId) ?? zones[0]
+
+  function changeSport(nextSport: Sport) {
+    setSport(nextSport)
+    setActiveZoneId(SPORT_ZONES[nextSport][0].id)
+  }
 
   return (
     <section className="space-y-5">
@@ -49,10 +129,7 @@ export default function HowWeCaptureMaps() {
             <button
               key={item}
               type="button"
-              onClick={() => {
-                setSport(item)
-                setActiveZoneId("")
-              }}
+              onClick={() => changeSport(item)}
               className={`rounded-xl border px-4 py-3 text-sm font-semibold ${
                 active
                   ? "border-cyan-400 bg-cyan-500/20 text-cyan-100"
@@ -66,135 +143,232 @@ export default function HowWeCaptureMaps() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
-        <div className="rounded-2xl border border-slate-800 bg-[#060d17] p-4">
+        <div className="rounded-2xl border border-slate-800 bg-[#050b14] p-4">
           <svg viewBox="0 0 900 520" className="h-auto w-full">
+            <defs>
+              <pattern id="capture-grid" width="24" height="24" patternUnits="userSpaceOnUse">
+                <path d="M24 0H0V24" fill="none" stroke="rgba(160,210,240,0.08)" strokeWidth="1" />
+              </pattern>
+              <pattern id="capture-micro-grid" width="6" height="6" patternUnits="userSpaceOnUse">
+                <path d="M6 0H0V6" fill="none" stroke="rgba(160,210,240,0.04)" strokeWidth="1" />
+              </pattern>
+            </defs>
+
+            <rect x="0" y="0" width="900" height="520" fill="url(#capture-grid)" />
+            <rect x="0" y="0" width="900" height="520" fill="url(#capture-micro-grid)" />
+
             {sport === "beisbol" ? (
               <>
-                <rect x="60" y="42" width="780" height="430" rx="18" fill="none" stroke="#dbeeff" strokeWidth="1.5" />
-                <path d="M450 132 L620 302 L450 472 L280 302 Z" fill="none" stroke="#dbeeff" strokeWidth="1.5" />
-                <circle
-                  cx="450"
-                  cy="302"
-                  r="52"
-                  fill={activeZone?.id === "infield" ? "rgba(72,188,255,0.4)" : "rgba(72,188,255,0.15)"}
-                  stroke="#dbeeff"
-                  onMouseEnter={() => setActiveZoneId("infield")}
-                />
                 <path
-                  d="M260 360 Q450 156 640 360 L640 430 Q450 462 260 430 Z"
-                  fill={activeZone?.id === "outfield" ? "rgba(72,188,255,0.35)" : "rgba(72,188,255,0.12)"}
-                  stroke="#dbeeff"
-                  onMouseEnter={() => setActiveZoneId("outfield")}
+                  d="M110 430 L110 170 Q110 120 160 120 L740 120 Q790 120 790 170 L790 430 Z"
+                  fill="rgba(10,22,38,0.8)"
+                  stroke={STROKE}
+                  strokeWidth="1.2"
                 />
+
                 <path
-                  d="M220 382 Q450 126 680 382 L680 436 Q450 486 220 436 Z"
-                  fill={activeZone?.id === "warning-track" ? "rgba(72,188,255,0.35)" : "rgba(72,188,255,0.1)"}
-                  stroke="#dbeeff"
+                  d="M110 430 L110 170 Q110 120 160 120 L740 120 Q790 120 790 170 L790 430 Z M450 420 L180 150 A380 380 0 0 1 720 150 Z"
+                  fill={getZoneFill(activeZone.id, "foul-territory")}
+                  fillRule="evenodd"
+                  stroke={STROKE}
+                  strokeWidth="1"
+                  style={{ transition: "fill 180ms ease" }}
+                  onMouseEnter={() => setActiveZoneId("foul-territory")}
+                />
+
+                <path
+                  d="M210 180 L180 150 A380 380 0 0 1 720 150 L690 180 A340 340 0 0 0 210 180 Z"
+                  fill={getZoneFill(activeZone.id, "warning-track")}
+                  stroke={STROKE}
+                  strokeWidth="1"
+                  style={{ transition: "fill 180ms ease" }}
                   onMouseEnter={() => setActiveZoneId("warning-track")}
                 />
-              </>
-            ) : null}
 
-            {sport === "soccer" ? (
-              <>
-                <rect x="70" y="60" width="760" height="400" rx="8" fill="none" stroke="#dbeeff" strokeWidth="1.5" />
-                <line x1="450" y1="60" x2="450" y2="460" stroke="#dbeeff" strokeWidth="1.5" />
-                <rect
-                  x="350"
-                  y="60"
-                  width="200"
-                  height="400"
-                  fill={activeZone?.id === "center" ? "rgba(72,188,255,0.35)" : "rgba(72,188,255,0.1)"}
-                  stroke="#dbeeff"
-                  onMouseEnter={() => setActiveZoneId("center")}
+                <path
+                  d="M365 335 L224 194 A320 320 0 0 1 676 194 L535 335 A120 120 0 0 0 365 335 Z"
+                  fill={getZoneFill(activeZone.id, "outfield")}
+                  stroke={STROKE}
+                  strokeWidth="1"
+                  style={{ transition: "fill 180ms ease" }}
+                  onMouseEnter={() => setActiveZoneId("outfield")}
                 />
-                <rect
-                  x="70"
-                  y="60"
-                  width="280"
-                  height="400"
-                  fill={activeZone?.id === "wings" ? "rgba(72,188,255,0.32)" : "rgba(72,188,255,0.1)"}
-                  stroke="#dbeeff"
-                  onMouseEnter={() => setActiveZoneId("wings")}
+
+                <path
+                  d="M365 335 A120 120 0 0 1 535 335 L450 420 Z"
+                  fill={getZoneFill(activeZone.id, "infield")}
+                  stroke={STROKE}
+                  strokeWidth="1"
+                  style={{ transition: "fill 180ms ease" }}
+                  onMouseEnter={() => setActiveZoneId("infield")}
                 />
+
                 <rect
-                  x="550"
-                  y="60"
-                  width="280"
-                  height="400"
-                  fill={activeZone?.id === "wings" ? "rgba(72,188,255,0.32)" : "rgba(72,188,255,0.1)"}
-                  stroke="#dbeeff"
-                  onMouseEnter={() => setActiveZoneId("wings")}
+                  x="728"
+                  y="246"
+                  width="70"
+                  height="98"
+                  rx="6"
+                  fill={getZoneFill(activeZone.id, "bullpen")}
+                  stroke={STROKE}
+                  strokeWidth="1"
+                  style={{ transition: "fill 180ms ease" }}
+                  onMouseEnter={() => setActiveZoneId("bullpen")}
                 />
-                <rect
-                  x="70"
-                  y="170"
-                  width="100"
-                  height="180"
-                  fill={activeZone?.id === "boxes" ? "rgba(72,188,255,0.35)" : "rgba(72,188,255,0.1)"}
-                  stroke="#dbeeff"
-                  onMouseEnter={() => setActiveZoneId("boxes")}
-                />
-                <rect
-                  x="730"
-                  y="170"
-                  width="100"
-                  height="180"
-                  fill={activeZone?.id === "boxes" ? "rgba(72,188,255,0.35)" : "rgba(72,188,255,0.1)"}
-                  stroke="#dbeeff"
-                  onMouseEnter={() => setActiveZoneId("boxes")}
-                />
+
+                <path d="M450 420 L180 150" stroke={STROKE} strokeWidth="1.2" strokeDasharray="4 6" />
+                <path d="M450 420 L720 150" stroke={STROKE} strokeWidth="1.2" strokeDasharray="4 6" />
+                <circle cx="450" cy="420" r="8" fill="none" stroke={STROKE} strokeWidth="1" />
+                <circle cx="450" cy="340" r="4" fill="none" stroke={STROKE} strokeWidth="1" />
               </>
             ) : null}
 
             {sport === "football" ? (
               <>
-                <rect x="70" y="60" width="760" height="400" rx="8" fill="none" stroke="#dbeeff" strokeWidth="1.5" />
-                <rect
-                  x="260"
-                  y="60"
-                  width="380"
-                  height="400"
-                  fill={activeZone?.id === "midfield" ? "rgba(72,188,255,0.35)" : "rgba(72,188,255,0.1)"}
-                  stroke="#dbeeff"
-                  onMouseEnter={() => setActiveZoneId("midfield")}
+                <rect x="80" y="80" width="740" height="360" fill="rgba(10,22,38,0.8)" stroke={STROKE} strokeWidth="1.2" />
+
+                <path
+                  d="M80 80 H820 V440 H80 Z M102 102 H798 V418 H102 Z"
+                  fill={getZoneFill(activeZone.id, "perimeter")}
+                  fillRule="evenodd"
+                  stroke={STROKE}
+                  strokeWidth="1"
+                  style={{ transition: "fill 180ms ease" }}
+                  onMouseEnter={() => setActiveZoneId("perimeter")}
                 />
+
                 <rect
-                  x="70"
-                  y="60"
-                  width="130"
-                  height="400"
-                  fill={activeZone?.id === "endzones" ? "rgba(72,188,255,0.35)" : "rgba(72,188,255,0.1)"}
-                  stroke="#dbeeff"
-                  onMouseEnter={() => setActiveZoneId("endzones")}
+                  x="102"
+                  y="102"
+                  width="696"
+                  height="34"
+                  fill={getZoneFill(activeZone.id, "sideline-a")}
+                  stroke={STROKE}
+                  strokeWidth="1"
+                  style={{ transition: "fill 180ms ease" }}
+                  onMouseEnter={() => setActiveZoneId("sideline-a")}
                 />
+
                 <rect
-                  x="700"
-                  y="60"
-                  width="130"
-                  height="400"
-                  fill={activeZone?.id === "endzones" ? "rgba(72,188,255,0.35)" : "rgba(72,188,255,0.1)"}
-                  stroke="#dbeeff"
-                  onMouseEnter={() => setActiveZoneId("endzones")}
+                  x="102"
+                  y="384"
+                  width="696"
+                  height="34"
+                  fill={getZoneFill(activeZone.id, "sideline-b")}
+                  stroke={STROKE}
+                  strokeWidth="1"
+                  style={{ transition: "fill 180ms ease" }}
+                  onMouseEnter={() => setActiveZoneId("sideline-b")}
                 />
+
                 <rect
-                  x="200"
-                  y="60"
-                  width="60"
-                  height="400"
-                  fill={activeZone?.id === "sidelines" ? "rgba(72,188,255,0.3)" : "rgba(72,188,255,0.1)"}
-                  stroke="#dbeeff"
-                  onMouseEnter={() => setActiveZoneId("sidelines")}
+                  x="102"
+                  y="136"
+                  width="58"
+                  height="248"
+                  fill={getZoneFill(activeZone.id, "end-zone-a")}
+                  stroke={STROKE}
+                  strokeWidth="1"
+                  style={{ transition: "fill 180ms ease" }}
+                  onMouseEnter={() => setActiveZoneId("end-zone-a")}
                 />
+
                 <rect
-                  x="640"
-                  y="60"
-                  width="60"
-                  height="400"
-                  fill={activeZone?.id === "sidelines" ? "rgba(72,188,255,0.3)" : "rgba(72,188,255,0.1)"}
-                  stroke="#dbeeff"
-                  onMouseEnter={() => setActiveZoneId("sidelines")}
+                  x="740"
+                  y="136"
+                  width="58"
+                  height="248"
+                  fill={getZoneFill(activeZone.id, "end-zone-b")}
+                  stroke={STROKE}
+                  strokeWidth="1"
+                  style={{ transition: "fill 180ms ease" }}
+                  onMouseEnter={() => setActiveZoneId("end-zone-b")}
                 />
+
+                <rect
+                  x="160"
+                  y="136"
+                  width="580"
+                  height="248"
+                  fill={getZoneFill(activeZone.id, "playing-field")}
+                  stroke={STROKE}
+                  strokeWidth="1"
+                  style={{ transition: "fill 180ms ease" }}
+                  onMouseEnter={() => setActiveZoneId("playing-field")}
+                />
+
+                {Array.from({ length: 19 }).map((_, index) => {
+                  const x = 160 + index * (580 / 18)
+                  const isMajor = index % 2 === 0
+                  return (
+                    <line
+                      key={`yard-${index}`}
+                      x1={x}
+                      y1="136"
+                      x2={x}
+                      y2="384"
+                      stroke={isMajor ? "rgba(217,238,255,0.6)" : "rgba(217,238,255,0.25)"}
+                      strokeWidth={isMajor ? 1 : 0.7}
+                    />
+                  )
+                })}
+              </>
+            ) : null}
+
+            {sport === "soccer" ? (
+              <>
+                <rect x="140" y="60" width="620" height="400" fill="rgba(10,22,38,0.8)" stroke={STROKE} strokeWidth="1.2" />
+
+                <path
+                  d="M140 60 H760 V460 H140 Z M158 78 H742 V442 H158 Z"
+                  fill={getZoneFill(activeZone.id, "perimeter-sideline")}
+                  fillRule="evenodd"
+                  stroke={STROKE}
+                  strokeWidth="1"
+                  style={{ transition: "fill 180ms ease" }}
+                  onMouseEnter={() => setActiveZoneId("perimeter-sideline")}
+                />
+
+                <rect
+                  x="158"
+                  y="78"
+                  width="584"
+                  height="364"
+                  fill={getZoneFill(activeZone.id, "playing-surface")}
+                  stroke={STROKE}
+                  strokeWidth="1"
+                  style={{ transition: "fill 180ms ease" }}
+                  onMouseEnter={() => setActiveZoneId("playing-surface")}
+                />
+
+                <rect
+                  x="158"
+                  y="188"
+                  width="52"
+                  height="144"
+                  fill={getZoneFill(activeZone.id, "goal-area-a")}
+                  stroke={STROKE}
+                  strokeWidth="1"
+                  style={{ transition: "fill 180ms ease" }}
+                  onMouseEnter={() => setActiveZoneId("goal-area-a")}
+                />
+
+                <rect
+                  x="690"
+                  y="188"
+                  width="52"
+                  height="144"
+                  fill={getZoneFill(activeZone.id, "goal-area-b")}
+                  stroke={STROKE}
+                  strokeWidth="1"
+                  style={{ transition: "fill 180ms ease" }}
+                  onMouseEnter={() => setActiveZoneId("goal-area-b")}
+                />
+
+                <line x1="450" y1="78" x2="450" y2="442" stroke={STROKE} strokeWidth="1" />
+                <circle cx="450" cy="260" r="56" fill="none" stroke={STROKE} strokeWidth="1" />
+                <rect x="158" y="140" width="104" height="240" fill="none" stroke={STROKE} strokeWidth="1" />
+                <rect x="638" y="140" width="104" height="240" fill="none" stroke={STROKE} strokeWidth="1" />
               </>
             ) : null}
           </svg>
@@ -202,7 +376,7 @@ export default function HowWeCaptureMaps() {
 
         <aside className="space-y-3">
           {zones.map((zone) => {
-            const active = activeZone?.id === zone.id
+            const active = activeZone.id === zone.id
             return (
               <button
                 key={zone.id}
@@ -210,9 +384,7 @@ export default function HowWeCaptureMaps() {
                 onMouseEnter={() => setActiveZoneId(zone.id)}
                 onFocus={() => setActiveZoneId(zone.id)}
                 className={`w-full rounded-xl border p-3 text-left ${
-                  active
-                    ? "border-cyan-400 bg-cyan-500/15"
-                    : "border-slate-800 bg-slate-950/60 hover:border-cyan-500/60"
+                  active ? "border-cyan-400 bg-cyan-500/15" : "border-slate-800 bg-slate-950/60 hover:border-cyan-500/60"
                 }`}
               >
                 <p className={`font-heading text-lg ${active ? "text-cyan-100" : "text-slate-100"}`}>{zone.title}</p>
