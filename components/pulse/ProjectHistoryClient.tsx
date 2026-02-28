@@ -53,19 +53,59 @@ function moduleLabel(module: string): string {
   return module
 }
 
+const FLOW_PHASE_OPTIONS = [
+  "CUTTING",
+  "SEWING",
+  "ROLL_PLACEMENT",
+  "COMPACTION",
+  "ADHESIVE",
+  "MATERIAL",
+] as const
+
+function asObject(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {}
+  return value as Record<string, unknown>
+}
+
+function asString(value: unknown): string {
+  return typeof value === "string" ? value : ""
+}
+
+function asNullableString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null
+}
+
+function asStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is string => typeof item === "string" && item.length > 0)
+}
+
 type CaptureStoryCardProps = {
   capture: CaptureItem
   deleting: boolean
   saving: boolean
   onDelete: (capture: CaptureItem) => void
-  onSaveMetadata: (capture: CaptureItem, metadataText: string) => void
+  onSaveMetadata: (capture: CaptureItem, metadata: Record<string, unknown>) => void
 }
 
 function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata }: CaptureStoryCardProps) {
   const [index, setIndex] = useState(0)
   const [showMenu, setShowMenu] = useState(false)
   const [editing, setEditing] = useState(false)
+  const [advancedMode, setAdvancedMode] = useState(false)
+  const [editorError, setEditorError] = useState("")
   const [metadataText, setMetadataText] = useState(() => JSON.stringify(capture.metadata ?? {}, null, 2))
+  const [flowPhases, setFlowPhases] = useState<string[]>([])
+  const [flowQuickNotes, setFlowQuickNotes] = useState("")
+  const [flowRollsUsed, setFlowRollsUsed] = useState("")
+  const [flowRollLengthFit, setFlowRollLengthFit] = useState("")
+  const [flowCompactionMethod, setFlowCompactionMethod] = useState("")
+  const [flowRollLabelsCount, setFlowRollLabelsCount] = useState("")
+  const [flowTotalSeams, setFlowTotalSeams] = useState("")
+  const [flowAdhesiveBotes, setFlowAdhesiveBotes] = useState("")
+  const [flowAdhesiveCondicion, setFlowAdhesiveCondicion] = useState("")
+  const [flowMaterialTipo, setFlowMaterialTipo] = useState("")
+  const [flowMaterialPasada, setFlowMaterialPasada] = useState("")
   const total = capture.photos.length
 
   useEffect(() => {
@@ -74,10 +114,103 @@ function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata 
 
   useEffect(() => {
     setMetadataText(JSON.stringify(capture.metadata ?? {}, null, 2))
+    const metadata = asObject(capture.metadata)
+    const details = asObject(metadata.details)
+    const quickNotes = asObject(details.quickNotes)
+    const rollPlacement = asObject(details.rollPlacement)
+    const sewing = asObject(details.sewing)
+    const adhesive = asObject(details.adhesive)
+    const material = asObject(details.material)
+
+    setFlowPhases(asStringArray(metadata.phases_completed))
+    setFlowQuickNotes(
+      Object.entries(quickNotes)
+        .map(([key, value]) => `${key}: ${String(value ?? "")}`)
+        .join("\n"),
+    )
+    setFlowRollsUsed(asString(rollPlacement.totalRollsUsed))
+    setFlowRollLengthFit(asString(rollPlacement.rollLengthFit))
+    setFlowCompactionMethod(asString(rollPlacement.compactionMethod))
+    setFlowRollLabelsCount(asString(rollPlacement.rollLabelsCount))
+    setFlowTotalSeams(asString(sewing.totalSeams))
+    setFlowAdhesiveBotes(asString(adhesive.botesUsados))
+    setFlowAdhesiveCondicion(asString(adhesive.condicion))
+    setFlowMaterialTipo(asString(material.tipo))
+    setFlowMaterialPasada(asString(material.pasada))
+    setAdvancedMode(false)
+    setEditorError("")
   }, [capture.id, capture.metadata])
 
   const hasPhotos = total > 0
   const activePhoto = hasPhotos ? capture.photos[index] : null
+  const isFlowEditable = capture.editable && capture.module === "flow"
+
+  function toggleFlowPhase(phase: string) {
+    setFlowPhases((current) => {
+      if (current.includes(phase)) return current.filter((item) => item !== phase)
+      return [...current, phase]
+    })
+  }
+
+  function buildFlowMetadataPayload(): Record<string, unknown> {
+    const current = asObject(capture.metadata)
+    const currentDetails = asObject(current.details)
+
+    const quickNotes: Record<string, string> = {}
+    const quickNotesLines = flowQuickNotes
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+    for (const line of quickNotesLines) {
+      const [left, ...rest] = line.split(":")
+      const key = left?.trim()
+      const value = rest.join(":").trim()
+      if (!key) continue
+      quickNotes[key] = value
+    }
+
+    return {
+      ...current,
+      phases_completed: flowPhases,
+      details: {
+        ...currentDetails,
+        quickNotes,
+        rollPlacement: {
+          totalRollsUsed: asNullableString(flowRollsUsed),
+          rollLengthFit: asNullableString(flowRollLengthFit),
+          compactionMethod: asNullableString(flowCompactionMethod),
+          rollLabelsCount: asNullableString(flowRollLabelsCount),
+        },
+        sewing: {
+          totalSeams: asNullableString(flowTotalSeams),
+        },
+        adhesive: {
+          botesUsados: asNullableString(flowAdhesiveBotes),
+          condicion: asNullableString(flowAdhesiveCondicion),
+        },
+        material: {
+          tipo: asNullableString(flowMaterialTipo),
+          pasada: asNullableString(flowMaterialPasada),
+        },
+      },
+    }
+  }
+
+  function saveAdvancedJson() {
+    let metadata: Record<string, unknown>
+    try {
+      const parsed = JSON.parse(metadataText) as unknown
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("Metadata debe ser un objeto JSON.")
+      }
+      metadata = parsed as Record<string, unknown>
+      setEditorError("")
+    } catch {
+      setEditorError("JSON inválido. Revisa formato.")
+      return
+    }
+    onSaveMetadata(capture, metadata)
+  }
 
   return (
     <article className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4">
@@ -168,21 +301,145 @@ function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata 
 
         {editing ? (
           <div className="space-y-2 rounded-xl border border-neutral-700 bg-neutral-950 p-3">
-            <p className="text-xs text-neutral-400">Datos capturados (metadata JSON)</p>
-            <textarea
-              rows={8}
-              value={metadataText}
-              onChange={(event) => setMetadataText(event.target.value)}
-              className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-2 font-mono text-xs"
-              disabled={!capture.editable || saving}
-            />
+            {isFlowEditable && !advancedMode ? (
+              <>
+                <p className="text-xs text-neutral-300">Editor de Flujo (fases y campos clave)</p>
+                <div className="space-y-2">
+                  <p className="text-xs text-neutral-400">Fases completadas</p>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {FLOW_PHASE_OPTIONS.map((phase) => {
+                      const active = flowPhases.includes(phase)
+                      return (
+                        <button
+                          key={phase}
+                          type="button"
+                          onClick={() => toggleFlowPhase(phase)}
+                          className={`rounded-xl border px-3 py-2 text-xs font-semibold ${
+                            active ? "border-cyan-500 bg-cyan-500/20 text-cyan-100" : "border-neutral-700 text-neutral-300"
+                          }`}
+                        >
+                          {phase}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                <label className="space-y-1">
+                  <span className="text-xs text-neutral-400">Quick Notes (formato: `FASE: nota`, una por línea)</span>
+                  <textarea
+                    rows={4}
+                    value={flowQuickNotes}
+                    onChange={(event) => setFlowQuickNotes(event.target.value)}
+                    className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-2 text-xs"
+                    disabled={saving}
+                  />
+                </label>
+
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <label className="space-y-1">
+                    <span className="text-xs text-neutral-400">Rolls Used</span>
+                    <input
+                      value={flowRollsUsed}
+                      onChange={(event) => setFlowRollsUsed(event.target.value)}
+                      className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-2 text-xs"
+                      disabled={saving}
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-xs text-neutral-400">Roll Length Fit</span>
+                    <input
+                      value={flowRollLengthFit}
+                      onChange={(event) => setFlowRollLengthFit(event.target.value)}
+                      className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-2 text-xs"
+                      disabled={saving}
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-xs text-neutral-400">Compaction Method</span>
+                    <input
+                      value={flowCompactionMethod}
+                      onChange={(event) => setFlowCompactionMethod(event.target.value)}
+                      className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-2 text-xs"
+                      disabled={saving}
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-xs text-neutral-400">Roll Labels Count</span>
+                    <input
+                      value={flowRollLabelsCount}
+                      onChange={(event) => setFlowRollLabelsCount(event.target.value)}
+                      className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-2 text-xs"
+                      disabled={saving}
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-xs text-neutral-400">Total Seams</span>
+                    <input
+                      value={flowTotalSeams}
+                      onChange={(event) => setFlowTotalSeams(event.target.value)}
+                      className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-2 text-xs"
+                      disabled={saving}
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-xs text-neutral-400">Adhesive Botes</span>
+                    <input
+                      value={flowAdhesiveBotes}
+                      onChange={(event) => setFlowAdhesiveBotes(event.target.value)}
+                      className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-2 text-xs"
+                      disabled={saving}
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-xs text-neutral-400">Adhesive Condición</span>
+                    <input
+                      value={flowAdhesiveCondicion}
+                      onChange={(event) => setFlowAdhesiveCondicion(event.target.value)}
+                      className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-2 text-xs"
+                      disabled={saving}
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-xs text-neutral-400">Material Tipo</span>
+                    <input
+                      value={flowMaterialTipo}
+                      onChange={(event) => setFlowMaterialTipo(event.target.value)}
+                      className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-2 text-xs"
+                      disabled={saving}
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-xs text-neutral-400">Material Pasada</span>
+                    <input
+                      value={flowMaterialPasada}
+                      onChange={(event) => setFlowMaterialPasada(event.target.value)}
+                      className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-2 text-xs"
+                      disabled={saving}
+                    />
+                  </label>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-neutral-400">Datos capturados (metadata JSON)</p>
+                <textarea
+                  rows={8}
+                  value={metadataText}
+                  onChange={(event) => setMetadataText(event.target.value)}
+                  className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-2 font-mono text-xs"
+                  disabled={!capture.editable || saving}
+                />
+              </>
+            )}
             {!capture.editable ? (
               <p className="text-xs text-amber-300">Este módulo todavía no soporta edición en línea. Solo lectura.</p>
             ) : null}
+            {editorError ? <p className="text-xs text-red-300">{editorError}</p> : null}
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={() => onSaveMetadata(capture, metadataText)}
+                onClick={() => (isFlowEditable && !advancedMode ? onSaveMetadata(capture, buildFlowMetadataPayload()) : saveAdvancedJson())}
                 disabled={!capture.editable || saving}
                 className="rounded-lg bg-cyan-600 px-3 py-2 text-xs font-semibold hover:bg-cyan-700 disabled:opacity-50"
               >
@@ -190,11 +447,23 @@ function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata 
               </button>
               <button
                 type="button"
-                onClick={() => setMetadataText(JSON.stringify(capture.metadata ?? {}, null, 2))}
+                onClick={() => {
+                  setMetadataText(JSON.stringify(capture.metadata ?? {}, null, 2))
+                  setEditorError("")
+                }}
                 className="rounded-lg border border-neutral-600 px-3 py-2 text-xs font-semibold hover:bg-neutral-800"
               >
                 Revertir
               </button>
+              {isFlowEditable ? (
+                <button
+                  type="button"
+                  onClick={() => setAdvancedMode((prev) => !prev)}
+                  className="rounded-lg border border-neutral-600 px-3 py-2 text-xs font-semibold hover:bg-neutral-800"
+                >
+                  {advancedMode ? "Modo simple" : "Modo JSON"}
+                </button>
+              ) : null}
             </div>
           </div>
         ) : null}
@@ -284,20 +553,8 @@ export default function ProjectHistoryClient({ projectId, initialZoneKey = null 
     }
   }
 
-  async function saveCaptureMetadata(capture: CaptureItem, metadataText: string) {
+  async function saveCaptureMetadata(capture: CaptureItem, metadata: Record<string, unknown>) {
     if (!projectId || !capture.editable) return
-
-    let metadata: Record<string, unknown>
-    try {
-      const parsed = JSON.parse(metadataText) as unknown
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-        throw new Error("Metadata debe ser un objeto JSON.")
-      }
-      metadata = parsed as Record<string, unknown>
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "JSON inválido.")
-      return
-    }
 
     setSavingCaptureId(capture.id)
     setError("")
