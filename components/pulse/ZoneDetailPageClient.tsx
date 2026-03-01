@@ -215,6 +215,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   const [flowError, setFlowError] = useState("")
   const [draftReady, setDraftReady] = useState(false)
   const [draftRecovered, setDraftRecovered] = useState(false)
+  const [cloudPhotosRecovered, setCloudPhotosRecovered] = useState(false)
   const draftKey = useMemo(
     () => (projectId ? `pulse_draft_zone_detail_${projectId}_${projectZoneId}` : null),
     [projectId, projectZoneId],
@@ -307,6 +308,50 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
     }
     setDraftReady(true)
   }, [draftKey])
+
+  useEffect(() => {
+    if (!projectId || !zone) return
+    if (!draftReady) return
+    if (zonePhotos.length > 0) return
+    if (draftRecovered) return
+    if (cloudPhotosRecovered) return
+
+    let cancelled = false
+    const projectIdValue = projectId
+    const zoneIdValue = zone.id
+
+    async function hydratePhotosFromCloud() {
+      try {
+        const response = await fetch(`/api/project-captures?project=${encodeURIComponent(projectIdValue)}`, {
+          cache: "no-store",
+        })
+        const data = (await response.json()) as {
+          captures?: Array<{ projectZoneId: string | null; photos: string[]; module: string; createdAt: string }>
+        }
+        if (!response.ok || cancelled) return
+
+        const candidates = (data.captures ?? []).filter(
+          (item) => item.projectZoneId === zoneIdValue && Array.isArray(item.photos) && item.photos.length > 0,
+        )
+        if (candidates.length === 0) return
+
+        const preferred = candidates.find((item) => item.module === "flow") ?? candidates[0]
+        const recovered = preferred.photos.filter((photo) => typeof photo === "string" && photo.length > 0).slice(0, 3)
+        if (recovered.length === 0 || cancelled) return
+
+        setZonePhotos(recovered)
+        setCloudPhotosRecovered(true)
+      } catch {
+        // best effort
+      }
+    }
+
+    void hydratePhotosFromCloud()
+
+    return () => {
+      cancelled = true
+    }
+  }, [cloudPhotosRecovered, draftReady, draftRecovered, projectId, zone, zonePhotos.length])
 
   useEffect(() => {
     if (!draftReady || !draftKey) return
