@@ -285,8 +285,24 @@ export default function ProjectsAdminPage() {
     setUploadedPlanUrls((current) => current.filter((_, i) => i !== index))
   }
 
-  function applyPlanAnalysisToTargets(projectId: string, analysis: PlanAnalysisResult, baseTargets: ZoneTarget[]) {
-    const suggestedTargets = suggestZoneTargetsFromPlanAnalysis(fieldType, baseTargets, analysis)
+  function applyPlanAnalysisToTargets(
+    projectId: string,
+    analysis: PlanAnalysisResult,
+    baseTargets: ZoneTarget[],
+    options?: { overwriteExisting?: boolean },
+  ) {
+    const overwriteExisting = options?.overwriteExisting === true
+    const seedTargets = overwriteExisting
+      ? baseTargets.map((row) => ({
+          ...row,
+          plannedSqft: null,
+          plannedRolls: null,
+          plannedAdhesiveUnits: null,
+          plannedSeamFt: null,
+        }))
+      : baseTargets
+
+    const suggestedTargets = suggestZoneTargetsFromPlanAnalysis(fieldType, seedTargets, analysis)
     const updatedCells = countAutofilledCells(baseTargets, suggestedTargets)
     setPlanAnalysis(analysis)
     setZoneTargets(suggestedTargets)
@@ -298,9 +314,9 @@ export default function ProjectsAdminPage() {
     })
     savePlanAnalysisCache(projectId, analysis)
 
-    const currentTotalSqft = toNumberOrNull(totalSqft)
     const suggestedTotalSqft = summarizePlannedSqft(suggestedTargets)
-    if (!currentTotalSqft && suggestedTotalSqft > 0) {
+    const currentTotalSqft = toNumberOrNull(totalSqft)
+    if (suggestedTotalSqft > 0 && (overwriteExisting || !currentTotalSqft)) {
       setTotalSqft(String(suggestedTotalSqft))
     }
 
@@ -394,9 +410,11 @@ export default function ProjectsAdminPage() {
       }
 
       if (uploadedResult.analysis) {
-        const result = applyPlanAnalysisToTargets(projectId, uploadedResult.analysis, baseTargets)
+        const result = applyPlanAnalysisToTargets(projectId, uploadedResult.analysis, baseTargets, {
+          overwriteExisting: true,
+        })
         setMessage(
-          `Analyze Plan (IA): ${uploadedResult.analysis.stats.uniqueRollLabels} rollos, ${uploadedResult.analysis.stats.rollSegments} segmentos, CHOP ${uploadedResult.analysis.stats.choppedSegments}, SPLIT ${uploadedResult.analysis.stats.splitSegments}. Autofill en ${result.updatedCells} campos.`,
+          `Analyze Plan (IA): ${uploadedResult.analysis.stats.uniqueRollLabels} rollos, ${uploadedResult.analysis.stats.rollSegments} segmentos, CHOP ${uploadedResult.analysis.stats.choppedSegments}, SPLIT ${uploadedResult.analysis.stats.splitSegments}. Autofill en #3 y Total Sqft en #2 cuando hay datos.`,
         )
         return
       }
@@ -411,8 +429,11 @@ export default function ProjectsAdminPage() {
         setMessage("No se pudo analizar el plano. Revisa formato del PDF o intenta de nuevo.")
         return
       }
+      applyPlanAnalysisToTargets(projectId, result.analysis, baseTargets, {
+        overwriteExisting: true,
+      })
       setMessage(
-        `Analyze Plan (IA): ${result.analysis.stats.uniqueRollLabels} rollos, ${result.analysis.stats.rollSegments} segmentos, CHOP ${result.analysis.stats.choppedSegments}, SPLIT ${result.analysis.stats.splitSegments}. Autofill en ${result.updatedCells} campos.`,
+        `Analyze Plan (IA): ${result.analysis.stats.uniqueRollLabels} rollos, ${result.analysis.stats.rollSegments} segmentos, CHOP ${result.analysis.stats.choppedSegments}, SPLIT ${result.analysis.stats.splitSegments}. Autofill en #3 y Total Sqft en #2 cuando hay datos.`,
       )
     } catch (analysisError) {
       const text = analysisError instanceof Error ? analysisError.message : "No se pudo analizar el plano."
@@ -761,7 +782,7 @@ export default function ProjectsAdminPage() {
               {isAnalyzingPlans ? "Analyzing Plan (IA)..." : "Analyze Plan (IA)"}
             </button>
             <p className="self-center text-xs text-neutral-400">
-              Analiza el plano y autorrellena Targets por zona (editable).
+              Analiza el plano y autorrellena #3 Targets + #2 Total Sqft (si hay datos). Todo queda editable.
             </p>
           </div>
 
