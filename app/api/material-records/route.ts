@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 
 import { requireAuth } from "../../../lib/auth/guard"
 import { computeMaterialPass } from "../../../lib/metricsV0"
+import { uploadDataUrlToStorage } from "../../../lib/storage/safeUpload"
 import { getSupabaseAdminClient } from "../../../lib/supabase/server"
 import { resolveZoneRecordType, validatePhaseByZoneType } from "../../../lib/zonePhaseRules"
 
@@ -26,40 +27,20 @@ type RequestBody = {
 
 type CaptureStatus = "incomplete" | "complete"
 
-function parseDataUrl(dataUrl: string): { mimeType: string; bytes: Uint8Array } | null {
-  const match = dataUrl.match(/^data:(.*?);base64,(.*)$/)
-  if (!match) return null
-
-  const mimeType = match[1]
-  const base64 = match[2]
-  const bytes = Uint8Array.from(Buffer.from(base64, "base64"))
-
-  return { mimeType, bytes }
-}
-
 async function uploadMaterialPhoto(
   supabase: ReturnType<typeof getSupabaseAdminClient>,
   dataUrl: string,
   projectId: string,
   index: number,
 ): Promise<string> {
-  const parsed = parseDataUrl(dataUrl)
-  if (!parsed) return dataUrl
-
-  const bucket = process.env.SUPABASE_STORAGE_BUCKET || "pulse-evidence"
-  const extension = parsed.mimeType.split("/")[1] || "jpg"
-  const filePath = `${projectId}/material/${Date.now()}-${index}.${extension}`
-
-  const { error } = await supabase.storage.from(bucket).upload(filePath, parsed.bytes, {
-    contentType: parsed.mimeType,
-    upsert: true,
+  return uploadDataUrlToStorage({
+    supabase,
+    dataUrlOrUrl: dataUrl,
+    projectId,
+    moduleName: "material",
+    keyPath: `material_${index}`,
+    fallbackToOriginal: true,
   })
-
-  if (error) {
-    throw new Error(`Upload failed: ${error.message}`)
-  }
-
-  return supabase.storage.from(bucket).getPublicUrl(filePath).data.publicUrl
 }
 
 function computeDeviation(esperadas: number, utilizadas: number): number {

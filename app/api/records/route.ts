@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 import { requireAuth } from "../../../lib/auth/guard"
 import { extractFieldRecordMetadata, recordCaptureEvent, recordMetadataVersion } from "../../../lib/audit/captureAudit"
 import { computeGlueMetrics } from "../../../lib/metricsV0"
+import { uploadDataUrlToStorage } from "../../../lib/storage/safeUpload"
 import { getSupabaseAdminClient } from "../../../lib/supabase/server"
 import { mapCompactPhase, mapRollosPhase, resolveZoneRecordType, validatePhaseByZoneType } from "../../../lib/zonePhaseRules"
 
@@ -36,17 +37,6 @@ const DEBUG_CAPTURE = process.env.NEXT_PUBLIC_DEBUG_CAPTURE === "1" || process.e
 function log(event: string, data: Record<string, unknown>) {
   if (!DEBUG_CAPTURE) return
   console.log(`[capture-api] ${event}`, data)
-}
-
-function parseDataUrl(dataUrl: string): { mimeType: string; bytes: Uint8Array } | null {
-  const match = dataUrl.match(/^data:(.*?);base64,(.*)$/)
-  if (!match) return null
-
-  const mimeType = match[1]
-  const base64 = match[2]
-  const bytes = Uint8Array.from(Buffer.from(base64, "base64"))
-
-  return { mimeType, bytes }
 }
 
 function toStringOrNull(value: unknown): string | null {
@@ -170,27 +160,14 @@ async function uploadDataUrl(
   moduleName: string,
   keyPath: string,
 ): Promise<string> {
-  if (!dataUrlOrUrl.startsWith("data:image/")) return dataUrlOrUrl
-
-  const parsed = parseDataUrl(dataUrlOrUrl)
-  if (!parsed) return dataUrlOrUrl
-
-  const bucket = process.env.SUPABASE_STORAGE_BUCKET || "pulse-evidence"
-  const extension = parsed.mimeType.split("/")[1] || "jpg"
-  const safeKeyPath = keyPath.replace(/[^a-z0-9-_/.]/gi, "_")
-  const filePath = `${projectId}/${moduleName}/${Date.now()}-${safeKeyPath}.${extension}`
-
-  const { error } = await supabase.storage.from(bucket).upload(filePath, parsed.bytes, {
-    contentType: parsed.mimeType,
-    upsert: true,
+  return uploadDataUrlToStorage({
+    supabase,
+    dataUrlOrUrl,
+    projectId,
+    moduleName,
+    keyPath,
+    fallbackToOriginal: true,
   })
-
-  if (error) {
-    throw new Error(`Upload failed: ${error.message}`)
-  }
-
-  const { data } = supabase.storage.from(bucket).getPublicUrl(filePath)
-  return data.publicUrl
 }
 
 export async function POST(request: Request) {

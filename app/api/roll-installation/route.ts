@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 
 import { requireAuth } from "../../../lib/auth/guard"
 import { computeCompactionRisk, computeRollInstallRisk, normalizeSemaforo } from "../../../lib/metricsV0"
+import { uploadDataUrlToStorage } from "../../../lib/storage/safeUpload"
 import { getSupabaseAdminClient } from "../../../lib/supabase/server"
 import { resolveZoneRecordType, validatePhaseByZoneType } from "../../../lib/zonePhaseRules"
 
@@ -35,31 +36,16 @@ type CaptureStatus = "incomplete" | "complete"
 type TrafficLight = "green" | "yellow" | "red"
 type UploadedPhoto = { type: PhotoType; url: string }
 
-function parseDataUrl(dataUrl: string): { mimeType: string; bytes: Uint8Array } | null {
-  const match = dataUrl.match(/^data:(.*?);base64,(.*)$/)
-  if (!match) return null
-  return {
-    mimeType: match[1],
-    bytes: Uint8Array.from(Buffer.from(match[2], "base64")),
-  }
-}
-
 async function uploadPhoto(projectRecordId: string, type: PhotoType, source: string): Promise<string> {
-  if (!source.startsWith("data:image/")) return source
-  const parsed = parseDataUrl(source)
-  if (!parsed) return source
-
   const supabase = getSupabaseAdminClient()
-  const bucket = process.env.SUPABASE_STORAGE_BUCKET || "pulse-evidence"
-  const filePath = `roll-installation/${projectRecordId}/${type}.jpg`
-
-  const { error } = await supabase.storage.from(bucket).upload(filePath, parsed.bytes, {
-    contentType: parsed.mimeType,
-    upsert: true,
+  return uploadDataUrlToStorage({
+    supabase,
+    dataUrlOrUrl: source,
+    projectId: projectRecordId,
+    moduleName: "roll-installation",
+    keyPath: type,
+    fallbackToOriginal: true,
   })
-  if (error) throw new Error(`Upload failed: ${error.message}`)
-
-  return supabase.storage.from(bucket).getPublicUrl(filePath).data.publicUrl
 }
 
 function normalizeCaptureStatus(value: unknown): CaptureStatus {

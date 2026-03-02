@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 
 import { requireAuth } from "../../../lib/auth/guard"
 import { recordCaptureEvent, recordMetadataVersion } from "../../../lib/audit/captureAudit"
+import { uploadDataUrlToStorage } from "../../../lib/storage/safeUpload"
 import { getSupabaseAdminClient } from "../../../lib/supabase/server"
 
 export const runtime = "nodejs"
@@ -22,66 +23,20 @@ type RequestBody = {
   photos?: string[]
 }
 
-function parseDataUrl(dataUrl: string): { mimeType: string; bytes: Uint8Array } | null {
-  const match = dataUrl.match(/^data:(.*?);base64,(.*)$/)
-  if (!match) return null
-  return {
-    mimeType: match[1],
-    bytes: Uint8Array.from(Buffer.from(match[2], "base64")),
-  }
-}
-
-function sanitizeExtension(mimeType: string): string {
-  const raw = mimeType.split("/")[1] || "jpg"
-  const clean = raw.toLowerCase().replace(/[^a-z0-9]/g, "")
-  return clean || "jpg"
-}
-
-function sanitizePathSegment(value: string): string {
-  const cleaned = value.trim().replace(/[^a-z0-9-_]/gi, "_")
-  return cleaned || "unknown"
-}
-
-function resolveStorageBucket(): string {
-  const raw = (process.env.SUPABASE_STORAGE_BUCKET || "pulse-evidence").trim()
-  const safe = raw.replace(/[^a-z0-9-_]/gi, "")
-  return safe || "pulse-evidence"
-}
-
 async function uploadDataUrl(
   supabase: ReturnType<typeof getSupabaseAdminClient>,
   dataUrlOrUrl: string,
   projectId: string,
   keyPath: string,
 ): Promise<string> {
-  if (!dataUrlOrUrl.startsWith("data:image/")) return dataUrlOrUrl
-  const parsed = parseDataUrl(dataUrlOrUrl)
-  if (!parsed) return dataUrlOrUrl
-
-  const bucket = resolveStorageBucket()
-  const extension = sanitizeExtension(parsed.mimeType)
-  const safeKey = keyPath.replace(/[^a-z0-9-_/.]/gi, "_")
-  const safeProjectId = sanitizePathSegment(projectId)
-  const filePath = `${safeProjectId}/flow/${Date.now()}-${safeKey}.${extension}`
-
-  try {
-    const { error } = await supabase.storage.from(bucket).upload(filePath, parsed.bytes, {
-      contentType: parsed.mimeType,
-      upsert: true,
-    })
-    if (error) throw new Error(`Upload failed: ${error.message}`)
-
-    const { data } = supabase.storage.from(bucket).getPublicUrl(filePath)
-    return data.publicUrl
-  } catch (error) {
-    console.error("[flow-sessions] photo_upload_failed_fallback", {
-      projectId,
-      bucket,
-      filePath,
-      message: error instanceof Error ? error.message : "upload failed",
-    })
-    return dataUrlOrUrl
-  }
+  return uploadDataUrlToStorage({
+    supabase,
+    dataUrlOrUrl,
+    projectId,
+    moduleName: "flow",
+    keyPath,
+    fallbackToOriginal: true,
+  })
 }
 
 export async function POST(request: Request) {
