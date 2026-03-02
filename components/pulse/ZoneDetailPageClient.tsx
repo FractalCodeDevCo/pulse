@@ -9,6 +9,7 @@ import { clearCaptureDraft, readCaptureDraft, saveCaptureDraft } from "../../lib
 import { IMAGE_INPUT_ACCEPT, processImageFiles } from "../../lib/clientImage"
 import { readPlanAnalysisCache, savePlanAnalysisCache } from "../../lib/planIntelligence/cache"
 import { PlanAnalysisResult } from "../../lib/planIntelligence/types"
+import { suggestNextRollsByZone } from "../../lib/planIntelligence/suggest"
 import { saveZonePhotosCache } from "../../lib/zonePhotoCache"
 import ContextHeader from "./ContextHeader"
 import {
@@ -217,6 +218,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   const [lastCloudSavedAt, setLastCloudSavedAt] = useState<string | null>(null)
   const [lastCloudFingerprint, setLastCloudFingerprint] = useState<string | null>(null)
   const [planCacheVersion, setPlanCacheVersion] = useState(0)
+  const [useSerpentineSuggestions, setUseSerpentineSuggestions] = useState(false)
   const [draftReady, setDraftReady] = useState(false)
   const [draftRecovered, setDraftRecovered] = useState(false)
   const [cloudPhotosRecovered, setCloudPhotosRecovered] = useState(false)
@@ -240,6 +242,10 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   const expectedRolls = totalRollsUsed.trim() === "" ? null : Number(totalRollsUsed)
   const hasValidExpectedRolls = expectedRolls !== null && Number.isInteger(expectedRolls) && expectedRolls >= 0
   const rollLabelProgress = hasValidExpectedRolls && expectedRolls > 0 ? Math.min(100, Math.round((rollColorLabels.length / expectedRolls) * 100)) : null
+  const planAnalysis = useMemo(() => {
+    if (!projectId) return null
+    return readPlanAnalysisCache(projectId)
+  }, [projectId, planCacheVersion])
   const flowFingerprint = useMemo(() => {
     if (!zone) return ""
     const photos = [...zonePhotos, ...materialPhotos]
@@ -290,8 +296,8 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
       ? "cloud"
       : "local"
   const planSuggestedRolls = useMemo<PlanSuggestedRoll[]>(() => {
-    if (!projectId || !zone) return []
-    const analysis = readPlanAnalysisCache(projectId)
+    if (!zone || !planAnalysis) return []
+    const analysis = planAnalysis
     if (!analysis) return []
     const zoneKeys = inferPlanZoneKeys(zone.macroZone, zone.microZone)
     const labels = new Set<string>()
@@ -320,7 +326,15 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
         chopCount: rollDetails.get(label)?.chopCount ?? 0,
         splitCount: rollDetails.get(label)?.splitCount ?? 0,
       }))
-  }, [projectId, rollColorLabels, zone, planCacheVersion])
+  }, [planAnalysis, rollColorLabels, zone])
+
+  const nextRollSuggestion = useMemo(() => {
+    if (!zone || !planAnalysis) return null
+    const zoneKeys = inferPlanZoneKeys(zone.macroZone, zone.microZone)
+    return suggestNextRollsByZone(planAnalysis, zoneKeys, rollColorLabels, {
+      serpentine: useSerpentineSuggestions,
+    })
+  }, [zone, planAnalysis, rollColorLabels, useSerpentineSuggestions])
 
   useEffect(() => {
     if (!projectId) return
@@ -1204,6 +1218,36 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                                 Sync Totals
                               </button>
                             </div>
+
+                            {nextRollSuggestion && nextRollSuggestion.nextRolls.length > 0 ? (
+                              <div className="space-y-2 rounded-xl border border-cyan-600/40 bg-cyan-500/5 p-3">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <p className="text-xs font-semibold text-cyan-200">
+                                    Next rolls ({nextRollSuggestion.strategy} · confidence {Math.round(nextRollSuggestion.confidence * 100)}%)
+                                  </p>
+                                  <button
+                                    type="button"
+                                    onClick={() => setUseSerpentineSuggestions((prev) => !prev)}
+                                    className="rounded-full border border-neutral-600 px-3 py-1 text-xs font-semibold text-neutral-200 hover:bg-neutral-800"
+                                  >
+                                    {useSerpentineSuggestions ? "Serpentine ON" : "Serpentine OFF"}
+                                  </button>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  {nextRollSuggestion.nextRolls.map((roll) => (
+                                    <button
+                                      key={roll.instanceId}
+                                      type="button"
+                                      onClick={() => addRollColorLabel(roll.id)}
+                                      className="rounded-full border border-cyan-500/70 bg-cyan-500/10 px-3 py-1 text-xs font-semibold text-cyan-100 hover:bg-cyan-500/20"
+                                    >
+                                      + {roll.id}
+                                      {roll.lengthFt ? ` · ${roll.lengthFt}ft` : ""}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
 
                             {planSuggestedRolls.length > 0 ? (
                               <div className="space-y-2">
