@@ -5,7 +5,6 @@ import Link from "next/link"
 import { ChangeEvent, useEffect, useMemo, useState } from "react"
 
 import { createCaptureSessionId } from "../../lib/captureSession"
-import { clearCaptureDraft, readCaptureDraft, saveCaptureDraft } from "../../lib/captureDraft"
 import { IMAGE_INPUT_ACCEPT, processImageFiles } from "../../lib/clientImage"
 import { readPlanAnalysisCache, savePlanAnalysisCache } from "../../lib/planIntelligence/cache"
 import { PlanAnalysisResult } from "../../lib/planIntelligence/types"
@@ -51,39 +50,6 @@ type MaterialSummary = {
   valve_delta: -1 | 0 | 1
   valve_next: number
   suggestion: string | null
-}
-
-type ZoneDetailDraft = {
-  openStep: ZoneStepKey | null
-  quickNotes: Record<string, string>
-  zonePhotos: string[]
-  rollLengthFit: "green" | "yellow" | "red" | ""
-  totalRollsUsed: string
-  sewingTotalSeams: string
-  rollColorLabels: string[]
-  rollColorInput: string
-  compactionMethod: "Plate" | "Roller" | "Manual" | ""
-  surfaceFirm: boolean
-  moistureOk: boolean
-  doubleCompaction: boolean
-  rollPlacementSessionId: string
-  adhesiveFt: string
-  adhesiveCriticalInfieldAreas: string[]
-  adhesiveLineasMarkbox: boolean
-  adhesiveBotes: string
-  adhesiveCondicion: string
-  adhesiveClima: string[]
-  adhesiveObservaciones: string
-  adhesiveSessionId: string
-  materialStep: 1 | 2
-  materialTipo: "Arena" | "Goma" | ""
-  materialPasada: "Sencilla" | "Doble" | ""
-  materialValvula: number
-  materialBolsasEsperadas: string
-  materialBolsasUsadas: string
-  materialObservaciones: string
-  materialSessionId: string
-  materialPhotos: string[]
 }
 
 const CONDITION_OPTIONS = ["Excelente", "Buena", "Regular", "Mala"]
@@ -219,13 +185,6 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   const [lastCloudFingerprint, setLastCloudFingerprint] = useState<string | null>(null)
   const [planCacheVersion, setPlanCacheVersion] = useState(0)
   const [useSerpentineSuggestions, setUseSerpentineSuggestions] = useState(false)
-  const [draftReady, setDraftReady] = useState(false)
-  const [draftRecovered, setDraftRecovered] = useState(false)
-  const [cloudPhotosRecovered, setCloudPhotosRecovered] = useState(false)
-  const draftKey = useMemo(
-    () => (projectId ? `pulse_draft_zone_detail_${projectId}_${projectZoneId}` : null),
-    [projectId, projectZoneId],
-  )
 
   const stepTemplates = useMemo(() => (zone ? getZoneStepTemplates(zone.zoneType) : []), [zone])
   const phasesCompleted = useMemo(
@@ -368,194 +327,54 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
 
   useEffect(() => {
     if (!zone) return
+    setOpenStep(null)
+    setQuickNotes({})
+    setZonePhotos([])
+    setRollLengthFit("")
+    setTotalRollsUsed("")
+    setSewingTotalSeams("")
+    setRollColorLabels([])
+    setRollColorInput("")
+    setCompactionMethod("")
+    setSurfaceFirm(true)
+    setMoistureOk(true)
+    setDoubleCompaction(false)
+    setRollPlacementSessionId(createCaptureSessionId())
+    setAdhesiveFt("")
+    setAdhesiveCriticalInfieldAreas([])
+    setAdhesiveLineasMarkbox(false)
+    setAdhesiveBotes("")
+    setAdhesiveCondicion("")
+    setAdhesiveClima([])
+    setAdhesiveObservaciones("")
+    setAdhesiveSessionId(createCaptureSessionId())
+    setMaterialStep(1)
+    setMaterialTipo("")
+    setMaterialPasada("")
+    setMaterialValvula(1)
+    setMaterialBolsasEsperadas("")
+    setMaterialBolsasUsadas("")
+    setMaterialObservaciones("")
+    setMaterialSessionId(createCaptureSessionId())
+    setMaterialPhotos([])
+    setStepSessionIds({})
+    setStepSaveMessages({})
+    setStepSaveErrors({})
+    setFlowSessionId(createCaptureSessionId())
+    setFlowMessage("")
+    setFlowError("")
+    setRollPlacementMessage("")
+    setRollPlacementError("")
+    setAdhesiveMessage("")
+    setAdhesiveError("")
+    setMaterialMessage("")
+    setMaterialError("")
+    setRollPlacementSummary(null)
+    setAdhesiveSummary(null)
+    setMaterialSummary(null)
     setLastCloudSavedAt(null)
     setLastCloudFingerprint(null)
   }, [zone?.id])
-
-  useEffect(() => {
-    if (!draftKey) return
-    const draft = readCaptureDraft<ZoneDetailDraft>(draftKey)
-    if (draft) {
-      setOpenStep(draft.openStep)
-      setQuickNotes(draft.quickNotes)
-      setZonePhotos(draft.zonePhotos)
-      setRollLengthFit(draft.rollLengthFit)
-      setTotalRollsUsed(draft.totalRollsUsed)
-      setSewingTotalSeams(draft.sewingTotalSeams ?? "")
-      setRollColorLabels(draft.rollColorLabels ?? [])
-      setRollColorInput(draft.rollColorInput ?? "")
-      setCompactionMethod(draft.compactionMethod)
-      setSurfaceFirm(draft.surfaceFirm)
-      setMoistureOk(draft.moistureOk)
-      setDoubleCompaction(draft.doubleCompaction)
-      setRollPlacementSessionId(draft.rollPlacementSessionId || createCaptureSessionId())
-      setAdhesiveFt(draft.adhesiveFt)
-      setAdhesiveCriticalInfieldAreas(draft.adhesiveCriticalInfieldAreas)
-      setAdhesiveLineasMarkbox(draft.adhesiveLineasMarkbox)
-      setAdhesiveBotes(draft.adhesiveBotes)
-      setAdhesiveCondicion(draft.adhesiveCondicion)
-      setAdhesiveClima(draft.adhesiveClima)
-      setAdhesiveObservaciones(draft.adhesiveObservaciones)
-      setAdhesiveSessionId(draft.adhesiveSessionId || createCaptureSessionId())
-      setMaterialStep(draft.materialStep)
-      setMaterialTipo(draft.materialTipo)
-      setMaterialPasada(draft.materialPasada)
-      setMaterialValvula(draft.materialValvula)
-      setMaterialBolsasEsperadas(draft.materialBolsasEsperadas)
-      setMaterialBolsasUsadas(draft.materialBolsasUsadas)
-      setMaterialObservaciones(draft.materialObservaciones)
-      setMaterialSessionId(draft.materialSessionId || createCaptureSessionId())
-      setMaterialPhotos(draft.materialPhotos)
-      setDraftRecovered(true)
-    }
-    setDraftReady(true)
-  }, [draftKey])
-
-  useEffect(() => {
-    if (!projectId || !zone) return
-    if (!draftReady) return
-    if (zonePhotos.length > 0) return
-    if (draftRecovered) return
-    if (cloudPhotosRecovered) return
-
-    let cancelled = false
-    const projectIdValue = projectId
-    const zoneIdValue = zone.id
-
-    async function hydratePhotosFromCloud() {
-      try {
-        const response = await fetch(`/api/project-captures?project=${encodeURIComponent(projectIdValue)}`, {
-          cache: "no-store",
-        })
-        const data = (await response.json()) as {
-          captures?: Array<{ projectZoneId: string | null; photos: string[]; module: string; createdAt: string }>
-        }
-        if (!response.ok || cancelled) return
-
-        const candidates = (data.captures ?? []).filter(
-          (item) => item.projectZoneId === zoneIdValue && Array.isArray(item.photos) && item.photos.length > 0,
-        )
-        if (candidates.length === 0) return
-
-        const preferred = candidates.find((item) => item.module === "flow") ?? candidates[0]
-        const recovered = preferred.photos.filter((photo) => typeof photo === "string" && photo.length > 0).slice(0, 3)
-        if (recovered.length === 0 || cancelled) return
-
-        setZonePhotos(recovered)
-        setCloudPhotosRecovered(true)
-      } catch {
-        // best effort
-      }
-    }
-
-    void hydratePhotosFromCloud()
-
-    return () => {
-      cancelled = true
-    }
-  }, [cloudPhotosRecovered, draftReady, draftRecovered, projectId, zone, zonePhotos.length])
-
-  useEffect(() => {
-    if (!draftReady || !draftKey) return
-
-    const hasQuickNotes = Object.values(quickNotes).some((value) => value.trim().length > 0)
-    const hasMeaningfulDraft = Boolean(
-      openStep ||
-        hasQuickNotes ||
-        zonePhotos.length > 0 ||
-        rollLengthFit ||
-        totalRollsUsed ||
-        sewingTotalSeams ||
-        rollColorLabels.length > 0 ||
-        rollColorInput.trim().length > 0 ||
-        compactionMethod ||
-        adhesiveFt ||
-        adhesiveCriticalInfieldAreas.length > 0 ||
-        adhesiveLineasMarkbox ||
-        adhesiveBotes ||
-        adhesiveCondicion ||
-        adhesiveClima.length > 0 ||
-        adhesiveObservaciones.trim().length > 0 ||
-        materialStep === 2 ||
-        materialTipo ||
-        materialPasada ||
-        materialBolsasEsperadas ||
-        materialBolsasUsadas ||
-        materialObservaciones.trim().length > 0 ||
-        materialPhotos.length > 0,
-    )
-
-    if (!hasMeaningfulDraft) {
-      clearCaptureDraft(draftKey)
-      return
-    }
-
-    saveCaptureDraft<ZoneDetailDraft>(draftKey, {
-      openStep,
-      quickNotes,
-      zonePhotos,
-      rollLengthFit,
-      totalRollsUsed,
-      sewingTotalSeams,
-      rollColorLabels,
-      rollColorInput,
-      compactionMethod,
-      surfaceFirm,
-      moistureOk,
-      doubleCompaction,
-      rollPlacementSessionId,
-      adhesiveFt,
-      adhesiveCriticalInfieldAreas,
-      adhesiveLineasMarkbox,
-      adhesiveBotes,
-      adhesiveCondicion,
-      adhesiveClima,
-      adhesiveObservaciones,
-      adhesiveSessionId,
-      materialStep,
-      materialTipo,
-      materialPasada,
-      materialValvula,
-      materialBolsasEsperadas,
-      materialBolsasUsadas,
-      materialObservaciones,
-      materialSessionId,
-      materialPhotos,
-    })
-  }, [
-    adhesiveBotes,
-    adhesiveClima,
-    adhesiveCondicion,
-    adhesiveCriticalInfieldAreas,
-    adhesiveFt,
-    adhesiveLineasMarkbox,
-    adhesiveObservaciones,
-    adhesiveSessionId,
-    materialStep,
-    materialTipo,
-    materialPasada,
-    materialValvula,
-    materialBolsasEsperadas,
-    materialBolsasUsadas,
-    materialObservaciones,
-    materialSessionId,
-    materialPhotos,
-    compactionMethod,
-    doubleCompaction,
-    draftKey,
-    draftReady,
-    moistureOk,
-    openStep,
-    quickNotes,
-    rollLengthFit,
-    rollColorInput,
-    rollColorLabels,
-    rollPlacementSessionId,
-    sewingTotalSeams,
-    surfaceFirm,
-    totalRollsUsed,
-    zonePhotos,
-  ])
 
   function normalizeRollColorLabel(raw: string): string {
     return raw.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "")
@@ -1051,11 +870,6 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                 ? "Guardando en nube..."
                 : "Solo local (falta Guardar flujo)"}
           </p>
-          {draftRecovered ? (
-            <p className="rounded-xl border border-cyan-500/70 bg-cyan-500/10 p-3 text-sm text-cyan-200">
-              Borrador recuperado. Continúa donde te quedaste.
-            </p>
-          ) : null}
           <input
             type="file"
             accept={IMAGE_INPUT_ACCEPT}
