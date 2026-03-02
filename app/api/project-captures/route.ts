@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 
+import { requireAuth } from "../../../lib/auth/guard"
 import { getSupabaseAdminClient } from "../../../lib/supabase/server"
 
 export const runtime = "nodejs"
@@ -152,6 +153,8 @@ function formatFieldRecordSummary(module: string | null, metadata: Record<string
 }
 
 export async function GET(request: Request) {
+  const auth = await requireAuth(request, ["admin", "pm", "installer"])
+  if (!auth.ok) return auth.response
   try {
     const { searchParams } = new URL(request.url)
     const projectId = searchParams.get("project")
@@ -355,6 +358,8 @@ type MutationBody = {
 }
 
 export async function DELETE(request: Request) {
+  const auth = await requireAuth(request, ["admin", "pm"])
+  if (!auth.ok) return auth.response
   try {
     const body = (await request.json()) as MutationBody
     const projectId = toStringSafe(body.projectId)
@@ -384,6 +389,8 @@ export async function DELETE(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  const auth = await requireAuth(request, ["admin", "pm"])
+  if (!auth.ok) return auth.response
   try {
     const body = (await request.json()) as MutationBody
     const projectId = toStringSafe(body.projectId)

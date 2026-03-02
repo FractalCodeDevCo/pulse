@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 
+import { requireAuth } from "../../../lib/auth/guard"
 import { generateProjectZones } from "../../../lib/projects"
 import { inferSetupCompleted, normalizeZoneTargets, ZoneTarget } from "../../../lib/projectSetup"
 import { getSupabaseAdminClient } from "../../../lib/supabase/server"
@@ -130,8 +131,10 @@ function mapProjectRow(row: ProjectRow) {
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const auth = await requireAuth(request, ["admin", "pm", "installer"])
+    if (!auth.ok) return auth.response
     const supabase = getSupabaseAdminClient()
     const { data, error } = await supabase
       .from("projects")
@@ -153,6 +156,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const auth = await requireAuth(request, ["admin", "pm"])
+  if (!auth.ok) return auth.response
   try {
     const body = (await request.json()) as RequestBody
 

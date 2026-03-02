@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 
+import { requireAuth } from "../../../lib/auth/guard"
 import { getSupabaseAdminClient } from "../../../lib/supabase/server"
 import { CompactacionType, TrafficLightStatus } from "../../../types/compactacion"
 import { Zone } from "../../../types/zones"
@@ -58,6 +59,8 @@ async function uploadImage(
 }
 
 export async function GET(request: Request) {
+  const auth = await requireAuth(request, ["admin", "pm", "installer"])
+  if (!auth.ok) return auth.response
   const url = new URL(request.url)
   const projectId = url.searchParams.get("projectId")
 
@@ -80,6 +83,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const auth = await requireAuth(request, ["admin", "pm", "installer"])
+  if (!auth.ok) return auth.response
   try {
     const body = (await request.json()) as CompactacionBody
 
@@ -149,6 +154,8 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  const auth = await requireAuth(request, ["admin", "pm"])
+  if (!auth.ok) return auth.response
   const body = (await request.json()) as CompactacionBody
   if (!body.id) return NextResponse.json({ error: "id is required" }, { status: 400 })
 
@@ -170,6 +177,8 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const auth = await requireAuth(request, ["admin", "pm"])
+  if (!auth.ok) return auth.response
   const body = (await request.json()) as CompactacionBody
   if (!body.id) return NextResponse.json({ error: "id is required" }, { status: 400 })
 

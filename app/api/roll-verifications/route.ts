@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 
+import { requireAuth } from "../../../lib/auth/guard"
 import { getSupabaseAdminClient } from "../../../lib/supabase/server"
 
 export const runtime = "nodejs"
@@ -52,6 +53,8 @@ async function uploadLabelPhoto(
 }
 
 export async function POST(request: Request) {
+  const auth = await requireAuth(request, ["admin", "pm", "installer"])
+  if (!auth.ok) return auth.response
   try {
     const body = (await request.json()) as RollVerificationRequestBody
 

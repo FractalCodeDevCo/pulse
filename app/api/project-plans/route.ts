@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 
+import { requireAuth } from "../../../lib/auth/guard"
 import { getSupabaseAdminClient } from "../../../lib/supabase/server"
 
 export const runtime = "nodejs"
@@ -9,6 +10,8 @@ function sanitizeFileName(name: string): string {
 }
 
 export async function POST(request: Request) {
+  const auth = await requireAuth(request, ["admin", "pm"])
+  if (!auth.ok) return auth.response
   try {
     const form = await request.formData()
     const projectId = form.get("projectId")

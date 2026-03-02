@@ -6,11 +6,6 @@ import { useRouter } from "next/navigation"
 
 type Mode = "signin" | "register"
 
-type FakeUser = {
-  email: string
-  password: string
-}
-
 export default function PulseAccessPage() {
   const router = useRouter()
   const [mode, setMode] = useState<Mode>("signin")
@@ -23,22 +18,7 @@ export default function PulseAccessPage() {
 
   const title = useMemo(() => (mode === "signin" ? "Access Pulse" : "Create Pulse Access"), [mode])
 
-  function persistFakeUser(user: FakeUser) {
-    localStorage.setItem("pulse_fake_user", JSON.stringify(user))
-  }
-
-  function getFakeUser(): FakeUser | null {
-    const raw = localStorage.getItem("pulse_fake_user")
-    if (!raw) return null
-
-    try {
-      return JSON.parse(raw) as FakeUser
-    } catch {
-      return null
-    }
-  }
-
-  function onSubmit(event: FormEvent<HTMLFormElement>) {
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError("")
     setMessage("")
@@ -48,8 +28,8 @@ export default function PulseAccessPage() {
       return
     }
 
-    if (password.length < 4) {
-      setError("Use at least 4 characters in password.")
+    if (password.length < 6) {
+      setError("Use at least 6 characters in password.")
       return
     }
 
@@ -59,26 +39,37 @@ export default function PulseAccessPage() {
     }
 
     setIsLoading(true)
+    try {
+      const endpoint = mode === "signin" ? "/api/auth/login" : "/api/auth/register"
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), password }),
+      })
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string
+        requiresEmailConfirmation?: boolean
+      }
 
-    window.setTimeout(() => {
-      if (mode === "register") {
-        persistFakeUser({ email: email.trim(), password })
-        setMessage("User registered locally. Continue to project loading.")
-        setIsLoading(false)
+      if (!response.ok) {
+        setError(payload.error ?? "Auth failed.")
         return
       }
 
-      const fakeUser = getFakeUser()
-      if (!fakeUser || fakeUser.email !== email.trim() || fakeUser.password !== password) {
-        setError("User not found. Register first or use matching credentials.")
-        setIsLoading(false)
+      if (mode === "register" && payload.requiresEmailConfirmation) {
+        setMessage("User created. Confirm email, then sign in.")
+        setMode("signin")
         return
       }
 
-      setMessage("Access granted. Redirecting to project loading...")
+      setMessage(mode === "signin" ? "Access granted. Redirecting..." : "User created. Redirecting...")
+      const nextPath = new URLSearchParams(window.location.search).get("next") || "/projects?flow=load"
+      window.setTimeout(() => router.push(nextPath), 300)
+    } catch {
+      setError("Network error while authenticating.")
+    } finally {
       setIsLoading(false)
-      window.setTimeout(() => router.push("/projects?flow=load"), 420)
-    }, 550)
+    }
   }
 
   return (
@@ -134,7 +125,7 @@ export default function PulseAccessPage() {
             </div>
 
             <h2 className="font-heading text-2xl text-slate-100 md:text-3xl">{title}</h2>
-            <p className="mt-2 text-sm text-slate-400">Fictitious auth flow for guided access before entering Pulse.</p>
+            <p className="mt-2 text-sm text-slate-400">Real access control for Pulse. Roles are managed by admin.</p>
 
             <form onSubmit={onSubmit} className="mt-6 space-y-4">
               <label className="block">
@@ -182,13 +173,6 @@ export default function PulseAccessPage() {
                   className="rounded-lg bg-cyan-600 px-4 py-2.5 text-sm font-semibold text-slate-100 transition hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-70"
                 >
                   {isLoading ? "Processing..." : mode === "signin" ? "Enter Pulse" : "Register User"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => router.push("/projects?flow=load")}
-                  className="rounded-lg border border-slate-600 px-4 py-2.5 text-sm font-semibold text-slate-200 hover:bg-slate-900"
-                >
-                  Continue Without Auth
                 </button>
               </div>
             </form>

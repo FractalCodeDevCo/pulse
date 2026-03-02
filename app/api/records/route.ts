@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 
+import { requireAuth } from "../../../lib/auth/guard"
 import { computeGlueMetrics } from "../../../lib/metricsV0"
 import { getSupabaseAdminClient } from "../../../lib/supabase/server"
 import { mapCompactPhase, mapRollosPhase, resolveZoneRecordType, validatePhaseByZoneType } from "../../../lib/zonePhaseRules"
@@ -192,6 +193,8 @@ async function uploadDataUrl(
 }
 
 export async function POST(request: Request) {
+  const auth = await requireAuth(request, ["admin", "pm", "installer"])
+  if (!auth.ok) return auth.response
   try {
     const body = (await request.json()) as RequestBody
     const allowedModules = new Set(["compactacion", "rollos", "pegada"])

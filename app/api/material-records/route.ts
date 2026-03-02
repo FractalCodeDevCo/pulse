@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 
+import { requireAuth } from "../../../lib/auth/guard"
 import { computeMaterialPass } from "../../../lib/metricsV0"
 import { getSupabaseAdminClient } from "../../../lib/supabase/server"
 import { resolveZoneRecordType, validatePhaseByZoneType } from "../../../lib/zonePhaseRules"
@@ -102,6 +103,8 @@ function isSchemaCompatibilityError(message: string): boolean {
 }
 
 export async function POST(request: Request) {
+  const auth = await requireAuth(request, ["admin", "pm", "installer"])
+  if (!auth.ok) return auth.response
   try {
     const body = (await request.json()) as RequestBody
     const zoneRecordType = resolveZoneRecordType(body.zoneType)

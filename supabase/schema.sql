@@ -597,3 +597,31 @@ create table if not exists public.technical_insights (
 
 create index if not exists idx_technical_insights_status on public.technical_insights(status);
 create index if not exists idx_technical_insights_created_at on public.technical_insights(created_at desc);
+
+-- Auth roles for Pulse app access
+create table if not exists public.app_user_roles (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  role text not null check (role in ('admin', 'pm', 'installer')),
+  assigned_by uuid references auth.users(id),
+  assigned_at timestamptz not null default now()
+);
+
+create index if not exists idx_app_user_roles_role on public.app_user_roles(role);
+
+-- Logical backup registry
+create table if not exists public.backup_snapshots (
+  id uuid primary key default gen_random_uuid(),
+  storage_bucket text not null,
+  storage_path text not null,
+  checksum text not null,
+  row_counts jsonb not null default '{}'::jsonb,
+  created_by uuid references auth.users(id),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_backup_snapshots_created_at on public.backup_snapshots(created_at desc);
+
+-- Private storage bucket for backup snapshots
+insert into storage.buckets (id, name, public)
+values ('pulse-backups', 'pulse-backups', false)
+on conflict (id) do nothing;

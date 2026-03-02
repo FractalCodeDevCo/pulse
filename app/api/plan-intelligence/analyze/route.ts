@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 
+import { requireAuth } from "../../../../lib/auth/guard"
 import { buildPlanAnalysisScaffold, enrichPlanAnalysisFromPdfs } from "../../../../lib/planIntelligence/scaffold"
 import { PlanFileRef } from "../../../../lib/planIntelligence/types"
 
@@ -11,6 +12,8 @@ type AnalyzeRequest = {
 }
 
 export async function POST(request: Request) {
+  const auth = await requireAuth(request, ["admin", "pm"])
+  if (!auth.ok) return auth.response
   try {
     const body = (await request.json()) as AnalyzeRequest
     const projectId = body.projectId?.trim()
