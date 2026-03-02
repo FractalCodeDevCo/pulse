@@ -213,6 +213,8 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   const [isSavingFlow, setIsSavingFlow] = useState(false)
   const [flowMessage, setFlowMessage] = useState("")
   const [flowError, setFlowError] = useState("")
+  const [lastCloudSavedAt, setLastCloudSavedAt] = useState<string | null>(null)
+  const [lastCloudFingerprint, setLastCloudFingerprint] = useState<string | null>(null)
   const [draftReady, setDraftReady] = useState(false)
   const [draftRecovered, setDraftRecovered] = useState(false)
   const [cloudPhotosRecovered, setCloudPhotosRecovered] = useState(false)
@@ -222,6 +224,10 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   )
 
   const stepTemplates = useMemo(() => (zone ? getZoneStepTemplates(zone.zoneType) : []), [zone])
+  const phasesCompleted = useMemo(
+    () => (zone ? zone.stepKeys.filter((key) => zone.completedStepKeys.includes(key)) : []),
+    [zone],
+  )
   const progress = zone ? getZoneProgress(zone) : 0
   const canOpenProcesses = zonePhotos.length > 0
   const adhesiveCriticalOptions = zone ? SPORT_CRITICAL_OPTIONS[zone.fieldType] ?? [] : []
@@ -232,6 +238,55 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   const expectedRolls = totalRollsUsed.trim() === "" ? null : Number(totalRollsUsed)
   const hasValidExpectedRolls = expectedRolls !== null && Number.isInteger(expectedRolls) && expectedRolls >= 0
   const rollLabelProgress = hasValidExpectedRolls && expectedRolls > 0 ? Math.min(100, Math.round((rollColorLabels.length / expectedRolls) * 100)) : null
+  const flowFingerprint = useMemo(() => {
+    if (!zone) return ""
+    const photos = [...zonePhotos, ...materialPhotos]
+      .filter((photo, index, arr) => typeof photo === "string" && photo.length > 0 && arr.indexOf(photo) === index)
+      .slice(0, 8)
+    return JSON.stringify({
+      zoneId: zone.id,
+      phasesCompleted,
+      photos,
+      quickNotes,
+      rollPlacement: {
+        totalRollsUsed,
+        rollLengthFit,
+        compactionMethod,
+        rollLabelsCount: rollColorLabels.length,
+      },
+      sewing: {
+        totalSeams: sewingTotalSeams,
+      },
+      adhesive: {
+        botesUsados: adhesiveBotes,
+        condicion: adhesiveCondicion,
+      },
+      material: {
+        tipo: materialTipo,
+        pasada: materialPasada,
+      },
+    })
+  }, [
+    zone,
+    phasesCompleted,
+    zonePhotos,
+    materialPhotos,
+    quickNotes,
+    totalRollsUsed,
+    rollLengthFit,
+    compactionMethod,
+    rollColorLabels.length,
+    sewingTotalSeams,
+    adhesiveBotes,
+    adhesiveCondicion,
+    materialTipo,
+    materialPasada,
+  ])
+  const saveState = isSavingFlow
+    ? "saving"
+    : lastCloudFingerprint && flowFingerprint === lastCloudFingerprint
+      ? "cloud"
+      : "local"
   const planSuggestedRolls = useMemo<PlanSuggestedRoll[]>(() => {
     if (!projectId || !zone) return []
     const analysis = readPlanAnalysisCache(projectId)
@@ -269,6 +324,12 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
     if (!projectId || !zone) return
     saveZonePhotosCache(projectId, zone.id, zonePhotos)
   }, [projectId, zone, zonePhotos])
+
+  useEffect(() => {
+    if (!zone) return
+    setLastCloudSavedAt(null)
+    setLastCloudFingerprint(null)
+  }, [zone?.id])
 
   useEffect(() => {
     if (!draftKey) return
@@ -824,7 +885,6 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
 
   async function submitFlowSession() {
     if (!projectId || !zone) return
-    const phasesCompleted = zone.stepKeys.filter((key) => zone.completedStepKeys.includes(key))
     if (phasesCompleted.length === 0) {
       setFlowError("Marca al menos una fase antes de guardar flujo.")
       setFlowMessage("")
@@ -882,6 +942,8 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
 
       const savedPhases = data.phases_completed ?? phasesCompleted
       setFlowMessage(`Flujo guardado: ${savedPhases.join(" -> ")} · fotos: ${photos.length}`)
+      setLastCloudSavedAt(new Date().toISOString())
+      setLastCloudFingerprint(flowFingerprint)
       setFlowSessionId(createCaptureSessionId())
     } catch (err) {
       setFlowError(err instanceof Error ? err.message : "Error al guardar flujo.")
@@ -932,6 +994,22 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
         <section className="space-y-3 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
           <h2 className="text-xl font-semibold">Paso 1 · Fotos de zona</h2>
           <p className="text-sm text-neutral-400">Primero toma evidencia de la zona. Después se desbloquea el menú de procesos.</p>
+          <p
+            className={`rounded-xl border px-3 py-2 text-xs ${
+              saveState === "cloud"
+                ? "border-emerald-500/70 bg-emerald-500/10 text-emerald-200"
+                : saveState === "saving"
+                  ? "border-cyan-500/70 bg-cyan-500/10 text-cyan-200"
+                  : "border-amber-500/70 bg-amber-500/10 text-amber-200"
+            }`}
+          >
+            Estado de guardado:{" "}
+            {saveState === "cloud"
+              ? `Guardado en nube${lastCloudSavedAt ? ` · ${new Date(lastCloudSavedAt).toLocaleString("es-MX")}` : ""}`
+              : saveState === "saving"
+                ? "Guardando en nube..."
+                : "Solo local (falta Guardar flujo)"}
+          </p>
           {draftRecovered ? (
             <p className="rounded-xl border border-cyan-500/70 bg-cyan-500/10 p-3 text-sm text-cyan-200">
               Borrador recuperado. Continúa donde te quedaste.
