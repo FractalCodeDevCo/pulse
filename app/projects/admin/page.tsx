@@ -38,6 +38,11 @@ type UploadedPlanFile = {
   uploadedAt: string
 }
 
+type UploadPlansResult = {
+  files: UploadedPlanFile[]
+  analysis: PlanAnalysisResult | null
+}
+
 function mergeProjects(localProjects: LocalProject[], remoteProjects: LocalProject[]): LocalProject[] {
   const map = new Map<string, LocalProject>()
 
@@ -280,8 +285,30 @@ export default function ProjectsAdminPage() {
     setUploadedPlanUrls((current) => current.filter((_, i) => i !== index))
   }
 
-  async function uploadPlans(projectId: string): Promise<UploadedPlanFile[]> {
-    if (planFiles.length === 0) return []
+  function applyPlanAnalysisToTargets(projectId: string, analysis: PlanAnalysisResult, baseTargets: ZoneTarget[]) {
+    const suggestedTargets = suggestZoneTargetsFromPlanAnalysis(fieldType, baseTargets, analysis)
+    const updatedCells = countAutofilledCells(baseTargets, suggestedTargets)
+    setPlanAnalysis(analysis)
+    setZoneTargets(suggestedTargets)
+    setLastAutofill({
+      updatedCells,
+      analyzedAt: new Date().toISOString(),
+      uniqueRolls: analysis.stats.uniqueRollLabels,
+      rollSegments: analysis.stats.rollSegments,
+    })
+    savePlanAnalysisCache(projectId, analysis)
+
+    const currentTotalSqft = toNumberOrNull(totalSqft)
+    const suggestedTotalSqft = summarizePlannedSqft(suggestedTargets)
+    if (!currentTotalSqft && suggestedTotalSqft > 0) {
+      setTotalSqft(String(suggestedTotalSqft))
+    }
+
+    return { suggestedTargets, updatedCells }
+  }
+
+  async function uploadPlans(projectId: string): Promise<UploadPlansResult> {
+    if (planFiles.length === 0) return { files: [], analysis: null }
 
     const form = new FormData()
     form.append("projectId", projectId)
@@ -294,10 +321,13 @@ export default function ProjectsAdminPage() {
       body: form,
     })
 
-    const data = (await response.json()) as { error?: string; files?: UploadedPlanFile[] }
+    const data = (await response.json()) as { error?: string; files?: UploadedPlanFile[]; analysis?: PlanAnalysisResult | null }
     if (!response.ok) throw new Error(data.error ?? "No se pudieron subir los planos.")
 
-    return (data.files ?? []).filter((item) => Boolean(item.url))
+    return {
+      files: (data.files ?? []).filter((item) => Boolean(item.url)),
+      analysis: data.analysis ?? null,
+    }
   }
 
   async function analyzeAndApplyPlanData(
@@ -310,24 +340,7 @@ export default function ProjectsAdminPage() {
     setIsAnalyzingPlans(true)
     try {
       const analysis = await analyzePlanScaffold(projectId, refs)
-      const suggestedTargets = suggestZoneTargetsFromPlanAnalysis(fieldType, baseTargets, analysis)
-      const updatedCells = countAutofilledCells(baseTargets, suggestedTargets)
-      setPlanAnalysis(analysis)
-      setZoneTargets(suggestedTargets)
-      setLastAutofill({
-        updatedCells,
-        analyzedAt: new Date().toISOString(),
-        uniqueRolls: analysis.stats.uniqueRollLabels,
-        rollSegments: analysis.stats.rollSegments,
-      })
-      savePlanAnalysisCache(projectId, analysis)
-
-      const currentTotalSqft = toNumberOrNull(totalSqft)
-      const suggestedTotalSqft = summarizePlannedSqft(suggestedTargets)
-      if (!currentTotalSqft && suggestedTotalSqft > 0) {
-        setTotalSqft(String(suggestedTotalSqft))
-      }
-
+      const { suggestedTargets, updatedCells } = applyPlanAnalysisToTargets(projectId, analysis, baseTargets)
       return { analysis, suggestedTargets, updatedCells }
     } catch {
       return { analysis: null, suggestedTargets: baseTargets, updatedCells: 0 }
@@ -359,6 +372,54 @@ export default function ProjectsAdminPage() {
     setMessage(
       `Análisis actualizado: ${result.analysis.stats.uniqueRollLabels} rollos, ${result.analysis.stats.rollSegments} segmentos, CHOP ${result.analysis.stats.choppedSegments}, SPLIT ${result.analysis.stats.splitSegments}. Autofill en ${result.updatedCells} campos.`,
     )
+  }
+
+  async function handleAnalyzePlanExplicit() {
+    const projectId = editingProjectId || slugifyProjectName(code.trim() || name.trim())
+    if (!projectId) {
+      setError("Primero define nombre/código del proyecto.")
+      return
+    }
+
+    setError("")
+    setMessage("")
+    setIsAnalyzingPlans(true)
+    try {
+      let baseTargets = zoneTargets
+      const uploadedResult = await uploadPlans(projectId)
+      if (uploadedResult.files.length > 0) {
+        const mergedUrls = [...new Set([...uploadedPlanUrls, ...uploadedResult.files.map((item) => item.url)])]
+        setUploadedPlanUrls(mergedUrls)
+        setPlanFiles([])
+      }
+
+      if (uploadedResult.analysis) {
+        const result = applyPlanAnalysisToTargets(projectId, uploadedResult.analysis, baseTargets)
+        setMessage(
+          `Analyze Plan (IA): ${uploadedResult.analysis.stats.uniqueRollLabels} rollos, ${uploadedResult.analysis.stats.rollSegments} segmentos, CHOP ${uploadedResult.analysis.stats.choppedSegments}, SPLIT ${uploadedResult.analysis.stats.splitSegments}. Autofill en ${result.updatedCells} campos.`,
+        )
+        return
+      }
+
+      const refs = buildPlanRefsFromUrls(uploadedPlanUrls)
+      if (refs.length === 0) {
+        setMessage("Sube y guarda al menos un plano para analizar.")
+        return
+      }
+      const result = await analyzeAndApplyPlanData(projectId, refs, baseTargets)
+      if (!result.analysis) {
+        setMessage("No se pudo analizar el plano. Revisa formato del PDF o intenta de nuevo.")
+        return
+      }
+      setMessage(
+        `Analyze Plan (IA): ${result.analysis.stats.uniqueRollLabels} rollos, ${result.analysis.stats.rollSegments} segmentos, CHOP ${result.analysis.stats.choppedSegments}, SPLIT ${result.analysis.stats.splitSegments}. Autofill en ${result.updatedCells} campos.`,
+      )
+    } catch (analysisError) {
+      const text = analysisError instanceof Error ? analysisError.message : "No se pudo analizar el plano."
+      setError(text)
+    } finally {
+      setIsAnalyzingPlans(false)
+    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -403,13 +464,18 @@ export default function ProjectsAdminPage() {
     setIsSubmitting(true)
 
     try {
-      const uploadedPlans = await uploadPlans(projectId)
+      const uploadedResult = await uploadPlans(projectId)
+      const uploadedPlans = uploadedResult.files
       const allPlanUrls = [...new Set([...uploadedPlanUrls, ...uploadedPlans.map((item) => item.url)])]
       setUploadedPlanUrls(allPlanUrls)
 
       let autoZoneTargets = zoneTargets
       let analysisSummary = ""
-      if (allPlanUrls.length > 0 && uploadedPlans.length > 0) {
+      if (uploadedResult.analysis) {
+        const result = applyPlanAnalysisToTargets(projectId, uploadedResult.analysis, zoneTargets)
+        autoZoneTargets = result.suggestedTargets
+        analysisSummary = `IA: ${uploadedResult.analysis.stats.uniqueRollLabels} rollos, CHOP ${uploadedResult.analysis.stats.choppedSegments}, SPLIT ${uploadedResult.analysis.stats.splitSegments}, Autofill ${result.updatedCells} campos.`
+      } else if (allPlanUrls.length > 0 && uploadedPlans.length > 0) {
         const refs = buildPlanRefsFromUrls(allPlanUrls)
         const result = await analyzeAndApplyPlanData(projectId, refs, zoneTargets)
         autoZoneTargets = result.suggestedTargets
@@ -685,6 +751,19 @@ export default function ProjectsAdminPage() {
               className="block w-full rounded-xl border border-neutral-700 bg-neutral-950 p-2 text-sm"
             />
           </label>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={handleAnalyzePlanExplicit}
+              disabled={isAnalyzingPlans || (planFiles.length === 0 && uploadedPlanUrls.length === 0)}
+              className="rounded-lg border border-cyan-700/80 px-3 py-2 text-xs font-semibold text-cyan-100 hover:bg-cyan-700/20 disabled:opacity-60"
+            >
+              {isAnalyzingPlans ? "Analyzing Plan (IA)..." : "Analyze Plan (IA)"}
+            </button>
+            <p className="self-center text-xs text-neutral-400">
+              Analiza el plano y autorrellena Targets por zona (editable).
+            </p>
+          </div>
 
           {uploadedPlanUrls.length > 0 ? (
             <div className="space-y-2 rounded-xl border border-cyan-900/60 bg-cyan-950/20 p-3">
@@ -710,7 +789,7 @@ export default function ProjectsAdminPage() {
                   disabled={isAnalyzingPlans}
                   className="rounded-lg border border-cyan-700/80 px-3 py-2 text-xs font-semibold text-cyan-100 hover:bg-cyan-700/20 disabled:opacity-60"
                 >
-                  {isAnalyzingPlans ? "Analizando planos..." : "Analizar planos guardados"}
+                  {isAnalyzingPlans ? "Analyzing saved plans..." : "Analyze saved plans (IA)"}
                 </button>
               </div>
             </div>
