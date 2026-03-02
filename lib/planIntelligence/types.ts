@@ -53,6 +53,48 @@ export type PlanStats = {
   avgLinearFtPerRoll: number | null
 }
 
+export type RollLengthValue = {
+  raw: string
+  feet: number
+}
+
+export type RollBBox = {
+  page: number
+  x0: number
+  y0: number
+  x1: number
+  y1: number
+}
+
+export type ParsedRollSegment = {
+  instanceId: string
+  id: string
+  length: RollLengthValue | null
+  bbox: RollBBox
+  zone: ZoneKey | "foul_territory" | "bullpen" | "unknown"
+  flags: string[]
+  sourceText: string
+  sourceFile: string
+}
+
+export type RollAdjacencyRow = {
+  instanceId: string
+  id: string
+  neighbors: Array<{
+    instanceId: string
+    id: string
+    distance: number
+  }>
+}
+
+export type ParsedPlanRollLayout = {
+  rolls: ParsedRollSegment[]
+  pileDirection: string | null
+  orientation: "left_to_right" | "top_to_bottom" | "unknown"
+  adjacency: RollAdjacencyRow[]
+  notes: string[]
+}
+
 export type PlanAnalysisResult = {
   projectId: string
   status: "scaffold" | "parsed"
@@ -62,6 +104,7 @@ export type PlanAnalysisResult = {
   detectedRolls: DetectedRoll[]
   stats: PlanStats
   rollZoneMap: RollZoneMapEntry[]
+  rollLayout?: ParsedPlanRollLayout
   notes: string[]
   nextActions: string[]
 }

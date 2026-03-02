@@ -663,3 +663,13 @@ create unique index if not exists uq_capture_metadata_versions_unique
   on public.capture_metadata_versions(source_table, capture_id, version);
 create index if not exists idx_capture_metadata_versions_project on public.capture_metadata_versions(project_id);
 create index if not exists idx_capture_metadata_versions_capture on public.capture_metadata_versions(source_table, capture_id);
+
+-- Plan intelligence per project (parsed from uploaded installation plans)
+create table if not exists public.project_plan_intelligence (
+  project_id text primary key,
+  analysis jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_project_plan_intelligence_updated_at
+  on public.project_plan_intelligence(updated_at desc);

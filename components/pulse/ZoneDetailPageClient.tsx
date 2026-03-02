@@ -7,7 +7,8 @@ import { ChangeEvent, useEffect, useMemo, useState } from "react"
 import { createCaptureSessionId } from "../../lib/captureSession"
 import { clearCaptureDraft, readCaptureDraft, saveCaptureDraft } from "../../lib/captureDraft"
 import { IMAGE_INPUT_ACCEPT, processImageFiles } from "../../lib/clientImage"
-import { readPlanAnalysisCache } from "../../lib/planIntelligence/cache"
+import { readPlanAnalysisCache, savePlanAnalysisCache } from "../../lib/planIntelligence/cache"
+import { PlanAnalysisResult } from "../../lib/planIntelligence/types"
 import { saveZonePhotosCache } from "../../lib/zonePhotoCache"
 import ContextHeader from "./ContextHeader"
 import {
@@ -215,6 +216,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   const [flowError, setFlowError] = useState("")
   const [lastCloudSavedAt, setLastCloudSavedAt] = useState<string | null>(null)
   const [lastCloudFingerprint, setLastCloudFingerprint] = useState<string | null>(null)
+  const [planCacheVersion, setPlanCacheVersion] = useState(0)
   const [draftReady, setDraftReady] = useState(false)
   const [draftRecovered, setDraftRecovered] = useState(false)
   const [cloudPhotosRecovered, setCloudPhotosRecovered] = useState(false)
@@ -318,7 +320,32 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
         chopCount: rollDetails.get(label)?.chopCount ?? 0,
         splitCount: rollDetails.get(label)?.splitCount ?? 0,
       }))
-  }, [projectId, rollColorLabels, zone])
+  }, [projectId, rollColorLabels, zone, planCacheVersion])
+
+  useEffect(() => {
+    if (!projectId) return
+    const safeProjectId = projectId
+    if (readPlanAnalysisCache(safeProjectId)) return
+    let cancelled = false
+
+    async function hydratePlanAnalysis() {
+      try {
+        const response = await fetch(`/api/projects/${encodeURIComponent(safeProjectId)}/plan-intelligence`)
+        if (!response.ok) return
+        const payload = (await response.json()) as { found?: boolean; analysis?: unknown }
+        if (!payload.found || !payload.analysis || cancelled) return
+        savePlanAnalysisCache(safeProjectId, payload.analysis as PlanAnalysisResult)
+        setPlanCacheVersion((current) => current + 1)
+      } catch {
+        // best effort
+      }
+    }
+
+    void hydratePlanAnalysis()
+    return () => {
+      cancelled = true
+    }
+  }, [projectId])
 
   useEffect(() => {
     if (!projectId || !zone) return

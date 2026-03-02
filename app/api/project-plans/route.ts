@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server"
 
 import { requireAuth } from "../../../lib/auth/guard"
+import { buildPlanAnalysisFromLayouts, parseTurfPlanPdfBytes } from "../../../lib/planIntelligence/pdfRollParser"
+import { saveProjectPlanAnalysis } from "../../../lib/planIntelligence/store"
+import { ParsedPlanRollLayout, PlanFileRef } from "../../../lib/planIntelligence/types"
 import { getSupabaseAdminClient } from "../../../lib/supabase/server"
 
 export const runtime = "nodejs"
@@ -36,6 +39,8 @@ export async function POST(request: Request) {
       size: number
       uploadedAt: string
     }> = []
+    const planFileRefs: PlanFileRef[] = []
+    const parsedLayouts: ParsedPlanRollLayout[] = []
 
     for (let index = 0; index < files.length; index += 1) {
       const file = files[index]
@@ -58,9 +63,30 @@ export async function POST(request: Request) {
         size: file.size,
         uploadedAt: new Date().toISOString(),
       })
+      planFileRefs.push({
+        name: file.name,
+        url: data.publicUrl,
+        contentType,
+        size: file.size,
+      })
+
+      if (contentType.toLowerCase().includes("pdf") || file.name.toLowerCase().endsWith(".pdf")) {
+        try {
+          const layout = await parseTurfPlanPdfBytes(bytes, file.name)
+          parsedLayouts.push(layout)
+        } catch {
+          // best effort parser; upload should still succeed
+        }
+      }
     }
 
-    return NextResponse.json({ files: uploaded })
+    let analysis = null
+    if (parsedLayouts.length > 0) {
+      analysis = buildPlanAnalysisFromLayouts(projectId, planFileRefs, parsedLayouts)
+      await saveProjectPlanAnalysis(projectId, analysis)
+    }
+
+    return NextResponse.json({ files: uploaded, analysis })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error"
     return NextResponse.json({ error: message }, { status: 500 })
