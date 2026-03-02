@@ -25,13 +25,13 @@ function sanitizeExtension(mimeType: string): string {
 }
 
 function sanitizePathSegment(value: string): string {
-  const cleaned = value.trim().replace(/[^a-z0-9-_]/gi, "_")
+  const cleaned = value.trim().toLowerCase().replace(/[^a-z0-9-_]/g, "_")
   return cleaned || "unknown"
 }
 
 function resolveStorageBucket(): string {
-  const raw = (process.env.SUPABASE_STORAGE_BUCKET || "pulse-evidence").trim()
-  const safe = raw.replace(/[^a-z0-9-_]/gi, "")
+  const raw = (process.env.SUPABASE_STORAGE_BUCKET || "pulse-evidence").trim().toLowerCase()
+  const safe = raw.replace(/[^a-z0-9-_]/g, "")
   return safe || "pulse-evidence"
 }
 

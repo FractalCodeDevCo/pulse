@@ -758,6 +758,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
     try {
       const photos = [...zonePhotos, ...materialPhotos]
         .filter((photo, index, arr) => typeof photo === "string" && photo.length > 0 && arr.indexOf(photo) === index)
+        .filter((photo) => photo.startsWith("data:image/") || photo.startsWith("http://") || photo.startsWith("https://"))
         .slice(0, 8)
 
       const response = await fetch("/api/flow-sessions", {
