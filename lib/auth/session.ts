@@ -56,22 +56,47 @@ export function getAccessTokenFromRequest(request: Request): string | null {
   return typeof fromCookie === "string" && fromCookie.length > 0 ? fromCookie : null
 }
 
-async function getRoleForUser(userId: string, email: string | null): Promise<UserRole | null> {
+function isMissingRelationOrColumnError(message: string): boolean {
+  const lower = message.toLowerCase()
+  return (lower.includes("relation") || lower.includes("column")) && lower.includes("does not exist")
+}
+
+export async function resolveOrProvisionUserRole(userId: string, email: string | null): Promise<UserRole | null> {
   const supabase = getSupabaseAdminClient()
-  const { data, error } = await supabase
+  const roleRes = await supabase
     .from("app_user_roles")
     .select("role")
     .eq("user_id", userId)
     .limit(1)
     .maybeSingle()
 
-  if (!error && data?.role && VALID_ROLES.includes(data.role as UserRole)) {
-    return data.role as UserRole
+  if (!roleRes.error && roleRes.data?.role && VALID_ROLES.includes(roleRes.data.role as UserRole)) {
+    return roleRes.data.role as UserRole
   }
 
   const bootstrapEmail = process.env.PULSE_BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase()
-  if (bootstrapEmail && email?.toLowerCase() === bootstrapEmail) return "admin"
-  return null
+  const allowSelfServeAdmin = process.env.PULSE_ALLOW_SELF_SERVE_ADMIN === "1"
+  const shouldBeAdmin = (bootstrapEmail && email?.toLowerCase() === bootstrapEmail) || allowSelfServeAdmin
+
+  if (roleRes.error && isMissingRelationOrColumnError(roleRes.error.message)) {
+    return shouldBeAdmin ? "admin" : "installer"
+  }
+
+  const roleToAssign: UserRole = shouldBeAdmin ? "admin" : "installer"
+  const upsert = await supabase.from("app_user_roles").upsert(
+    {
+      user_id: userId,
+      role: roleToAssign,
+      assigned_by: null,
+      assigned_at: new Date().toISOString(),
+    },
+    { onConflict: "user_id" },
+  )
+  if (upsert.error && !isMissingRelationOrColumnError(upsert.error.message)) {
+    return null
+  }
+
+  return roleToAssign
 }
 
 export async function resolveAuthContext(request: Request): Promise<AuthContext | null> {
@@ -82,7 +107,7 @@ export async function resolveAuthContext(request: Request): Promise<AuthContext 
   const { data, error } = await supabase.auth.getUser(accessToken)
   if (error || !data.user) return null
 
-  const role = await getRoleForUser(data.user.id, data.user.email ?? null)
+  const role = await resolveOrProvisionUserRole(data.user.id, data.user.email ?? null)
   if (!role) return null
 
   return {

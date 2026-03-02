@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
 
-import { getSupabaseAdminClient } from "../../../../lib/supabase/server"
-import { getSupabaseAuthClient, PULSE_ACCESS_COOKIE, PULSE_REFRESH_COOKIE } from "../../../../lib/auth/session"
+import { getSupabaseAuthClient, PULSE_ACCESS_COOKIE, PULSE_REFRESH_COOKIE, resolveOrProvisionUserRole } from "../../../../lib/auth/session"
 
 export const runtime = "nodejs"
 
@@ -36,20 +35,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error?.message ?? "Register failed." }, { status: 400 })
     }
 
-    const admin = getSupabaseAdminClient()
-    await admin.from("app_user_roles").upsert(
-      {
-        user_id: data.user.id,
-        role: "installer",
-        assigned_by: null,
-      },
-      { onConflict: "user_id" },
-    )
+    const role = await resolveOrProvisionUserRole(data.user.id, data.user.email ?? email)
+    if (!role) {
+      return NextResponse.json({ error: "User created but role provisioning failed." }, { status: 500 })
+    }
 
     const response = NextResponse.json({
       ok: true,
       requiresEmailConfirmation: !data.session,
-      user: { id: data.user.id, email: data.user.email ?? email, role: "installer" },
+      user: { id: data.user.id, email: data.user.email ?? email, role },
     })
 
     if (data.session) {

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
 
-import { getSupabaseAdminClient } from "../../../../lib/supabase/server"
-import { getSupabaseAuthClient, normalizeRole, PULSE_ACCESS_COOKIE, PULSE_REFRESH_COOKIE } from "../../../../lib/auth/session"
+import { getSupabaseAuthClient, PULSE_ACCESS_COOKIE, PULSE_REFRESH_COOKIE, resolveOrProvisionUserRole } from "../../../../lib/auth/session"
 
 export const runtime = "nodejs"
 
@@ -36,15 +35,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error?.message ?? "Invalid credentials." }, { status: 401 })
     }
 
-    const admin = getSupabaseAdminClient()
-    const roleRes = await admin
-      .from("app_user_roles")
-      .select("role")
-      .eq("user_id", data.user.id)
-      .limit(1)
-      .maybeSingle()
-
-    const role = normalizeRole(roleRes.data?.role) ?? (process.env.PULSE_BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase() === email ? "admin" : null)
+    const role = await resolveOrProvisionUserRole(data.user.id, data.user.email ?? email)
     if (!role) {
       return NextResponse.json({ error: "Your user has no assigned role yet." }, { status: 403 })
     }
