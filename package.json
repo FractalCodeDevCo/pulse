@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "plan:parse:test": "node scripts/test_turf_plan_parser.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.95.3",
