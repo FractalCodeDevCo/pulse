@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { requireAuth } from "../../../lib/auth/guard"
+import { extractFieldRecordMetadata, recordCaptureEvent, recordMetadataVersion } from "../../../lib/audit/captureAudit"
 import { computeGlueMetrics } from "../../../lib/metricsV0"
 import { getSupabaseAdminClient } from "../../../lib/supabase/server"
 import { mapCompactPhase, mapRollosPhase, resolveZoneRecordType, validatePhaseByZoneType } from "../../../lib/zonePhaseRules"
@@ -475,6 +476,34 @@ export async function POST(request: Request) {
       module: data.module as string | null,
       projectId: data.project_id as string | null,
     })
+
+    const insertedId = typeof data.id === "string" ? data.id : null
+    if (insertedId) {
+      await recordMetadataVersion({
+        projectId: body.projectId,
+        sourceTable: "field_records",
+        captureId: insertedId,
+        module: body.module,
+        metadata: extractFieldRecordMetadata(unifiedPayload),
+        editedBy: auth.context.userId,
+        editorEmail: auth.context.email,
+      })
+
+      await recordCaptureEvent({
+        projectId: body.projectId,
+        sourceTable: "field_records",
+        captureId: insertedId,
+        module: body.module ?? null,
+        action: "upsert",
+        actorUserId: auth.context.userId,
+        actorEmail: auth.context.email,
+        afterData: {
+          payload: unifiedPayload,
+          summary,
+        },
+      })
+    }
+
     return NextResponse.json({
       ...data,
       summary,

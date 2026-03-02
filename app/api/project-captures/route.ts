@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { requireAuth } from "../../../lib/auth/guard"
+import { extractFieldRecordMetadata, recordCaptureEvent, recordMetadataVersion } from "../../../lib/audit/captureAudit"
 import { getSupabaseAdminClient } from "../../../lib/supabase/server"
 
 export const runtime = "nodejs"
@@ -373,6 +374,13 @@ export async function DELETE(request: Request) {
     if (!target) return NextResponse.json({ error: "Unsupported module" }, { status: 400 })
 
     const supabase = getSupabaseAdminClient()
+    let beforeQuery = supabase.from(target.table).select("*").eq("id", id).eq("project_id", projectId)
+    if (target.isFieldRecord && module !== "field_record") {
+      beforeQuery = beforeQuery.eq("module", module)
+    }
+    const beforeRes = await beforeQuery.maybeSingle()
+    const beforeData = beforeRes.data ?? null
+
     let query = supabase.from(target.table).delete().eq("id", id).eq("project_id", projectId)
     if (target.isFieldRecord && module !== "field_record") {
       query = query.eq("module", module)
@@ -380,6 +388,17 @@ export async function DELETE(request: Request) {
 
     const { error } = await query
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    await recordCaptureEvent({
+      projectId,
+      sourceTable: target.table,
+      captureId: id,
+      module,
+      action: "delete",
+      actorUserId: auth.context.userId,
+      actorEmail: auth.context.email,
+      beforeData,
+    })
 
     return NextResponse.json({ ok: true })
   } catch (error) {
@@ -410,7 +429,7 @@ export async function PATCH(request: Request) {
     const supabase = getSupabaseAdminClient()
     let currentQuery = supabase
       .from("field_records")
-      .select("payload")
+      .select("payload, module")
       .eq("id", id)
       .eq("project_id", projectId)
     if (module !== "field_record") currentQuery = currentQuery.eq("module", module)
@@ -432,6 +451,33 @@ export async function PATCH(request: Request) {
     const { error } = await updateQuery
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    await recordMetadataVersion({
+      projectId,
+      sourceTable: "field_records",
+      captureId: id,
+      module: module === "field_record" ? (typeof currentRes.data?.module === "string" ? currentRes.data.module : null) : module,
+      metadata,
+      editedBy: auth.context.userId,
+      editorEmail: auth.context.email,
+    })
+
+    await recordCaptureEvent({
+      projectId,
+      sourceTable: "field_records",
+      captureId: id,
+      module: module === "field_record" ? (typeof currentRes.data?.module === "string" ? currentRes.data.module : null) : module,
+      action: "update",
+      actorUserId: auth.context.userId,
+      actorEmail: auth.context.email,
+      beforeData: {
+        metadata: extractFieldRecordMetadata(currentPayload),
+      },
+      afterData: {
+        metadata,
+      },
+    })
+
     return NextResponse.json({ ok: true, metadata })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error"

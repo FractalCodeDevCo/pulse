@@ -625,3 +625,41 @@ create index if not exists idx_backup_snapshots_created_at on public.backup_snap
 insert into storage.buckets (id, name, public)
 values ('pulse-backups', 'pulse-backups', false)
 on conflict (id) do nothing;
+
+-- Capture audit trail (who changed what and when)
+create table if not exists public.capture_change_log (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  project_id text not null,
+  source_table text not null,
+  capture_id text not null,
+  module text,
+  action text not null check (action in ('create', 'update', 'delete', 'upsert')),
+  actor_user_id uuid references auth.users(id),
+  actor_email text,
+  before_data jsonb,
+  after_data jsonb
+);
+
+create index if not exists idx_capture_change_log_project on public.capture_change_log(project_id);
+create index if not exists idx_capture_change_log_capture on public.capture_change_log(source_table, capture_id);
+create index if not exists idx_capture_change_log_created_at on public.capture_change_log(created_at desc);
+
+-- Metadata versions by capture
+create table if not exists public.capture_metadata_versions (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  project_id text not null,
+  source_table text not null,
+  capture_id text not null,
+  module text,
+  version integer not null check (version > 0),
+  metadata jsonb not null default '{}'::jsonb,
+  edited_by uuid references auth.users(id),
+  editor_email text
+);
+
+create unique index if not exists uq_capture_metadata_versions_unique
+  on public.capture_metadata_versions(source_table, capture_id, version);
+create index if not exists idx_capture_metadata_versions_project on public.capture_metadata_versions(project_id);
+create index if not exists idx_capture_metadata_versions_capture on public.capture_metadata_versions(source_table, capture_id);

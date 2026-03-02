@@ -2,6 +2,7 @@ import { randomUUID } from "crypto"
 import { NextResponse } from "next/server"
 
 import { requireAuth } from "../../../lib/auth/guard"
+import { recordCaptureEvent, recordMetadataVersion } from "../../../lib/audit/captureAudit"
 import { getSupabaseAdminClient } from "../../../lib/supabase/server"
 
 export const runtime = "nodejs"
@@ -112,6 +113,29 @@ export async function POST(request: Request) {
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    await recordMetadataVersion({
+      projectId: body.projectId,
+      sourceTable: "field_records",
+      captureId: data.id,
+      module: "flow",
+      metadata,
+      editedBy: auth.context.userId,
+      editorEmail: auth.context.email,
+    })
+    await recordCaptureEvent({
+      projectId: body.projectId,
+      sourceTable: "field_records",
+      captureId: data.id,
+      module: "flow",
+      action: "create",
+      actorUserId: auth.context.userId,
+      actorEmail: auth.context.email,
+      afterData: {
+        metadata,
+        photosUrls,
+      },
+    })
 
     return NextResponse.json({
       id: data.id,
