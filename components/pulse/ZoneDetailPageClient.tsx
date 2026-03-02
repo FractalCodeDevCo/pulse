@@ -756,10 +756,11 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
     setIsSavingFlow(true)
 
     try {
-      const photos = [...zonePhotos, ...materialPhotos]
+      const combinedPhotos = [...zonePhotos, ...materialPhotos]
         .filter((photo, index, arr) => typeof photo === "string" && photo.length > 0 && arr.indexOf(photo) === index)
         .filter((photo) => photo.startsWith("data:image/") || photo.startsWith("http://") || photo.startsWith("https://"))
-        .slice(0, 8)
+      const photos = combinedPhotos.slice(0, 3)
+      const skippedPhotos = Math.max(0, combinedPhotos.length - photos.length)
 
       const response = await fetch("/api/flow-sessions", {
         method: "POST",
@@ -802,7 +803,9 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
       if (!response.ok) throw new Error(data.error ?? "No se pudo guardar flujo.")
 
       const savedPhases = data.phases_completed ?? phasesCompleted
-      setFlowMessage(`Flujo guardado: ${savedPhases.join(" -> ")} · fotos: ${photos.length}`)
+      setFlowMessage(
+        `Flujo guardado: ${savedPhases.join(" -> ")} · fotos: ${photos.length}${skippedPhotos > 0 ? ` · ${skippedPhotos} omitidas (límite 3)` : ""}`,
+      )
       setLastCloudSavedAt(new Date().toISOString())
       setLastCloudFingerprint(flowFingerprint)
       setFlowSessionId(createCaptureSessionId())
@@ -914,6 +917,9 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
             {zone.zoneType === "GLOBAL"
               ? "Compactación general → Layout → Material."
               : "Compaction → Roll Placement → Sewing → Cut → Adhesive."}
+          </p>
+          <p className="rounded-lg border border-neutral-700 px-3 py-2 text-xs text-neutral-300">
+            Guardar flujo usa máximo 3 fotos por envío para mantener señal limpia.
           </p>
 
           <div className={canOpenProcesses ? "space-y-2" : "pointer-events-none space-y-2 opacity-50"}>
