@@ -147,6 +147,7 @@ export default function ProjectsAdminPage() {
   const [notes, setNotes] = useState("")
   const [siteType, setSiteType] = useState<SiteType>("single")
   const [complexFieldCount, setComplexFieldCount] = useState(4)
+  const [complexFieldCountInput, setComplexFieldCountInput] = useState("4")
   const [fieldUnits, setFieldUnits] = useState<FieldUnit[]>(() => defaultFieldUnitsConfig().units)
   const [zoneTargets, setZoneTargets] = useState<ZoneTarget[]>(() => buildEmptyZoneTargets("beisbol"))
   const [planFiles, setPlanFiles] = useState<File[]>([])
@@ -214,6 +215,7 @@ export default function ProjectsAdminPage() {
   useEffect(() => {
     if (siteType === "single") {
       setFieldUnits([{ id: "field-1", label: "Field 1" }])
+      setComplexFieldCountInput("1")
       return
     }
     setFieldUnits((current) => {
@@ -223,6 +225,7 @@ export default function ProjectsAdminPage() {
       const byId = new Map(current.map((unit) => [unit.id, unit]))
       return generated.map((unit) => byId.get(unit.id) ?? unit)
     })
+    setComplexFieldCountInput(String(Math.max(2, Math.min(20, complexFieldCount))))
   }, [siteType, complexFieldCount])
 
   useEffect(() => {
@@ -247,6 +250,7 @@ export default function ProjectsAdminPage() {
     setSiteType(fieldConfig.siteType)
     setFieldUnits(fieldConfig.units)
     setComplexFieldCount(fieldConfig.units.length)
+    setComplexFieldCountInput(String(fieldConfig.units.length))
     setLastAutofill(null)
     setPlanFiles([])
     setLoadedProjectId(editingProjectId)
@@ -268,6 +272,7 @@ export default function ProjectsAdminPage() {
     setNotes("")
     setSiteType("single")
     setComplexFieldCount(4)
+    setComplexFieldCountInput("4")
     setFieldUnits(defaultFieldUnitsConfig().units)
     setZoneTargets(buildEmptyZoneTargets("beisbol"))
     setPlanFiles([])
@@ -285,6 +290,14 @@ export default function ProjectsAdminPage() {
 
   function updateFieldUnitLabel(unitId: string, label: string) {
     setFieldUnits((current) => current.map((unit) => (unit.id === unitId ? { ...unit, label } : unit)))
+  }
+
+  function applyComplexFieldCountInput(raw: string) {
+    const parsed = Number(raw)
+    if (!Number.isFinite(parsed)) return
+    const next = Math.max(2, Math.min(20, Math.floor(parsed)))
+    setComplexFieldCount(next)
+    setComplexFieldCountInput(String(next))
   }
 
   function updateZoneTarget(zone: string, key: keyof ZoneTarget, rawValue: string) {
@@ -529,9 +542,20 @@ export default function ProjectsAdminPage() {
     saveProjectFieldType(hydratedProject.id, hydratedProject.fieldType)
 
     setIsSubmitting(true)
+    let unitsToSave = fieldUnits
+    if (siteType === "complex") {
+      const parsedCount = Number(complexFieldCountInput)
+      const target = Number.isFinite(parsedCount) ? Math.max(2, Math.min(20, Math.floor(parsedCount))) : complexFieldCount
+      const generated = buildComplexUnits(target)
+      const byId = new Map(fieldUnits.map((unit) => [unit.id, unit]))
+      unitsToSave = generated.map((unit) => byId.get(unit.id) ?? unit)
+      setComplexFieldCount(target)
+      setComplexFieldCountInput(String(target))
+      setFieldUnits(unitsToSave)
+    }
     saveFieldUnitsConfig(projectId, {
       siteType,
-      units: fieldUnits,
+      units: unitsToSave,
       updatedAt: new Date().toISOString(),
     })
 
@@ -755,7 +779,13 @@ export default function ProjectsAdminPage() {
               <span className="text-sm text-neutral-300">Tipo de sitio</span>
               <select
                 value={siteType}
-                onChange={(event) => setSiteType(event.target.value === "complex" ? "complex" : "single")}
+                onChange={(event) => {
+                  const nextType = event.target.value === "complex" ? "complex" : "single"
+                  setSiteType(nextType)
+                  if (nextType === "complex") {
+                    setComplexFieldCountInput(String(Math.max(2, complexFieldCount)))
+                  }
+                }}
                 className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3"
               >
                 <option value="single">Single Field</option>
@@ -769,8 +799,10 @@ export default function ProjectsAdminPage() {
                   type="number"
                   min={2}
                   max={20}
-                  value={complexFieldCount}
-                  onChange={(event) => setComplexFieldCount(Math.max(2, Math.min(20, Number(event.target.value) || 2)))}
+                  inputMode="numeric"
+                  value={complexFieldCountInput}
+                  onChange={(event) => setComplexFieldCountInput(event.target.value)}
+                  onBlur={(event) => applyComplexFieldCountInput(event.target.value)}
                   className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3"
                 />
               </label>
