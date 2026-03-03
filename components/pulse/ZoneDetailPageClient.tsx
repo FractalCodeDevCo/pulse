@@ -6,6 +6,8 @@ import { ChangeEvent, useEffect, useMemo, useState } from "react"
 
 import { createCaptureSessionId } from "../../lib/captureSession"
 import { IMAGE_INPUT_ACCEPT, processImageFiles } from "../../lib/clientImage"
+import { defaultFieldUnitsConfig, readFieldUnitsConfig } from "../../lib/fieldUnits"
+import { countOfflineFlowForZone, enqueueOfflineFlow, readOfflineFlowQueue, replaceOfflineFlowQueue } from "../../lib/offlineFlowQueue"
 import { PhotoExifContext, readPhotoExifBatch } from "../../lib/photoExif"
 import { readPlanAnalysisCache, savePlanAnalysisCache } from "../../lib/planIntelligence/cache"
 import { PlanAnalysisResult } from "../../lib/planIntelligence/types"
@@ -230,6 +232,8 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   const [flowMessage, setFlowMessage] = useState("")
   const [flowError, setFlowError] = useState("")
   const [flowContextMessage, setFlowContextMessage] = useState("")
+  const [pendingFlowCount, setPendingFlowCount] = useState(0)
+  const [isSyncingPendingFlow, setIsSyncingPendingFlow] = useState(false)
   const [projectPlanUrls, setProjectPlanUrls] = useState<string[]>([])
   const [isLoadingPlanUrls, setIsLoadingPlanUrls] = useState(false)
   const [isPlanViewerOpen, setIsPlanViewerOpen] = useState(false)
@@ -245,6 +249,8 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   const [lastCloudFingerprint, setLastCloudFingerprint] = useState<string | null>(null)
   const [planCacheVersion, setPlanCacheVersion] = useState(0)
   const [useSerpentineSuggestions, setUseSerpentineSuggestions] = useState(false)
+  const [fieldUnits, setFieldUnits] = useState(() => defaultFieldUnitsConfig().units)
+  const [selectedFieldUnitId, setSelectedFieldUnitId] = useState("")
 
   const stepTemplates = useMemo(() => (zone ? getZoneStepTemplates(zone.zoneType) : []), [zone])
   const phasesCompleted = useMemo(
@@ -418,6 +424,17 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
 
   useEffect(() => {
     if (!projectId) return
+    const config = readFieldUnitsConfig(projectId)
+    setFieldUnits(config.units)
+    if (config.units.length === 1) {
+      setSelectedFieldUnitId(config.units[0].id)
+    } else if (config.units.length > 1 && !config.units.some((unit) => unit.id === selectedFieldUnitId)) {
+      setSelectedFieldUnitId(config.units[0].id)
+    }
+  }, [projectId])
+
+  useEffect(() => {
+    if (!projectId) return
     let cancelled = false
     setIsLoadingPlanUrls(true)
     setPlanViewerError("")
@@ -453,6 +470,21 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
     if (!projectId || !zone) return
     saveZonePhotosCache(projectId, zone.id, zonePhotos)
   }, [projectId, zone, zonePhotos])
+
+  useEffect(() => {
+    refreshPendingFlowCount()
+  }, [projectId, zone?.id])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const handleOnline = () => {
+      void syncPendingFlowQueue()
+    }
+    window.addEventListener("online", handleOnline)
+    return () => {
+      window.removeEventListener("online", handleOnline)
+    }
+  }, [projectId, zone?.id, isSyncingPendingFlow])
 
   useEffect(() => {
     if (!zone) return
@@ -533,6 +565,83 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   function syncRollPlacementTotalsFromLabels() {
     const total = rollColorLabels.length
     setTotalRollsUsed(String(total))
+  }
+
+  function refreshPendingFlowCount() {
+    if (!projectId || !zone) {
+      setPendingFlowCount(0)
+      return
+    }
+    setPendingFlowCount(countOfflineFlowForZone(projectId, zone.id))
+  }
+
+  async function postFlowSession(payload: Record<string, unknown>) {
+    const response = await fetch("/api/flow-sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+    const data = (await response.json()) as { error?: string; phases_completed?: string[] }
+    if (!response.ok) {
+      const error = new Error(data.error ?? "No se pudo guardar flujo.")
+      ;(error as Error & { status?: number }).status = response.status
+      throw error
+    }
+    return data
+  }
+
+  function isRetriableFlowError(error: unknown): boolean {
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return true
+    if (error instanceof Error) {
+      const status = (error as Error & { status?: number }).status
+      if (typeof status === "number" && (status >= 500 || status === 429)) return true
+      const text = error.message.toLowerCase()
+      if (text.includes("failed to fetch") || text.includes("network")) return true
+    }
+    return false
+  }
+
+  async function syncPendingFlowQueue() {
+    if (!projectId || !zone || isSyncingPendingFlow) return
+    setIsSyncingPendingFlow(true)
+    setFlowError("")
+    try {
+      const queue = readOfflineFlowQueue()
+      if (queue.length === 0) {
+        setFlowMessage("No hay flujos pendientes por sincronizar.")
+        return
+      }
+
+      const remaining = [...queue]
+      let synced = 0
+      for (let index = 0; index < queue.length; index += 1) {
+        const item = queue[index]
+        if (!(item.projectId === projectId && item.projectZoneId === zone.id)) continue
+        try {
+          await postFlowSession(item.payload)
+          const removeIndex = remaining.findIndex((row) => row.id === item.id)
+          if (removeIndex >= 0) remaining.splice(removeIndex, 1)
+          synced += 1
+        } catch (error) {
+          const target = remaining.find((row) => row.id === item.id)
+          if (target) {
+            target.attempts = (target.attempts ?? 0) + 1
+            target.lastError = error instanceof Error ? error.message : "sync_error"
+          }
+        }
+      }
+
+      replaceOfflineFlowQueue(remaining)
+      refreshPendingFlowCount()
+      if (synced > 0) {
+        setLastCloudSavedAt(new Date().toISOString())
+        setFlowMessage(`Sincronización completa. Flujos enviados: ${synced}.`)
+      } else {
+        setFlowMessage("No se pudieron sincronizar pendientes en este intento.")
+      }
+    } finally {
+      setIsSyncingPendingFlow(false)
+    }
   }
 
   function openPlanViewer() {
@@ -1040,6 +1149,11 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
       setFlowMessage("")
       return
     }
+    if (fieldUnits.length > 1 && !selectedFieldUnitId) {
+      setFlowError("Selecciona el campo activo antes de guardar flujo.")
+      setFlowMessage("")
+      return
+    }
 
     setFlowError("")
     setFlowMessage("")
@@ -1054,47 +1168,48 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
         .filter((photo) => photo.startsWith("data:image/") || photo.startsWith("http://") || photo.startsWith("https://"))
       const photos = combinedPhotos.slice(0, 3)
       const skippedPhotos = Math.max(0, combinedPhotos.length - photos.length)
-
-      const response = await fetch("/api/flow-sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId,
-          fieldType: zone.fieldType,
-          projectZoneId: zone.id,
-          zone: zone.microZone,
-          macroZone: zone.macroZone,
-          microZone: zone.microZone,
-          zoneType: zone.zoneType,
-          flowSessionId,
-          phasesCompleted,
-          phaseSessionIds: stepSessionIds,
-          photos,
-          flowMetadata: {
-            quickNotes,
-            rollPlacement: {
-              totalRollsUsed: totalRollsUsed.trim() || null,
-              rollLengthFit: rollLengthFit || null,
-              compactionMethod: compactionMethod || null,
-              rollLabelsCount: rollColorLabels.length,
-            },
-            sewing: {
-              totalSeams: sewingTotalSeams.trim() || null,
-            },
-            adhesive: {
-              botesUsados: adhesiveBotes.trim() || null,
-              condicion: adhesiveCondicion || null,
-            },
-            material: {
-              tipo: materialTipo || null,
-              pasada: materialPasada || null,
-            },
-            captureContext,
+      const selectedFieldUnit = fieldUnits.find((unit) => unit.id === selectedFieldUnitId) ?? null
+      const flowPayload: Record<string, unknown> = {
+        projectId,
+        fieldType: zone.fieldType,
+        projectZoneId: zone.id,
+        zone: zone.microZone,
+        macroZone: zone.macroZone,
+        microZone: zone.microZone,
+        zoneType: zone.zoneType,
+        flowSessionId,
+        phasesCompleted,
+        phaseSessionIds: stepSessionIds,
+        photos,
+        flowMetadata: {
+          quickNotes,
+          rollPlacement: {
+            totalRollsUsed: totalRollsUsed.trim() || null,
+            rollLengthFit: rollLengthFit || null,
+            compactionMethod: compactionMethod || null,
+            rollLabelsCount: rollColorLabels.length,
           },
-        }),
-      })
-      const data = (await response.json()) as { error?: string; phases_completed?: string[] }
-      if (!response.ok) throw new Error(data.error ?? "No se pudo guardar flujo.")
+          sewing: {
+            totalSeams: sewingTotalSeams.trim() || null,
+          },
+          adhesive: {
+            botesUsados: adhesiveBotes.trim() || null,
+            condicion: adhesiveCondicion || null,
+          },
+          material: {
+            tipo: materialTipo || null,
+            pasada: materialPasada || null,
+          },
+          fieldUnit: selectedFieldUnit
+            ? { id: selectedFieldUnit.id, label: selectedFieldUnit.label }
+            : fieldUnits.length === 1
+              ? { id: fieldUnits[0].id, label: fieldUnits[0].label }
+              : null,
+          captureContext,
+        },
+      }
+
+      const data = await postFlowSession(flowPayload)
 
       const savedPhases = data.phases_completed ?? phasesCompleted
       setFlowMessage(
@@ -1118,8 +1233,62 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
       setLastCloudSavedAt(new Date().toISOString())
       setLastCloudFingerprint(flowFingerprint)
       setFlowSessionId(createCaptureSessionId())
+      refreshPendingFlowCount()
     } catch (err) {
-      setFlowError(err instanceof Error ? err.message : "Error al guardar flujo.")
+      if (projectId && zone && isRetriableFlowError(err)) {
+        const capturedAt = new Date().toISOString()
+        const captureContext = await buildCaptureContext(capturedAt)
+        const selectedFieldUnit = fieldUnits.find((unit) => unit.id === selectedFieldUnitId) ?? null
+        const combinedPhotos = [...zonePhotos, ...materialPhotos]
+          .filter((photo, index, arr) => typeof photo === "string" && photo.length > 0 && arr.indexOf(photo) === index)
+          .filter((photo) => photo.startsWith("data:image/") || photo.startsWith("http://") || photo.startsWith("https://"))
+          .slice(0, 3)
+        const fallbackPayload: Record<string, unknown> = {
+          projectId,
+          fieldType: zone.fieldType,
+          projectZoneId: zone.id,
+          zone: zone.microZone,
+          macroZone: zone.macroZone,
+          microZone: zone.microZone,
+          zoneType: zone.zoneType,
+          flowSessionId,
+          phasesCompleted,
+          phaseSessionIds: stepSessionIds,
+          photos: combinedPhotos,
+          flowMetadata: {
+            quickNotes,
+            rollPlacement: {
+              totalRollsUsed: totalRollsUsed.trim() || null,
+              rollLengthFit: rollLengthFit || null,
+              compactionMethod: compactionMethod || null,
+              rollLabelsCount: rollColorLabels.length,
+            },
+            sewing: {
+              totalSeams: sewingTotalSeams.trim() || null,
+            },
+            adhesive: {
+              botesUsados: adhesiveBotes.trim() || null,
+              condicion: adhesiveCondicion || null,
+            },
+            material: {
+              tipo: materialTipo || null,
+              pasada: materialPasada || null,
+            },
+            fieldUnit: selectedFieldUnit
+              ? { id: selectedFieldUnit.id, label: selectedFieldUnit.label }
+              : fieldUnits.length === 1
+                ? { id: fieldUnits[0].id, label: fieldUnits[0].label }
+                : null,
+            captureContext,
+          },
+        }
+        enqueueOfflineFlow(fallbackPayload, projectId, zone.id)
+        refreshPendingFlowCount()
+        setFlowError("")
+        setFlowMessage("Sin nube ahora. Flujo guardado en cola local y se sincroniza cuando vuelva conexión.")
+      } else {
+        setFlowError(err instanceof Error ? err.message : "Error al guardar flujo.")
+      }
     } finally {
       setIsSavingFlow(false)
     }
@@ -1965,9 +2134,38 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
           </div>
 
           <div className={`space-y-2 rounded-xl border border-neutral-700 bg-neutral-950 p-3 ${canOpenProcesses ? "" : "opacity-60"}`}>
+            {fieldUnits.length > 1 ? (
+              <label className="block space-y-1">
+                <span className="text-xs text-neutral-400">Campo activo (beta)</span>
+                <select
+                  value={selectedFieldUnitId}
+                  onChange={(event) => setSelectedFieldUnitId(event.target.value)}
+                  className="w-full rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
+                >
+                  {fieldUnits.map((unit) => (
+                    <option key={unit.id} value={unit.id}>
+                      {unit.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <p className="text-xs text-neutral-400">
               Fases marcadas: {zone.completedStepKeys.length > 0 ? zone.completedStepKeys.join(", ") : "ninguna"}
             </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="rounded-lg border border-neutral-700 px-2 py-1 text-xs text-neutral-300">
+                Pendientes nube: {pendingFlowCount}
+              </p>
+              <button
+                type="button"
+                onClick={() => void syncPendingFlowQueue()}
+                disabled={pendingFlowCount === 0 || isSyncingPendingFlow}
+                className="rounded-lg border border-neutral-600 px-3 py-1 text-xs font-semibold hover:bg-neutral-800 disabled:opacity-50"
+              >
+                {isSyncingPendingFlow ? "Sincronizando..." : "Sincronizar pendientes"}
+              </button>
+            </div>
             <button
               type="button"
               onClick={() => void submitFlowSession()}

@@ -25,6 +25,18 @@ body {
   font-family: "Avenir Next", "Segoe UI", "Trebuchet MS", sans-serif;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+html,
+body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
 .font-heading {
   font-family: "DIN Condensed", "Avenir Next Condensed", "Franklin Gothic Medium", sans-serif;
 }

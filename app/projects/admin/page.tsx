@@ -7,6 +7,7 @@ import ContextHeader from "../../../components/pulse/ContextHeader"
 import { analyzePlanScaffold } from "../../../lib/planIntelligence/client"
 import { readPlanAnalysisCache, savePlanAnalysisCache } from "../../../lib/planIntelligence/cache"
 import { PlanAnalysisResult, PlanFileRef } from "../../../lib/planIntelligence/types"
+import { buildComplexUnits, defaultFieldUnitsConfig, FieldUnit, saveFieldUnitsConfig, SiteType, readFieldUnitsConfig } from "../../../lib/fieldUnits"
 import { createProject, readProjectsFromStorage, saveProjects, slugifyProjectName } from "../../../lib/projects"
 import { buildEmptyZoneTargets, getSetupZones, inferSetupCompleted, suggestZoneTargetsFromPlanAnalysis, ZoneTarget } from "../../../lib/projectSetup"
 import { FIELD_TYPE_LABELS, FieldType, saveProjectFieldType } from "../../../types/fieldType"
@@ -144,6 +145,9 @@ export default function ProjectsAdminPage() {
   const [startDate, setStartDate] = useState("")
   const [crewName, setCrewName] = useState("")
   const [notes, setNotes] = useState("")
+  const [siteType, setSiteType] = useState<SiteType>("single")
+  const [complexFieldCount, setComplexFieldCount] = useState(4)
+  const [fieldUnits, setFieldUnits] = useState<FieldUnit[]>(() => defaultFieldUnitsConfig().units)
   const [zoneTargets, setZoneTargets] = useState<ZoneTarget[]>(() => buildEmptyZoneTargets("beisbol"))
   const [planFiles, setPlanFiles] = useState<File[]>([])
   const [uploadedPlanUrls, setUploadedPlanUrls] = useState<string[]>([])
@@ -208,6 +212,20 @@ export default function ProjectsAdminPage() {
   }, [fieldType])
 
   useEffect(() => {
+    if (siteType === "single") {
+      setFieldUnits([{ id: "field-1", label: "Field 1" }])
+      return
+    }
+    setFieldUnits((current) => {
+      const target = Math.max(2, Math.min(20, complexFieldCount))
+      if (current.length === target) return current
+      const generated = buildComplexUnits(target)
+      const byId = new Map(current.map((unit) => [unit.id, unit]))
+      return generated.map((unit) => byId.get(unit.id) ?? unit)
+    })
+  }, [siteType, complexFieldCount])
+
+  useEffect(() => {
     if (!editingProjectId) return
     if (loadedProjectId === editingProjectId) return
 
@@ -225,6 +243,10 @@ export default function ProjectsAdminPage() {
     setZoneTargets(toSetupTargets(project))
     setUploadedPlanUrls(setup?.planFiles ?? [])
     setPlanAnalysis(readPlanAnalysisCache(project.id))
+    const fieldConfig = readFieldUnitsConfig(project.id)
+    setSiteType(fieldConfig.siteType)
+    setFieldUnits(fieldConfig.units)
+    setComplexFieldCount(fieldConfig.units.length)
     setLastAutofill(null)
     setPlanFiles([])
     setLoadedProjectId(editingProjectId)
@@ -244,6 +266,9 @@ export default function ProjectsAdminPage() {
     setStartDate("")
     setCrewName("")
     setNotes("")
+    setSiteType("single")
+    setComplexFieldCount(4)
+    setFieldUnits(defaultFieldUnitsConfig().units)
     setZoneTargets(buildEmptyZoneTargets("beisbol"))
     setPlanFiles([])
     setUploadedPlanUrls([])
@@ -256,6 +281,10 @@ export default function ProjectsAdminPage() {
 
   function handleFieldTypeChange(next: FieldType) {
     setFieldType(next)
+  }
+
+  function updateFieldUnitLabel(unitId: string, label: string) {
+    setFieldUnits((current) => current.map((unit) => (unit.id === unitId ? { ...unit, label } : unit)))
   }
 
   function updateZoneTarget(zone: string, key: keyof ZoneTarget, rawValue: string) {
@@ -500,6 +529,11 @@ export default function ProjectsAdminPage() {
     saveProjectFieldType(hydratedProject.id, hydratedProject.fieldType)
 
     setIsSubmitting(true)
+    saveFieldUnitsConfig(projectId, {
+      siteType,
+      units: fieldUnits,
+      updatedAt: new Date().toISOString(),
+    })
 
     try {
       const uploadedResult = await uploadPlans(projectId)
@@ -713,6 +747,51 @@ export default function ProjectsAdminPage() {
               className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3"
             />
           </label>
+
+          <h2 className="pt-2 text-xl font-semibold">2.1) Configuración de Campos (Beta)</h2>
+          <p className="text-sm text-neutral-400">Prueba segura: define si el proyecto tiene un solo campo o complejo (varios campos).</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="space-y-2">
+              <span className="text-sm text-neutral-300">Tipo de sitio</span>
+              <select
+                value={siteType}
+                onChange={(event) => setSiteType(event.target.value === "complex" ? "complex" : "single")}
+                className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3"
+              >
+                <option value="single">Single Field</option>
+                <option value="complex">Complex (multi-field)</option>
+              </select>
+            </label>
+            {siteType === "complex" ? (
+              <label className="space-y-2">
+                <span className="text-sm text-neutral-300">Número de campos</span>
+                <input
+                  type="number"
+                  min={2}
+                  max={20}
+                  value={complexFieldCount}
+                  onChange={(event) => setComplexFieldCount(Math.max(2, Math.min(20, Number(event.target.value) || 2)))}
+                  className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3"
+                />
+              </label>
+            ) : null}
+          </div>
+          <div className="space-y-2 rounded-xl border border-neutral-700 bg-neutral-950 p-3">
+            <p className="text-xs text-neutral-400">Campos que se usarán para selección en captura:</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {fieldUnits.map((unit) => (
+                <label key={unit.id} className="space-y-1">
+                  <span className="text-xs text-neutral-400">{unit.id}</span>
+                  <input
+                    type="text"
+                    value={unit.label}
+                    onChange={(event) => updateFieldUnitLabel(unit.id, event.target.value)}
+                    className="w-full rounded-lg border border-neutral-700 bg-neutral-900 px-2 py-2 text-sm"
+                  />
+                </label>
+              ))}
+            </div>
+          </div>
 
           <h2 className="pt-2 text-xl font-semibold">3) Targets por zona</h2>
           <p className="text-sm text-neutral-400">Sin estos targets no hay comparación real Plan vs Real.</p>
