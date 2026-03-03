@@ -80,6 +80,68 @@ function asStringArray(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === "string" && item.length > 0)
 }
 
+function asNumberOrNull(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null
+}
+
+type CaptureContextView = {
+  capturedAt: string | null
+  source: string | null
+  latitude: number | null
+  longitude: number | null
+  accuracyM: number | null
+  temperatureC: number | null
+  apparentTemperatureC: number | null
+  humidityPct: number | null
+  windMph: number | null
+  weatherLabel: string | null
+}
+
+function readCaptureContext(metadata: Record<string, unknown>): CaptureContextView | null {
+  const details = asObject(metadata.details)
+  const context = asObject(details.captureContext)
+  if (Object.keys(context).length === 0) return null
+
+  const location = asObject(context.location)
+  const weather = asObject(context.weather)
+  const capturedAt = asNullableString(context.capturedAt)
+
+  return {
+    capturedAt,
+    source: asNullableString(context.source),
+    latitude: asNumberOrNull(location.latitude),
+    longitude: asNumberOrNull(location.longitude),
+    accuracyM: asNumberOrNull(location.accuracyM),
+    temperatureC: asNumberOrNull(weather.temperatureC),
+    apparentTemperatureC: asNumberOrNull(weather.apparentTemperatureC),
+    humidityPct: asNumberOrNull(weather.humidityPct),
+    windMph: asNumberOrNull(weather.windMph),
+    weatherLabel: asNullableString(weather.weatherLabel),
+  }
+}
+
+function weatherEmoji(label: string | null): string {
+  const text = (label ?? "").toLowerCase()
+  if (!text) return "🌡️"
+  if (text.includes("clear")) return "☀️"
+  if (text.includes("partly")) return "⛅"
+  if (text.includes("overcast") || text.includes("cloud")) return "☁️"
+  if (text.includes("rain") || text.includes("drizzle")) return "🌧️"
+  if (text.includes("thunder")) return "⛈️"
+  if (text.includes("snow")) return "❄️"
+  if (text.includes("fog")) return "🌫️"
+  return "🌡️"
+}
+
+function climateBadgeText(context: CaptureContextView): string | null {
+  const parts: string[] = []
+  if (context.weatherLabel) parts.push(context.weatherLabel)
+  if (context.temperatureC !== null) parts.push(`${context.temperatureC.toFixed(1)}°C`)
+  if (context.windMph !== null) parts.push(`${context.windMph.toFixed(1)} mph`)
+  if (parts.length === 0) return null
+  return parts.join(" · ")
+}
+
 type CaptureStoryCardProps = {
   capture: CaptureItem
   deleting: boolean
@@ -144,6 +206,8 @@ function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata 
   const hasPhotos = total > 0
   const activePhoto = hasPhotos ? capture.photos[index] : null
   const isFlowEditable = capture.editable && capture.module === "flow"
+  const captureContext = readCaptureContext(asObject(capture.metadata))
+  const climateText = captureContext ? climateBadgeText(captureContext) : null
 
   function toggleFlowPhase(phase: string) {
     setFlowPhases((current) => {
@@ -221,6 +285,11 @@ function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata 
           <p className="text-sm text-neutral-300">
             {capture.macroZone ?? "Sin macro"} · {capture.microZone ?? "Sin micro"}
           </p>
+          {climateText ? (
+            <span className="mt-2 inline-flex rounded-full border border-cyan-500/60 bg-cyan-500/10 px-3 py-1 text-xs font-semibold text-cyan-100">
+              {weatherEmoji(captureContext?.weatherLabel ?? null)} {climateText}
+            </span>
+          ) : null}
         </div>
         <span className="rounded-lg border border-blue-500/60 bg-blue-500/10 px-3 py-1 text-xs font-semibold text-blue-200">
           {capture.summary}
@@ -275,6 +344,29 @@ function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata 
       </div>
 
       <div className="mt-3 space-y-3">
+        {captureContext ? (
+          <div className="rounded-xl border border-cyan-500/40 bg-cyan-500/5 p-3 text-xs text-cyan-100">
+            <p className="font-semibold">Contexto ambiental</p>
+            <p className="text-cyan-200/90">
+              {captureContext.capturedAt ? `Captura: ${formatDate(captureContext.capturedAt)}` : "Captura: -"}
+              {captureContext.temperatureC !== null ? ` · ${captureContext.temperatureC.toFixed(1)}°C` : ""}
+              {captureContext.windMph !== null ? ` · Viento ${captureContext.windMph.toFixed(1)} mph` : ""}
+              {captureContext.humidityPct !== null ? ` · Humedad ${captureContext.humidityPct.toFixed(0)}%` : ""}
+            </p>
+            <p className="text-cyan-200/80">
+              {captureContext.weatherLabel ? `${captureContext.weatherLabel}` : "Clima: -"}
+              {captureContext.apparentTemperatureC !== null ? ` · Sensación ${captureContext.apparentTemperatureC.toFixed(1)}°C` : ""}
+              {captureContext.source ? ` · Fuente ${captureContext.source}` : ""}
+            </p>
+            <p className="text-cyan-200/70">
+              {captureContext.latitude !== null && captureContext.longitude !== null
+                ? `Ubicación: ${captureContext.latitude.toFixed(5)}, ${captureContext.longitude.toFixed(5)}`
+                : "Ubicación: no disponible"}
+              {captureContext.accuracyM !== null ? ` · ±${Math.round(captureContext.accuracyM)}m` : ""}
+            </p>
+          </div>
+        ) : null}
+
         {activePhoto ? (
           <Image
             src={activePhoto}

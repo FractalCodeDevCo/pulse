@@ -6,6 +6,7 @@ import { ChangeEvent, useEffect, useMemo, useState } from "react"
 
 import { createCaptureSessionId } from "../../lib/captureSession"
 import { IMAGE_INPUT_ACCEPT, processImageFiles } from "../../lib/clientImage"
+import { PhotoExifContext, readPhotoExifBatch } from "../../lib/photoExif"
 import { readPlanAnalysisCache, savePlanAnalysisCache } from "../../lib/planIntelligence/cache"
 import { PlanAnalysisResult } from "../../lib/planIntelligence/types"
 import { suggestNextRollsByZone } from "../../lib/planIntelligence/suggest"
@@ -23,6 +24,12 @@ import {
 type ZoneDetailPageClientProps = {
   projectId: string | null
   projectZoneId: string
+}
+
+type ProjectSetupApi = {
+  setup?: {
+    planFiles?: string[]
+  }
 }
 
 type RollPlacementSummary = {
@@ -53,7 +60,6 @@ type MaterialSummary = {
 }
 
 const CONDITION_OPTIONS = ["Excelente", "Buena", "Regular", "Mala"]
-const CLIMATE_OPTIONS = ["Soleado", "Nublado", "Lluvioso", "Viento", "Humedad alta"]
 const SPORT_CRITICAL_OPTIONS: Record<string, string[]> = {
   beisbol: [
     "Coach A",
@@ -123,12 +129,54 @@ type PlanSuggestedRoll = {
   splitCount: number
 }
 
+function normalizePlanKeyFromUrl(url: string): string {
+  try {
+    const parsed = new URL(url)
+    const parts = parsed.pathname.split("/").filter(Boolean)
+    const base = decodeURIComponent(parts[parts.length - 1] ?? "")
+    return base.toLowerCase()
+  } catch {
+    return url.toLowerCase()
+  }
+}
+
+function sourceFileHintsFromUrl(url: string): string[] {
+  const key = normalizePlanKeyFromUrl(url)
+  const hints = new Set<string>([key])
+  const noPrefix = key.replace(/^\d{10,}-\d+-/, "")
+  hints.add(noPrefix)
+  hints.add(noPrefix.replace(/_/g, " "))
+  return [...hints]
+}
+
+type CaptureContext = {
+  capturedAt: string
+  source: "photo_exif" | "manual_input" | "none"
+  location: {
+    latitude: number
+    longitude: number
+    accuracyM: number | null
+  } | null
+  weather: {
+    observedAt: string
+    source: string
+    temperatureC: number | null
+    apparentTemperatureC: number | null
+    humidityPct: number | null
+    windMph: number | null
+    weatherCode: number | null
+    weatherLabel: string | null
+    extra: Record<string, unknown> | null
+  } | null
+}
+
 export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneDetailPageClientProps) {
   const project = useMemo(() => (projectId ? getProjectById(projectId) : null), [projectId])
   const [zone, setZone] = useState(() => (projectId ? getProjectZoneById(projectId, projectZoneId) : null))
   const [openStep, setOpenStep] = useState<ZoneStepKey | null>(null)
   const [quickNotes, setQuickNotes] = useState<Record<string, string>>({})
   const [zonePhotos, setZonePhotos] = useState<string[]>([])
+  const [zonePhotoExif, setZonePhotoExif] = useState<Array<PhotoExifContext | null>>([])
   const [isReadingPhotos, setIsReadingPhotos] = useState(false)
 
   // Roll Placement inline metadata
@@ -153,7 +201,6 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   const [adhesiveLineasMarkbox, setAdhesiveLineasMarkbox] = useState(false)
   const [adhesiveBotes, setAdhesiveBotes] = useState("")
   const [adhesiveCondicion, setAdhesiveCondicion] = useState("")
-  const [adhesiveClima, setAdhesiveClima] = useState<string[]>([])
   const [adhesiveObservaciones, setAdhesiveObservaciones] = useState("")
   const [adhesiveSessionId, setAdhesiveSessionId] = useState(() => createCaptureSessionId())
   const [isSavingAdhesive, setIsSavingAdhesive] = useState(false)
@@ -169,6 +216,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   const [materialObservaciones, setMaterialObservaciones] = useState("")
   const [materialSessionId, setMaterialSessionId] = useState(() => createCaptureSessionId())
   const [materialPhotos, setMaterialPhotos] = useState<string[]>([])
+  const [materialPhotoExif, setMaterialPhotoExif] = useState<Array<PhotoExifContext | null>>([])
   const [isSavingMaterial, setIsSavingMaterial] = useState(false)
   const [materialMessage, setMaterialMessage] = useState("")
   const [materialError, setMaterialError] = useState("")
@@ -181,6 +229,18 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   const [isSavingFlow, setIsSavingFlow] = useState(false)
   const [flowMessage, setFlowMessage] = useState("")
   const [flowError, setFlowError] = useState("")
+  const [flowContextMessage, setFlowContextMessage] = useState("")
+  const [projectPlanUrls, setProjectPlanUrls] = useState<string[]>([])
+  const [isLoadingPlanUrls, setIsLoadingPlanUrls] = useState(false)
+  const [isPlanViewerOpen, setIsPlanViewerOpen] = useState(false)
+  const [activePlanUrl, setActivePlanUrl] = useState("")
+  const [planViewerPage, setPlanViewerPage] = useState(1)
+  const [planViewerError, setPlanViewerError] = useState("")
+  const [planViewerMessage, setPlanViewerMessage] = useState("")
+  const [manualContextEnabled, setManualContextEnabled] = useState(false)
+  const [manualContextLat, setManualContextLat] = useState("")
+  const [manualContextLon, setManualContextLon] = useState("")
+  const [manualContextCapturedAt, setManualContextCapturedAt] = useState("")
   const [lastCloudSavedAt, setLastCloudSavedAt] = useState<string | null>(null)
   const [lastCloudFingerprint, setLastCloudFingerprint] = useState<string | null>(null)
   const [planCacheVersion, setPlanCacheVersion] = useState(0)
@@ -295,6 +355,42 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
     })
   }, [zone, planAnalysis, rollColorLabels, useSerpentineSuggestions])
 
+  const bestExifContext = useMemo(() => {
+    const candidates = [...zonePhotoExif, ...materialPhotoExif].filter((item): item is PhotoExifContext => Boolean(item))
+    return (
+      candidates.find((item) => item.latitude !== null && item.longitude !== null && item.capturedAt !== null) ??
+      candidates.find((item) => item.latitude !== null && item.longitude !== null) ??
+      null
+    )
+  }, [zonePhotoExif, materialPhotoExif])
+  const hasUsableExifContext = Boolean(bestExifContext && bestExifContext.latitude !== null && bestExifContext.longitude !== null)
+  const exifCoordinatesLabel = useMemo(() => {
+    if (!bestExifContext || bestExifContext.latitude === null || bestExifContext.longitude === null) return ""
+    return `${bestExifContext.latitude.toFixed(5)}, ${bestExifContext.longitude.toFixed(5)}`
+  }, [bestExifContext])
+  const suggestedPlanPage = useMemo(() => {
+    if (!activePlanUrl || !planAnalysis) return 1
+    const planKey = normalizePlanKeyFromUrl(activePlanUrl)
+    const manualPage = planAnalysis.manualRollLayoutPages?.[planKey]
+    if (typeof manualPage === "number" && Number.isFinite(manualPage) && manualPage >= 1) return Math.floor(manualPage)
+
+    const hints = sourceFileHintsFromUrl(activePlanUrl)
+    const pageCandidates = planAnalysis.pages.filter((page) => {
+      const source = page.sourceFile.toLowerCase()
+      return hints.some((hint) => source.includes(hint) || hint.includes(source))
+    })
+    const bestByFile = pageCandidates
+      .filter((page) => page.kind === "roll_layout")
+      .sort((a, b) => b.confidence - a.confidence)[0]
+    if (bestByFile && bestByFile.pageIndex >= 1) return bestByFile.pageIndex
+
+    const bestGlobal = planAnalysis.pages
+      .filter((page) => page.kind === "roll_layout")
+      .sort((a, b) => b.confidence - a.confidence)[0]
+    if (bestGlobal && bestGlobal.pageIndex >= 1) return bestGlobal.pageIndex
+    return 1
+  }, [activePlanUrl, planAnalysis])
+
   useEffect(() => {
     if (!projectId) return
     const safeProjectId = projectId
@@ -321,6 +417,39 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   }, [projectId])
 
   useEffect(() => {
+    if (!projectId) return
+    let cancelled = false
+    setIsLoadingPlanUrls(true)
+    setPlanViewerError("")
+
+    fetch("/api/projects", { cache: "no-store" })
+      .then(async (response) => {
+        const payload = (await response.json()) as { projects?: ProjectSetupApi[]; error?: string }
+        if (!response.ok) throw new Error(payload.error ?? "No se pudo cargar setup del proyecto.")
+        const projects = Array.isArray(payload.projects) ? payload.projects : []
+        const found = projects.find((item) => (item as { id?: string }).id === projectId)
+        const urls = Array.isArray(found?.setup?.planFiles)
+          ? found!.setup!.planFiles!.filter((url): url is string => typeof url === "string" && url.length > 0)
+          : []
+        if (cancelled) return
+        setProjectPlanUrls(urls)
+        if (!activePlanUrl && urls.length > 0) setActivePlanUrl(urls[0])
+      })
+      .catch((error) => {
+        if (cancelled) return
+        setPlanViewerError(error instanceof Error ? error.message : "No se pudieron cargar los planos del proyecto.")
+      })
+      .finally(() => {
+        if (cancelled) return
+        setIsLoadingPlanUrls(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [projectId])
+
+  useEffect(() => {
     if (!projectId || !zone) return
     saveZonePhotosCache(projectId, zone.id, zonePhotos)
   }, [projectId, zone, zonePhotos])
@@ -330,6 +459,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
     setOpenStep(null)
     setQuickNotes({})
     setZonePhotos([])
+    setZonePhotoExif([])
     setRollLengthFit("")
     setTotalRollsUsed("")
     setSewingTotalSeams("")
@@ -345,7 +475,6 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
     setAdhesiveLineasMarkbox(false)
     setAdhesiveBotes("")
     setAdhesiveCondicion("")
-    setAdhesiveClima([])
     setAdhesiveObservaciones("")
     setAdhesiveSessionId(createCaptureSessionId())
     setMaterialStep(1)
@@ -357,12 +486,18 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
     setMaterialObservaciones("")
     setMaterialSessionId(createCaptureSessionId())
     setMaterialPhotos([])
+    setMaterialPhotoExif([])
     setStepSessionIds({})
     setStepSaveMessages({})
     setStepSaveErrors({})
     setFlowSessionId(createCaptureSessionId())
     setFlowMessage("")
     setFlowError("")
+    setFlowContextMessage("")
+    setManualContextEnabled(false)
+    setManualContextLat("")
+    setManualContextLon("")
+    setManualContextCapturedAt("")
     setRollPlacementMessage("")
     setRollPlacementError("")
     setAdhesiveMessage("")
@@ -400,6 +535,55 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
     setTotalRollsUsed(String(total))
   }
 
+  function openPlanViewer() {
+    if (projectPlanUrls.length === 0) {
+      setPlanViewerError("No hay planos cargados en Setup Base para este proyecto.")
+      return
+    }
+    if (!activePlanUrl) setActivePlanUrl(projectPlanUrls[0])
+    setPlanViewerPage(suggestedPlanPage)
+    setIsPlanViewerOpen(true)
+    setPlanViewerError("")
+    setPlanViewerMessage("")
+  }
+
+  async function markCurrentPageAsRollLayout() {
+    if (!projectId || !activePlanUrl || !planAnalysis) {
+      setPlanViewerError("No hay análisis de plano para guardar esta marca.")
+      return
+    }
+    const planKey = normalizePlanKeyFromUrl(activePlanUrl)
+    const page = Math.max(1, Math.floor(planViewerPage))
+    const nextAnalysis: PlanAnalysisResult = {
+      ...planAnalysis,
+      manualRollLayoutPages: {
+        ...(planAnalysis.manualRollLayoutPages ?? {}),
+        [planKey]: page,
+      },
+    }
+    savePlanAnalysisCache(projectId, nextAnalysis)
+    setPlanCacheVersion((current) => current + 1)
+
+    try {
+      const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/plan-intelligence`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          planKey,
+          page,
+        }),
+      })
+      const payload = (await response.json()) as { error?: string; analysis?: PlanAnalysisResult }
+      if (!response.ok) throw new Error(payload.error ?? "No se pudo guardar la marca.")
+      if (payload.analysis) savePlanAnalysisCache(projectId, payload.analysis)
+      setPlanCacheVersion((current) => current + 1)
+      setPlanViewerMessage(`Página ${page} marcada como Roll Layout.`)
+      setPlanViewerError("")
+    } catch (error) {
+      setPlanViewerError(error instanceof Error ? error.message : "No se pudo guardar la marca.")
+    }
+  }
+
   function toggleStep(stepKey: ZoneStepKey) {
     if (!projectId || !zone) return
     const updated = toggleProjectZoneStep(projectId, zone.id, stepKey)
@@ -412,8 +596,10 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
 
     setIsReadingPhotos(true)
     try {
-      const urls = await processImageFiles(Array.from(files))
+      const selectedFiles = Array.from(files)
+      const [urls, exifContexts] = await Promise.all([processImageFiles(selectedFiles), readPhotoExifBatch(selectedFiles)])
       setZonePhotos((prev) => [...prev, ...urls].slice(0, 6))
+      setZonePhotoExif((prev) => [...prev, ...exifContexts].slice(0, 6))
     } finally {
       setIsReadingPhotos(false)
     }
@@ -421,10 +607,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
 
   function removeZonePhoto(index: number) {
     setZonePhotos((prev) => prev.filter((_, i) => i !== index))
-  }
-
-  function toggleAdhesiveClimate(option: string) {
-    setAdhesiveClima((current) => (current.includes(option) ? current.filter((item) => item !== option) : [...current, option]))
+    setZonePhotoExif((prev) => prev.filter((_, i) => i !== index))
   }
 
   function toggleAdhesiveCriticalInfieldArea(item: string) {
@@ -439,8 +622,10 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
     if (!files || files.length === 0) return
     setIsReadingPhotos(true)
     try {
-      const urls = await processImageFiles(Array.from(files))
+      const selectedFiles = Array.from(files)
+      const [urls, exifContexts] = await Promise.all([processImageFiles(selectedFiles), readPhotoExifBatch(selectedFiles)])
       setMaterialPhotos((prev) => [...prev, ...urls].slice(0, 8))
+      setMaterialPhotoExif((prev) => [...prev, ...exifContexts].slice(0, 8))
     } finally {
       setIsReadingPhotos(false)
     }
@@ -448,6 +633,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
 
   function removeMaterialPhoto(index: number) {
     setMaterialPhotos((prev) => prev.filter((_, i) => i !== index))
+    setMaterialPhotoExif((prev) => prev.filter((_, i) => i !== index))
   }
 
   function getStepSessionId(stepKey: ZoneStepKey): string {
@@ -496,6 +682,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
       setStepSaveMessages((prev) => ({ ...prev, [stepKey]: "Captura guardada en nube." }))
       setStepSessionIds((prev) => ({ ...prev, [stepKey]: createCaptureSessionId() }))
       setZonePhotos([])
+      setZonePhotoExif([])
       if (!zone.completedStepKeys.includes(stepKey)) toggleStep(stepKey)
     } catch (err) {
       setStepSaveErrors((prev) => ({
@@ -564,6 +751,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
       setRollPlacementSummary(data.summary ?? null)
       setRollPlacementSessionId(createCaptureSessionId())
       setZonePhotos([])
+      setZonePhotoExif([])
       if (isCompleteCapture && !zone.completedStepKeys.includes("ROLL_PLACEMENT")) toggleStep("ROLL_PLACEMENT")
     } catch (err) {
       setRollPlacementError(err instanceof Error ? err.message : "Error al guardar Roll Placement.")
@@ -666,7 +854,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
             ftTotales: disableAdhesiveFtSlider ? 10 : Number(adhesiveFt),
             botesUsados: Number(adhesiveBotes),
             condicion: adhesiveCondicion,
-            clima: adhesiveClima,
+            exif_context_available: hasUsableExifContext,
             observaciones: adhesiveObservaciones.trim(),
             capture_session_id: adhesiveSessionId,
             capture_status: "complete",
@@ -685,6 +873,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
       setAdhesiveSummary(data.summary ?? null)
       setAdhesiveSessionId(createCaptureSessionId())
       setZonePhotos([])
+      setZonePhotoExif([])
       if (!zone.completedStepKeys.includes("ADHESIVE")) toggleStep("ADHESIVE")
     } catch (err) {
       setAdhesiveError(err instanceof Error ? err.message : "Error al guardar Adhesive.")
@@ -735,11 +924,112 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
       setMaterialSessionId(createCaptureSessionId())
       setMaterialStep(1)
       setMaterialPhotos([])
+      setMaterialPhotoExif([])
       if (!zone.completedStepKeys.includes("MATERIAL")) toggleStep("MATERIAL")
     } catch (err) {
       setMaterialError(err instanceof Error ? err.message : "Error al guardar Material.")
     } finally {
       setIsSavingMaterial(false)
+    }
+  }
+
+  async function buildCaptureContext(capturedAt: string): Promise<CaptureContext> {
+    const base: CaptureContext = {
+      capturedAt,
+      source: "none",
+      location: null,
+      weather: null,
+    }
+    const exifCandidates = [...zonePhotoExif, ...materialPhotoExif].filter(
+      (item): item is PhotoExifContext => Boolean(item),
+    )
+    const preferred =
+      exifCandidates.find((item) => item.latitude !== null && item.longitude !== null && item.capturedAt !== null) ??
+      exifCandidates.find((item) => item.latitude !== null && item.longitude !== null) ??
+      null
+    let source: CaptureContext["source"] = "none"
+    let latitude: number | null = null
+    let longitude: number | null = null
+    let observedAt = capturedAt
+
+    if (preferred && preferred.latitude !== null && preferred.longitude !== null) {
+      source = "photo_exif"
+      latitude = preferred.latitude
+      longitude = preferred.longitude
+      observedAt = preferred.capturedAt ?? capturedAt
+    } else if (manualContextEnabled) {
+      const parsedLat = Number(manualContextLat)
+      const parsedLon = Number(manualContextLon)
+      if (Number.isFinite(parsedLat) && Number.isFinite(parsedLon) && Math.abs(parsedLat) <= 90 && Math.abs(parsedLon) <= 180) {
+        source = "manual_input"
+        latitude = parsedLat
+        longitude = parsedLon
+        if (manualContextCapturedAt.trim().length > 0) {
+          const manualDate = new Date(manualContextCapturedAt)
+          if (Number.isFinite(manualDate.getTime())) observedAt = manualDate.toISOString()
+        }
+      }
+    }
+    if (latitude === null || longitude === null) return base
+
+    const location = {
+      latitude,
+      longitude,
+      accuracyM: null,
+    }
+
+    try {
+      const response = await fetch("/api/weather/snapshot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ latitude: location.latitude, longitude: location.longitude, capturedAt: observedAt }),
+      })
+      const weatherData = (await response.json()) as {
+        observedAt?: string
+        source?: string
+        temperatureC?: number | null
+        apparentTemperatureC?: number | null
+        humidityPct?: number | null
+        windMph?: number | null
+        weatherCode?: number | null
+        weatherLabel?: string | null
+        extra?: unknown
+      }
+      if (!response.ok) {
+        return {
+          ...base,
+          source,
+          location,
+        }
+      }
+
+      return {
+        ...base,
+        capturedAt: observedAt,
+        source,
+        location,
+        weather: {
+          observedAt: typeof weatherData.observedAt === "string" ? weatherData.observedAt : observedAt,
+          source: typeof weatherData.source === "string" ? weatherData.source : "unknown",
+          temperatureC: typeof weatherData.temperatureC === "number" ? weatherData.temperatureC : null,
+          apparentTemperatureC: typeof weatherData.apparentTemperatureC === "number" ? weatherData.apparentTemperatureC : null,
+          humidityPct: typeof weatherData.humidityPct === "number" ? weatherData.humidityPct : null,
+          windMph: typeof weatherData.windMph === "number" ? weatherData.windMph : null,
+          weatherCode: typeof weatherData.weatherCode === "number" ? weatherData.weatherCode : null,
+          weatherLabel: typeof weatherData.weatherLabel === "string" ? weatherData.weatherLabel : null,
+          extra:
+            weatherData.extra && typeof weatherData.extra === "object" && !Array.isArray(weatherData.extra)
+              ? (weatherData.extra as Record<string, unknown>)
+              : null,
+        },
+      }
+    } catch {
+      return {
+        ...base,
+        source,
+        capturedAt: observedAt,
+        location,
+      }
     }
   }
 
@@ -753,9 +1043,12 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
 
     setFlowError("")
     setFlowMessage("")
+    setFlowContextMessage("")
     setIsSavingFlow(true)
 
     try {
+      const capturedAt = new Date().toISOString()
+      const captureContext = await buildCaptureContext(capturedAt)
       const combinedPhotos = [...zonePhotos, ...materialPhotos]
         .filter((photo, index, arr) => typeof photo === "string" && photo.length > 0 && arr.indexOf(photo) === index)
         .filter((photo) => photo.startsWith("data:image/") || photo.startsWith("http://") || photo.startsWith("https://"))
@@ -796,6 +1089,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
               tipo: materialTipo || null,
               pasada: materialPasada || null,
             },
+            captureContext,
           },
         }),
       })
@@ -806,6 +1100,21 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
       setFlowMessage(
         `Flujo guardado: ${savedPhases.join(" -> ")} · fotos: ${photos.length}${skippedPhotos > 0 ? ` · ${skippedPhotos} omitidas (límite 3)` : ""}`,
       )
+      if (captureContext.location && captureContext.weather) {
+        setFlowContextMessage(
+          captureContext.source === "manual_input"
+            ? "Contexto ambiental guardado desde entrada manual (clima histórico)."
+            : "Contexto ambiental guardado desde EXIF de foto (clima histórico).",
+        )
+      } else if (captureContext.location) {
+        setFlowContextMessage(
+          captureContext.source === "manual_input"
+            ? "Ubicación/fecha manual guardada. Clima histórico no disponible en este intento."
+            : "EXIF detectado (ubicación/fecha). Clima histórico no disponible en este intento.",
+        )
+      } else {
+        setFlowContextMessage("Flujo guardado sin contexto ambiental: no hubo EXIF utilizable ni fallback manual válido.")
+      }
       setLastCloudSavedAt(new Date().toISOString())
       setLastCloudFingerprint(flowFingerprint)
       setFlowSessionId(createCaptureSessionId())
@@ -881,6 +1190,54 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
             onChange={(event) => void handleZonePhotos(event)}
             className="block w-full rounded-xl border border-neutral-700 bg-neutral-950 p-2 text-sm"
           />
+          <p className="rounded-lg border border-neutral-700 px-3 py-2 text-xs text-neutral-400">
+            Contexto ambiental usa EXIF de la foto (GPS + fecha/hora). Si la imagen no trae EXIF, se omite.
+          </p>
+          <div className="space-y-2 rounded-xl border border-neutral-800 bg-neutral-950 p-3">
+            <label className="flex items-center gap-2 text-xs text-neutral-300">
+              <input
+                type="checkbox"
+                checked={manualContextEnabled}
+                onChange={(event) => setManualContextEnabled(event.target.checked)}
+              />
+              Fallback manual (solo si no hay EXIF)
+            </label>
+            {manualContextEnabled ? (
+              <div className="grid gap-2 sm:grid-cols-3">
+                <label className="space-y-1">
+                  <span className="text-xs text-neutral-400">Latitud</span>
+                  <input
+                    type="number"
+                    step="0.000001"
+                    value={manualContextLat}
+                    onChange={(event) => setManualContextLat(event.target.value)}
+                    className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-2 text-xs"
+                    placeholder="39.0997"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs text-neutral-400">Longitud</span>
+                  <input
+                    type="number"
+                    step="0.000001"
+                    value={manualContextLon}
+                    onChange={(event) => setManualContextLon(event.target.value)}
+                    className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-2 text-xs"
+                    placeholder="-94.5786"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs text-neutral-400">Fecha/hora de captura</span>
+                  <input
+                    type="datetime-local"
+                    value={manualContextCapturedAt}
+                    onChange={(event) => setManualContextCapturedAt(event.target.value)}
+                    className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-2 text-xs"
+                  />
+                </label>
+              </div>
+            ) : null}
+          </div>
 
           {zonePhotos.length > 0 ? (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -968,6 +1325,22 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                       {step.key === "ROLL_PLACEMENT" ? (
                         <>
                           <p className="text-sm text-neutral-300">Metadata de Roll Placement (inline).</p>
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            <button
+                              type="button"
+                              onClick={openPlanViewer}
+                              className="rounded-xl border border-cyan-500 py-3 text-center text-sm font-semibold text-cyan-300 hover:bg-cyan-500/10"
+                            >
+                              Abrir plano (fullscreen)
+                            </button>
+                            <p className="rounded-xl border border-neutral-700 px-3 py-3 text-center text-xs text-neutral-400">
+                              Consulta plano y captura rollos sin salir de Pulse.
+                            </p>
+                          </div>
+                          {isLoadingPlanUrls ? <p className="text-xs text-neutral-400">Cargando planos del proyecto...</p> : null}
+                          {planViewerError ? (
+                            <p className="rounded-xl border border-amber-500/70 bg-amber-500/10 p-3 text-sm text-amber-300">{planViewerError}</p>
+                          ) : null}
 
                           <div className="grid gap-3 sm:grid-cols-2">
                             <label className="block space-y-2">
@@ -1292,26 +1665,21 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                             </select>
                           </label>
 
-                          <fieldset className="space-y-2">
-                            <legend className="text-sm text-neutral-300">Clima</legend>
-                            <div className="grid gap-2 sm:grid-cols-2">
-                              {CLIMATE_OPTIONS.map((option) => {
-                                const checked = adhesiveClima.includes(option)
-                                return (
-                                  <button
-                                    key={option}
-                                    type="button"
-                                    onClick={() => toggleAdhesiveClimate(option)}
-                                    className={`rounded-xl border px-3 py-3 text-sm ${
-                                      checked ? "border-emerald-500 bg-emerald-500/20 text-emerald-200" : "border-neutral-700"
-                                    }`}
-                                  >
-                                    {option}
-                                  </button>
-                                )
-                              })}
-                            </div>
-                          </fieldset>
+                          <div className="space-y-2 rounded-xl border border-neutral-700 bg-neutral-950 p-3">
+                            <p className="text-sm text-neutral-300">Clima automático por EXIF</p>
+                            {hasUsableExifContext ? (
+                              <p className="text-xs text-emerald-300">
+                                EXIF detectado
+                                {bestExifContext?.capturedAt ? ` · ${new Date(bestExifContext.capturedAt).toLocaleString("es-MX")}` : ""}
+                                {exifCoordinatesLabel ? ` · ${exifCoordinatesLabel}` : ""}
+                                . Al guardar flujo se calculará clima histórico real.
+                              </p>
+                            ) : (
+                              <p className="text-xs text-amber-300">
+                                No existe EXIF utilizable en las fotos actuales. No se generará contexto ambiental.
+                              </p>
+                            )}
+                          </div>
 
                           <label className="block space-y-2">
                             <span className="text-sm text-neutral-300">Observaciones (opcional)</span>
@@ -1614,6 +1982,9 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
             {flowMessage ? (
               <p className="rounded-xl border border-emerald-500/70 bg-emerald-500/10 p-3 text-sm text-emerald-300">{flowMessage}</p>
             ) : null}
+            {flowContextMessage ? (
+              <p className="rounded-xl border border-cyan-500/70 bg-cyan-500/10 p-3 text-sm text-cyan-200">{flowContextMessage}</p>
+            ) : null}
           </div>
         </section>
 
@@ -1642,6 +2013,84 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
 
         {isReadingPhotos ? <p className="text-sm text-neutral-400">Procesando fotos...</p> : null}
       </section>
+      {isPlanViewerOpen ? (
+        <div className="fixed inset-0 z-50 bg-neutral-950/95">
+          <div className="flex h-full flex-col">
+            <div className="flex flex-wrap items-center gap-2 border-b border-neutral-800 bg-neutral-950 p-3">
+              <p className="text-sm font-semibold text-cyan-200">Plano del proyecto</p>
+              <select
+                value={activePlanUrl}
+                onChange={(event) => {
+                  setActivePlanUrl(event.target.value)
+                  setPlanViewerPage(1)
+                  setPlanViewerMessage("")
+                }}
+                className="min-w-[200px] flex-1 rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-2 text-xs"
+              >
+                {projectPlanUrls.map((url, index) => (
+                  <option key={`${url}-${index}`} value={url}>
+                    Plano {index + 1}
+                  </option>
+                ))}
+              </select>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setPlanViewerPage((current) => Math.max(1, current - 1))}
+                  className="rounded-lg border border-neutral-600 px-3 py-2 text-xs font-semibold hover:bg-neutral-800"
+                >
+                  Prev
+                </button>
+                <input
+                  type="number"
+                  min={1}
+                  value={planViewerPage}
+                  onChange={(event) => setPlanViewerPage(Math.max(1, Number(event.target.value) || 1))}
+                  className="w-20 rounded-lg border border-neutral-700 bg-neutral-900 px-2 py-2 text-center text-xs"
+                />
+                <button
+                  type="button"
+                  onClick={() => setPlanViewerPage((current) => current + 1)}
+                  className="rounded-lg border border-neutral-600 px-3 py-2 text-xs font-semibold hover:bg-neutral-800"
+                >
+                  Next
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => void markCurrentPageAsRollLayout()}
+                className="rounded-lg border border-cyan-500/70 px-3 py-2 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/10"
+              >
+                Marcar esta página como Roll Layout
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsPlanViewerOpen(false)}
+                className="rounded-lg border border-red-500/70 px-3 py-2 text-xs font-semibold text-red-300 hover:bg-red-500/10"
+              >
+                Cerrar ✕
+              </button>
+            </div>
+            {planViewerMessage ? (
+              <p className="border-b border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-xs text-cyan-200">{planViewerMessage}</p>
+            ) : null}
+            {planViewerError ? (
+              <p className="border-b border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">{planViewerError}</p>
+            ) : null}
+            <div className="h-full w-full">
+              {activePlanUrl ? (
+                <iframe
+                  title="Project plan viewer"
+                  src={`${activePlanUrl}#page=${planViewerPage}&view=FitH`}
+                  className="h-full w-full border-0"
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center text-sm text-neutral-300">Sin plano disponible.</div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   )
 }

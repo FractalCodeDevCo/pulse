@@ -409,8 +409,30 @@ export function buildPlanAnalysisFromLayouts(
     notes: layouts.flatMap((layout) => layout.notes),
   }
 
+  const pages = base.pages.map((candidate) => {
+    const pageCount = new Map<number, number>()
+    for (const roll of allRolls) {
+      if (roll.sourceFile !== candidate.sourceFile) continue
+      pageCount.set(roll.bbox.page, (pageCount.get(roll.bbox.page) ?? 0) + 1)
+    }
+
+    if (pageCount.size === 0) return candidate
+
+    const best = [...pageCount.entries()].sort((a, b) => b[1] - a[1])[0]
+    const bestPage = best[0]
+    const rollsOnPage = best[1]
+    return {
+      ...candidate,
+      kind: "roll_layout" as const,
+      pageIndex: bestPage,
+      confidence: Math.min(0.96, 0.7 + Math.min(rollsOnPage, 30) * 0.008),
+      signals: [...candidate.signals, `roll labels detected on page ${bestPage}`],
+    }
+  })
+
   return {
     ...base,
+    pages,
     status: allRolls.length > 0 ? "parsed" : "scaffold",
     detectedRolls,
     rollZoneMap: rollZoneMap.length > 0 ? rollZoneMap : base.rollZoneMap,

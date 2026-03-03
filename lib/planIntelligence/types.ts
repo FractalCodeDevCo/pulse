@@ -101,6 +101,7 @@ export type PlanAnalysisResult = {
   version: "v0"
   createdAt: string
   pages: PlanPageCandidate[]
+  manualRollLayoutPages?: Record<string, number>
   detectedRolls: DetectedRoll[]
   stats: PlanStats
   rollZoneMap: RollZoneMapEntry[]
