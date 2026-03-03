@@ -340,13 +340,21 @@ export default function ProjectsAdminPage() {
     const data = (await response.json()) as {
       error?: string
       code?: string
+      diagnostics?: {
+        bucket?: string
+        keySource?: string
+        keyRole?: string | null
+      }
       files?: UploadedPlanFile[]
       analysis?: PlanAnalysisResult | null
     }
     if (!response.ok) {
       const detail = data.error ?? "No se pudieron subir los planos."
       const code = data.code ? ` (${data.code})` : ""
-      throw new Error(`${detail}${code}`)
+      const diagnostics = data.diagnostics
+        ? ` [bucket=${data.diagnostics.bucket ?? "-"}, keySource=${data.diagnostics.keySource ?? "-"}, keyRole=${data.diagnostics.keyRole ?? "-"}]`
+        : ""
+      throw new Error(`${detail}${code}${diagnostics}`)
     }
 
     return {
