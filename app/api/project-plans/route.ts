@@ -8,6 +8,21 @@ import { getSupabaseAdminClient } from "../../../lib/supabase/server"
 
 export const runtime = "nodejs"
 
+function decodeJwtRole(token: string | undefined): string | null {
+  if (!token) return null
+  const parts = token.split(".")
+  if (parts.length < 2) return null
+  try {
+    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/")
+    const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4)
+    const json = Buffer.from(padded, "base64").toString("utf8")
+    const parsed = JSON.parse(json) as { role?: unknown }
+    return typeof parsed.role === "string" ? parsed.role : null
+  } catch {
+    return null
+  }
+}
+
 function sanitizeFileName(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9._-]/g, "_")
 }
@@ -32,6 +47,12 @@ export async function POST(request: Request) {
 
     const supabase = getSupabaseAdminClient()
     const bucket = process.env.SUPABASE_STORAGE_BUCKET || "pulse-evidence"
+    const keySource = process.env.SUPABASE_SERVICE_ROLE_KEY
+      ? "SUPABASE_SERVICE_ROLE_KEY"
+      : process.env.SUPABASE_SECRET_KEY
+        ? "SUPABASE_SECRET_KEY"
+        : "missing"
+    const keyRole = decodeJwtRole(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY)
     const uploaded: Array<{
       name: string
       url: string
@@ -62,6 +83,11 @@ export async function POST(request: Request) {
               ? `Storage forbidden for bucket "${bucket}". Verify SUPABASE_SERVICE_ROLE_KEY and Storage policies.`
               : message,
             code: isForbidden ? "storage_forbidden" : "storage_upload_failed",
+            diagnostics: {
+              bucket,
+              keySource,
+              keyRole,
+            },
           },
           { status: isForbidden ? 403 : 500 },
         )
