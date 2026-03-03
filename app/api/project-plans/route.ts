@@ -53,7 +53,19 @@ export async function POST(request: Request) {
         contentType,
         upsert: true,
       })
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      if (error) {
+        const message = error.message || "Storage upload failed"
+        const isForbidden = /forbidden|unauthorized|permission|policy/i.test(message)
+        return NextResponse.json(
+          {
+            error: isForbidden
+              ? `Storage forbidden for bucket "${bucket}". Verify SUPABASE_SERVICE_ROLE_KEY and Storage policies.`
+              : message,
+            code: isForbidden ? "storage_forbidden" : "storage_upload_failed",
+          },
+          { status: isForbidden ? 403 : 500 },
+        )
+      }
 
       const { data } = supabase.storage.from(bucket).getPublicUrl(filePath)
       uploaded.push({

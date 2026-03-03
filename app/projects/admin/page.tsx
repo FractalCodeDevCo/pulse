@@ -337,8 +337,17 @@ export default function ProjectsAdminPage() {
       body: form,
     })
 
-    const data = (await response.json()) as { error?: string; files?: UploadedPlanFile[]; analysis?: PlanAnalysisResult | null }
-    if (!response.ok) throw new Error(data.error ?? "No se pudieron subir los planos.")
+    const data = (await response.json()) as {
+      error?: string
+      code?: string
+      files?: UploadedPlanFile[]
+      analysis?: PlanAnalysisResult | null
+    }
+    if (!response.ok) {
+      const detail = data.error ?? "No se pudieron subir los planos."
+      const code = data.code ? ` (${data.code})` : ""
+      throw new Error(`${detail}${code}`)
+    }
 
     return {
       files: (data.files ?? []).filter((item) => Boolean(item.url)),
@@ -542,7 +551,8 @@ export default function ProjectsAdminPage() {
       )
     } catch (submitError) {
       const text = submitError instanceof Error ? submitError.message : "No se pudo guardar en nube"
-      setMessage(`Guardado local OK. Error nube: ${text}`)
+      setError(`Error nube: ${text}`)
+      setMessage("Guardado local OK.")
     } finally {
       setIsSubmitting(false)
     }
