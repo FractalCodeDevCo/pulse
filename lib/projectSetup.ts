@@ -1,5 +1,6 @@
 import { FieldType } from "../types/fieldType"
 import { PlanAnalysisResult, ZoneKey } from "./planIntelligence/types"
+import { ZONE_HIERARCHY_BY_SPORT } from "../types/zoneHierarchy"
 
 export type ZoneTarget = {
   zone: string
@@ -19,15 +20,11 @@ export type ProjectSetup = {
   setupCompleted: boolean
 }
 
-const SETUP_ZONES_BY_FIELD_TYPE: Record<FieldType, string[]> = {
-  beisbol: ["Infield", "Outfield", "Sidelines"],
-  softbol: ["Infield", "Outfield", "Sidelines"],
-  football: ["Central", "Endzones", "Sidelines"],
-  soccer: ["Areas de Portero", "Midfield", "Outfield"],
-}
-
 export function getSetupZones(fieldType: FieldType): string[] {
-  return SETUP_ZONES_BY_FIELD_TYPE[fieldType]
+  const macros = Object.keys(ZONE_HIERARCHY_BY_SPORT[fieldType] ?? {})
+  const filtered = macros.filter((zone) => zone.toLowerCase() !== "campo completo")
+  if (filtered.length > 0) return filtered
+  return macros
 }
 
 export function buildEmptyZoneTargets(fieldType: FieldType): ZoneTarget[] {
@@ -90,10 +87,13 @@ function inferZoneKeyFromSetupZone(fieldType: FieldType, zone: string): ZoneKey 
   if (normalized.includes("outfield")) return "outfield"
   if (normalized.includes("infield")) return "infield"
   if (normalized.includes("warning")) return "warning_track"
-  if (normalized.includes("sideline")) return "sideline"
+  if (normalized.includes("sideline") || normalized.includes("perimeter")) return "sideline"
   if (normalized.includes("endzone")) return "endzone"
-  if (fieldType === "football" && normalized.includes("central")) return "generic"
-  if (fieldType === "soccer" && normalized.includes("midfield")) return "generic"
+  if (fieldType === "football" && normalized.includes("playing field")) return "generic"
+  if (fieldType === "soccer" && normalized.includes("playing surface")) return "generic"
+  if (normalized.includes("foul")) return "generic"
+  if (normalized.includes("bullpen")) return "generic"
+  if (normalized.includes("goal area")) return "generic"
   return "generic"
 }
 
@@ -107,13 +107,20 @@ export function suggestZoneTargetsFromPlanAnalysis(
   const uniqueRolls = stats.uniqueRollLabels
   const totalLinearFt = stats.totalLinearFt ?? 0
 
-  const fallbackDistribution: Record<FieldType, number[]> = {
-    beisbol: [0.28, 0.57, 0.15],
-    softbol: [0.28, 0.57, 0.15],
-    football: [0.5, 0.3, 0.2],
-    soccer: [0.2, 0.6, 0.2],
-  }
-  const distribution = fallbackDistribution[fieldType]
+  const weights = current.map((row) => {
+    const normalized = row.zone.toLowerCase()
+    if (normalized.includes("outfield")) return 0.52
+    if (normalized.includes("infield")) return 0.24
+    if (normalized.includes("warning")) return 0.1
+    if (normalized.includes("foul")) return 0.08
+    if (normalized.includes("bullpen")) return 0.06
+    if (normalized.includes("end zone")) return 0.15
+    if (normalized.includes("sideline") || normalized.includes("perimeter")) return 0.2
+    if (normalized.includes("playing field") || normalized.includes("playing surface")) return 0.45
+    if (normalized.includes("goal area")) return 0.175
+    return 1
+  })
+  const weightSum = weights.reduce((sum, value) => sum + value, 0) || 1
 
   return current.map((row, index) => {
     const key = inferZoneKeyFromSetupZone(fieldType, row.zone)
@@ -122,9 +129,9 @@ export function suggestZoneTargetsFromPlanAnalysis(
     const zoneLinearFt = fromZone?.totalLinearFt ?? 0
 
     const fallbackRolls =
-      uniqueRolls > 0 ? Math.max(0, Math.round(uniqueRolls * (distribution[index] ?? 0))) : null
+      uniqueRolls > 0 ? Math.max(0, Math.round(uniqueRolls * (weights[index] / weightSum))) : null
     const fallbackLinearFt =
-      totalLinearFt > 0 ? Math.max(0, Math.round(totalLinearFt * (distribution[index] ?? 0))) : null
+      totalLinearFt > 0 ? Math.max(0, Math.round(totalLinearFt * (weights[index] / weightSum))) : null
 
     const plannedRolls = row.plannedRolls ?? (zoneRollCount > 0 ? zoneRollCount : fallbackRolls)
     const plannedSqft =

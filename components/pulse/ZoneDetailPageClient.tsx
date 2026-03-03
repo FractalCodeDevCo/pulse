@@ -2033,29 +2033,26 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                   </option>
                 ))}
               </select>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setPlanViewerPage((current) => Math.max(1, current - 1))}
-                  className="rounded-lg border border-neutral-600 px-3 py-2 text-xs font-semibold hover:bg-neutral-800"
-                >
-                  Prev
-                </button>
+              <label className="flex items-center gap-1 rounded-lg border border-neutral-700 bg-neutral-900 px-2 py-2 text-xs text-neutral-300">
+                Pág.
                 <input
                   type="number"
                   min={1}
                   value={planViewerPage}
                   onChange={(event) => setPlanViewerPage(Math.max(1, Number(event.target.value) || 1))}
-                  className="w-20 rounded-lg border border-neutral-700 bg-neutral-900 px-2 py-2 text-center text-xs"
+                  className="w-16 bg-transparent text-center outline-none"
                 />
-                <button
-                  type="button"
-                  onClick={() => setPlanViewerPage((current) => current + 1)}
+              </label>
+              {activePlanUrl ? (
+                <a
+                  href={`${activePlanUrl}#page=${planViewerPage}`}
+                  target="_blank"
+                  rel="noreferrer"
                   className="rounded-lg border border-neutral-600 px-3 py-2 text-xs font-semibold hover:bg-neutral-800"
                 >
-                  Next
-                </button>
-              </div>
+                  Abrir nativo
+                </a>
+              ) : null}
               <button
                 type="button"
                 onClick={() => void markCurrentPageAsRollLayout()}
@@ -2079,10 +2076,11 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
             ) : null}
             <div className="h-full w-full">
               {activePlanUrl ? (
-                <iframe
+                <embed
                   title="Project plan viewer"
-                  src={`${activePlanUrl}#page=${planViewerPage}&view=FitH`}
-                  className="h-full w-full border-0"
+                  src={`${activePlanUrl}#page=${planViewerPage}&zoom=page-fit`}
+                  type="application/pdf"
+                  className="h-full w-full"
                 />
               ) : (
                 <div className="flex h-full items-center justify-center text-sm text-neutral-300">Sin plano disponible.</div>
