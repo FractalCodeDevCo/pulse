@@ -359,7 +359,7 @@ type MutationBody = {
 }
 
 export async function DELETE(request: Request) {
-  const auth = await requireAuth(request, ["admin", "pm"])
+  const auth = await requireAuth(request, ["admin", "pm", "installer"])
   if (!auth.ok) return auth.response
   try {
     const body = (await request.json()) as MutationBody
