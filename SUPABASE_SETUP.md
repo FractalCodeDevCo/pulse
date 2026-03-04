@@ -29,6 +29,8 @@ In Vercel Project Settings > Environment Variables, set:
 - `SUPABASE_STORAGE_BUCKET` (use `pulse-evidence`)
 - `SUPABASE_BACKUP_BUCKET` (use `pulse-backups`)
 - `PULSE_BOOTSTRAP_ADMIN_EMAIL` (first admin email for bootstrap)
+- `PULSE_BOOTSTRAP_ADMIN_EMAILS` (optional comma-separated emails forced as admin)
+- `PULSE_ALLOW_SELF_SERVE_ADMIN=0` (keep disabled in production)
 
 ## 5) Deploy
 - Redeploy project.

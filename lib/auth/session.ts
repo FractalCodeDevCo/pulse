@@ -61,8 +61,34 @@ function isMissingRelationOrColumnError(message: string): boolean {
   return (lower.includes("relation") || lower.includes("column")) && lower.includes("does not exist")
 }
 
+function parseAdminEmailsEnv(): string[] {
+  const single = process.env.PULSE_BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase()
+  const manyRaw = process.env.PULSE_BOOTSTRAP_ADMIN_EMAILS
+  const many = typeof manyRaw === "string"
+    ? manyRaw
+        .split(",")
+        .map((item) => item.trim().toLowerCase())
+        .filter((item) => item.length > 0)
+    : []
+  const all = [...many]
+  if (single) all.push(single)
+  return Array.from(new Set(all))
+}
+
+function shouldForceAdminByEmail(email: string | null): boolean {
+  if (!email) return false
+  const normalized = email.trim().toLowerCase()
+  if (!normalized) return false
+  const adminEmails = parseAdminEmailsEnv()
+  return adminEmails.includes(normalized)
+}
+
 export async function resolveOrProvisionUserRole(userId: string, email: string | null): Promise<UserRole | null> {
   const supabase = getSupabaseAdminClient()
+  const forceAdminByEmail = shouldForceAdminByEmail(email)
+  const allowSelfServeAdmin = process.env.PULSE_ALLOW_SELF_SERVE_ADMIN === "1"
+  const shouldBeAdmin = forceAdminByEmail || allowSelfServeAdmin
+
   const roleRes = await supabase
     .from("app_user_roles")
     .select("role")
@@ -71,12 +97,22 @@ export async function resolveOrProvisionUserRole(userId: string, email: string |
     .maybeSingle()
 
   if (!roleRes.error && roleRes.data?.role && VALID_ROLES.includes(roleRes.data.role as UserRole)) {
+    if (shouldBeAdmin && roleRes.data.role !== "admin") {
+      const promote = await supabase.from("app_user_roles").upsert(
+        {
+          user_id: userId,
+          role: "admin",
+          assigned_by: null,
+          assigned_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id" },
+      )
+      if (!promote.error || isMissingRelationOrColumnError(promote.error.message)) {
+        return "admin"
+      }
+    }
     return roleRes.data.role as UserRole
   }
-
-  const bootstrapEmail = process.env.PULSE_BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase()
-  const allowSelfServeAdmin = process.env.PULSE_ALLOW_SELF_SERVE_ADMIN === "1"
-  const shouldBeAdmin = (bootstrapEmail && email?.toLowerCase() === bootstrapEmail) || allowSelfServeAdmin
 
   if (roleRes.error && isMissingRelationOrColumnError(roleRes.error.message)) {
     return shouldBeAdmin ? "admin" : "installer"
