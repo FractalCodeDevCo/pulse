@@ -26,6 +26,8 @@ type ProjectRow = {
 }
 
 type PegadaRow = {
+  capture_session_id: string | null
+  module: string | null
   project_zone_id: string | null
   macro_zone: string | null
   micro_zone: string | null
@@ -33,6 +35,7 @@ type PegadaRow = {
 }
 
 type RollInstallationRow = {
+  capture_session_id: string | null
   project_zone_id: string | null
   macro_zone: string | null
   zone: string | null
@@ -107,6 +110,21 @@ function readFirstText(source: Record<string, unknown>, keys: string[]): string 
     if (typeof value === "string" && value.trim()) return value.trim()
   }
   return null
+}
+
+function readNestedObject(source: Record<string, unknown>, key: string): Record<string, unknown> | null {
+  const value = source[key]
+  return isObject(value) ? value : null
+}
+
+function readFlowPhaseSessionIds(metadata: Record<string, unknown>, fallbackCaptureSessionId: string | null): string[] {
+  const phaseIds = readNestedObject(metadata, "phase_session_ids")
+  const values = phaseIds
+    ? Object.values(phaseIds).filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : []
+  if (values.length > 0) return values
+  if (fallbackCaptureSessionId && fallbackCaptureSessionId.trim().length > 0) return [fallbackCaptureSessionId]
+  return []
 }
 
 function formatNumber(value: number | null, decimals = 1): string {
@@ -277,13 +295,12 @@ export default async function ProjectOverviewPage({ searchParams }: OverviewPage
     const [pegadaRes, rollRes, materialRes] = await Promise.all([
       selectTableRows<PegadaRow>({
         table: "field_records",
-        columns: "project_zone_id, macro_zone, micro_zone, payload",
+        columns: "capture_session_id, module, project_zone_id, macro_zone, micro_zone, payload",
         projectId,
-        module: "pegada",
       }),
       selectTableRows<RollInstallationRow>({
         table: "roll_installation",
-        columns: "project_zone_id, macro_zone, zone, total_rolls_used, total_seams",
+        columns: "capture_session_id, project_zone_id, macro_zone, zone, total_rolls_used, total_seams",
         projectId,
       }),
       selectTableRows<MaterialRow>({
@@ -297,6 +314,16 @@ export default async function ProjectOverviewPage({ searchParams }: OverviewPage
     if (rollRes.relationMissing) relationWarnings.push("tabla roll_installation no encontrada")
     if (materialRes.relationMissing) relationWarnings.push("tabla material_records no encontrada")
 
+    const adhesiveSessionIds = new Set<string>()
+    const rollSessionIds = new Set<string>()
+    const flowFallbackRows: Array<{
+      zone: string
+      phaseSessionIds: string[]
+      adhesive: number
+      rolls: number
+      seams: number
+    }> = []
+
     for (const row of pegadaRes.data) {
       const payload = isObject(row.payload) ? row.payload : {}
       const metadata = isObject(payload.metadata) ? payload.metadata : payload
@@ -306,23 +333,45 @@ export default async function ProjectOverviewPage({ searchParams }: OverviewPage
         row.micro_zone ??
         readFirstText(metadata, ["micro_zone", "microZone"]) ??
         "Sin zona"
-      const ft = readFirstNumber(metadata, ["ftTotales", "ft_totales", "ft", "feet"])
-      const adhesive = readFirstNumber(metadata, ["botesUsados", "botes_usados", "botes"])
 
-      if (row.project_zone_id) {
-        const metric = ensureZoneMetrics(zoneMetricsMap, zone)
-        metric.realFt += ft
-        metric.realAdhesive += adhesive
-      } else {
-        legacyCaptureCount += 1
-        legacyFt += ft
-        legacyAdhesive += adhesive
+      if (row.module === "pegada") {
+        const ft = readFirstNumber(metadata, ["ftTotales", "ft_totales", "ft", "feet"])
+        const adhesive = readFirstNumber(metadata, ["botesUsados", "botes_usados", "botes"])
+
+        if (row.capture_session_id) adhesiveSessionIds.add(row.capture_session_id)
+
+        if (row.project_zone_id) {
+          const metric = ensureZoneMetrics(zoneMetricsMap, zone)
+          metric.realFt += ft
+          metric.realAdhesive += adhesive
+        } else {
+          legacyCaptureCount += 1
+          legacyFt += ft
+          legacyAdhesive += adhesive
+        }
+        continue
+      }
+
+      if (row.module === "flow") {
+        const details = readNestedObject(metadata, "details") ?? {}
+        const rollPlacement = readNestedObject(details, "rollPlacement") ?? {}
+        const sewing = readNestedObject(details, "sewing") ?? {}
+        const adhesiveFlow = readNestedObject(details, "adhesive") ?? {}
+        const phaseSessionIds = readFlowPhaseSessionIds(metadata, row.capture_session_id)
+        flowFallbackRows.push({
+          zone,
+          phaseSessionIds,
+          adhesive: readFirstNumber(adhesiveFlow, ["botesUsados", "botes_usados", "botes"]),
+          rolls: readFirstNumber(rollPlacement, ["totalRollsUsed", "total_rolls_used", "totalRolls"]),
+          seams: readFirstNumber(sewing, ["totalSeams", "total_seams"]),
+        })
       }
     }
 
     for (const row of rollRes.data) {
       const rolls = Math.max(0, toNumber(row.total_rolls_used) ?? 0)
       const seams = Math.max(0, toNumber(row.total_seams) ?? 0)
+      if (row.capture_session_id) rollSessionIds.add(row.capture_session_id)
       if (row.project_zone_id) {
         const zone = row.macro_zone ?? row.zone ?? "Sin zona"
         const metric = ensureZoneMetrics(zoneMetricsMap, zone)
@@ -332,6 +381,19 @@ export default async function ProjectOverviewPage({ searchParams }: OverviewPage
         legacyCaptureCount += 1
         legacyRolls += rolls
         legacySeams += seams
+      }
+    }
+
+    for (const flowRow of flowFallbackRows) {
+      const hasAdhesiveDetail = flowRow.phaseSessionIds.some((id) => adhesiveSessionIds.has(id))
+      const hasRollDetail = flowRow.phaseSessionIds.some((id) => rollSessionIds.has(id))
+      const metric = ensureZoneMetrics(zoneMetricsMap, flowRow.zone)
+      if (!hasAdhesiveDetail) {
+        metric.realAdhesive += Math.max(0, flowRow.adhesive)
+      }
+      if (!hasRollDetail) {
+        metric.realRolls += Math.max(0, flowRow.rolls)
+        metric.realSeams += Math.max(0, flowRow.seams)
       }
     }
 
