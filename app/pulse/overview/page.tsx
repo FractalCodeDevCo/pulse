@@ -4,6 +4,7 @@ import Link from "next/link"
 
 import DataSciencePanel from "../../../components/pulse/DataSciencePanel"
 import ContextHeader from "../../../components/pulse/ContextHeader"
+import OverviewLiveControls from "../../../components/pulse/OverviewLiveControls"
 import { normalizeZoneTargets, ZoneTarget } from "../../../lib/projectSetup"
 import { getSupabaseAdminClient } from "../../../lib/supabase/server"
 import { FieldType } from "../../../types/fieldType"
@@ -402,6 +403,7 @@ export default async function ProjectOverviewPage({ searchParams }: OverviewPage
         <p className="text-sm text-neutral-400">
           Deporte: {fieldType} · Inicio: {formatDate(startDate)} · Crew: {crewName || "N/A"}
         </p>
+        <OverviewLiveControls defaultIntervalSec={45} />
 
         {loadError ? (
           <section className="rounded-2xl border border-red-500/70 bg-red-500/10 p-4 text-red-300">
