@@ -228,6 +228,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   const [stepSaveMessages, setStepSaveMessages] = useState<Record<string, string>>({})
   const [stepSaveErrors, setStepSaveErrors] = useState<Record<string, string>>({})
   const [flowSessionId, setFlowSessionId] = useState(() => createCaptureSessionId())
+  const [flowVisionLabel, setFlowVisionLabel] = useState<"ok" | "check" | "rework">("check")
   const [isSavingFlow, setIsSavingFlow] = useState(false)
   const [flowMessage, setFlowMessage] = useState("")
   const [flowError, setFlowError] = useState("")
@@ -298,6 +299,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
         tipo: materialTipo,
         pasada: materialPasada,
       },
+      visionLabel: flowVisionLabel,
     })
   }, [
     zone,
@@ -314,6 +316,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
     adhesiveCondicion,
     materialTipo,
     materialPasada,
+    flowVisionLabel,
   ])
   const saveState = isSavingFlow
     ? "saving"
@@ -1183,6 +1186,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
         photos,
         flowMetadata: {
           quickNotes,
+          visionLabel: flowVisionLabel,
           rollPlacement: {
             totalRollsUsed: totalRollsUsed.trim() || null,
             rollLengthFit: rollLengthFit || null,
@@ -1213,7 +1217,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
 
       const savedPhases = data.phases_completed ?? phasesCompleted
       setFlowMessage(
-        `Flujo guardado: ${savedPhases.join(" -> ")} · fotos: ${photos.length}${skippedPhotos > 0 ? ` · ${skippedPhotos} omitidas (límite 3)` : ""}`,
+        `Flujo guardado: ${savedPhases.join(" -> ")} · etiqueta: ${flowVisionLabel.toUpperCase()} · fotos: ${photos.length}${skippedPhotos > 0 ? ` · ${skippedPhotos} omitidas (límite 3)` : ""}`,
       )
       if (captureContext.location && captureContext.weather) {
         setFlowContextMessage(
@@ -1257,6 +1261,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
           photos: combinedPhotos,
           flowMetadata: {
             quickNotes,
+            visionLabel: flowVisionLabel,
             rollPlacement: {
               totalRollsUsed: totalRollsUsed.trim() || null,
               rollLengthFit: rollLengthFit || null,
@@ -2166,6 +2171,21 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                 {isSyncingPendingFlow ? "Sincronizando..." : "Sincronizar pendientes"}
               </button>
             </div>
+            <label className="block space-y-1">
+              <span className="text-xs text-neutral-400">Etiqueta de calidad (dataset visión)</span>
+              <select
+                value={flowVisionLabel}
+                onChange={(event) => {
+                  const next = event.target.value
+                  if (next === "ok" || next === "check" || next === "rework") setFlowVisionLabel(next)
+                }}
+                className="w-full rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
+              >
+                <option value="ok">OK</option>
+                <option value="check">CHECK</option>
+                <option value="rework">REWORK</option>
+              </select>
+            </label>
             <button
               type="button"
               onClick={() => void submitFlowSession()}

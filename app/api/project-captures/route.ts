@@ -131,7 +131,11 @@ function formatFieldRecordSummary(module: string | null, metadata: Record<string
     const phases = Array.isArray(metadata.phases_completed)
       ? metadata.phases_completed.filter((item): item is string => typeof item === "string" && item.length > 0)
       : []
-    return phases.length > 0 ? `Flow: ${phases.join(" -> ")}` : "Flow guardado"
+    const details = isObject(metadata.details) ? metadata.details : {}
+    const visionLabelRaw = typeof details.visionLabel === "string" ? details.visionLabel.toLowerCase() : ""
+    const visionLabel = visionLabelRaw === "ok" || visionLabelRaw === "check" || visionLabelRaw === "rework" ? visionLabelRaw.toUpperCase() : null
+    const base = phases.length > 0 ? `Flow: ${phases.join(" -> ")}` : "Flow guardado"
+    return visionLabel ? `${base} · ${visionLabel}` : base
   }
 
   if (module === "pegada") {

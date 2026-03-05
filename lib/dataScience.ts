@@ -8,6 +8,7 @@ export const CAPTURE_EXPORT_COLUMNS = [
   "capture_date",
   "module",
   "capture_status",
+  "vision_label",
   "capture_session_id",
   "project_zone_id",
   "field_type",
@@ -269,6 +270,7 @@ export async function fetchCaptureExportRows(params: {
   for (const rawRow of (fieldRes.data ?? []) as Record<string, unknown>[]) {
     const payload = isObject(rawRow.payload) ? rawRow.payload : {}
     const metadata = isObject(payload.metadata) ? payload.metadata : payload
+    const details = isObject(metadata.details) ? metadata.details : {}
     const evidencePhotos = isObject(metadata.evidencePhotos) ? metadata.evidencePhotos : {}
     const photosCount = Math.max(
       toStringArray(payload.photosUrls).length,
@@ -287,6 +289,7 @@ export async function fetchCaptureExportRows(params: {
       capture_date: createdAt.slice(0, 10),
       module: moduleName,
       capture_status: normalizeCaptureStatus(rawRow.capture_status ?? metadata.capture_status ?? metadata.captureStatus),
+      vision_label: pickString(details, ["visionLabel", "vision_label"]) ?? pickString(metadata, ["visionLabel", "vision_label"]),
       capture_session_id:
         toStringSafe(rawRow.capture_session_id) ??
         pickString(metadata, ["capture_session_id", "captureSessionId"]),
@@ -331,6 +334,7 @@ export async function fetchCaptureExportRows(params: {
       capture_date: createdAt.slice(0, 10),
       module: "roll_installation",
       capture_status: normalizeCaptureStatus(rawRow.capture_status),
+      vision_label: null,
       capture_session_id: toStringSafe(rawRow.capture_session_id),
       project_zone_id: toStringSafe(rawRow.project_zone_id),
       field_type: toStringSafe(rawRow.field_type),
@@ -368,6 +372,7 @@ export async function fetchCaptureExportRows(params: {
       capture_date: createdAt.slice(0, 10),
       module: "material",
       capture_status: normalizeCaptureStatus(rawRow.capture_status),
+      vision_label: null,
       capture_session_id: toStringSafe(rawRow.capture_session_id),
       project_zone_id: toStringSafe(rawRow.project_zone_id),
       field_type: toStringSafe(rawRow.field_type),

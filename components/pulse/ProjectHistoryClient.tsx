@@ -168,6 +168,7 @@ function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata 
   const [flowAdhesiveCondicion, setFlowAdhesiveCondicion] = useState("")
   const [flowMaterialTipo, setFlowMaterialTipo] = useState("")
   const [flowMaterialPasada, setFlowMaterialPasada] = useState("")
+  const [flowVisionLabel, setFlowVisionLabel] = useState<"ok" | "check" | "rework">("check")
   const total = capture.photos.length
 
   useEffect(() => {
@@ -183,6 +184,7 @@ function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata 
     const sewing = asObject(details.sewing)
     const adhesive = asObject(details.adhesive)
     const material = asObject(details.material)
+    const visionLabelRaw = asString(details.visionLabel).toLowerCase()
 
     setFlowPhases(asStringArray(metadata.phases_completed))
     setFlowQuickNotes(
@@ -199,6 +201,7 @@ function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata 
     setFlowAdhesiveCondicion(asString(adhesive.condicion))
     setFlowMaterialTipo(asString(material.tipo))
     setFlowMaterialPasada(asString(material.pasada))
+    setFlowVisionLabel(visionLabelRaw === "ok" || visionLabelRaw === "check" || visionLabelRaw === "rework" ? visionLabelRaw : "check")
     setAdvancedMode(false)
     setEditorError("")
   }, [capture.id, capture.metadata])
@@ -238,6 +241,7 @@ function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata 
       phases_completed: flowPhases,
       details: {
         ...currentDetails,
+        visionLabel: flowVisionLabel,
         quickNotes,
         rollPlacement: {
           totalRollsUsed: asNullableString(flowRollsUsed),
@@ -442,6 +446,22 @@ function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata 
                 </label>
 
                 <div className="grid gap-2 sm:grid-cols-2">
+                  <label className="space-y-1">
+                    <span className="text-xs text-neutral-400">Vision Label</span>
+                    <select
+                      value={flowVisionLabel}
+                      onChange={(event) => {
+                        const next = event.target.value
+                        if (next === "ok" || next === "check" || next === "rework") setFlowVisionLabel(next)
+                      }}
+                      className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-2 text-xs"
+                      disabled={saving}
+                    >
+                      <option value="ok">OK</option>
+                      <option value="check">CHECK</option>
+                      <option value="rework">REWORK</option>
+                    </select>
+                  </label>
                   <label className="space-y-1">
                     <span className="text-xs text-neutral-400">Rolls Used</span>
                     <input
