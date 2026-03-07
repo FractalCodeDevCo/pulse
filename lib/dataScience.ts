@@ -536,3 +536,162 @@ export function buildDailyZoneSnapshots(params: {
 export function zoneSnapshotsToCsv(rows: ZoneDailySnapshotRow[]): string {
   return rowsToCsv(ZONE_SNAPSHOT_COLUMNS, rows)
 }
+
+export const VISION_DATASET_COLUMNS = [
+  "project_id",
+  "capture_id",
+  "source",
+  "module",
+  "created_at",
+  "capture_date",
+  "capture_session_id",
+  "project_zone_id",
+  "field_type",
+  "macro_zone",
+  "micro_zone",
+  "phase_primary",
+  "phase_list",
+  "vision_label",
+  "image_url",
+  "incidence_type",
+] as const
+
+export type VisionDatasetColumn = (typeof VISION_DATASET_COLUMNS)[number]
+export type VisionDatasetRow = Record<VisionDatasetColumn, Primitive>
+
+type FetchVisionDatasetResult = {
+  rows: VisionDatasetRow[]
+  relationWarnings: string[]
+}
+
+function normalizeVisionLabel(value: string | null): "ok" | "check" | "rework" | null {
+  if (!value) return null
+  const normalized = value.trim().toLowerCase()
+  if (normalized === "ok" || normalized === "check" || normalized === "rework") return normalized
+  return null
+}
+
+function normalizePhaseList(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+}
+
+export async function fetchVisionDatasetRows(params: {
+  projectId: string
+  fromDate: string | null
+  toDate: string | null
+  includeIncidence: boolean
+}): Promise<FetchVisionDatasetResult> {
+  const projectId = params.projectId
+  const bounds = getDateRangeBounds({ fromDate: params.fromDate, toDate: params.toDate })
+  const supabase = getSupabaseAdminClient()
+
+  const flowQuery = applyDateRange(
+    supabase
+      .from("field_records")
+      .select("id, project_zone_id, capture_session_id, field_type, macro_zone, micro_zone, module, payload, created_at")
+      .eq("project_id", projectId)
+      .eq("module", "flow")
+      .order("created_at", { ascending: true }),
+    bounds,
+  )
+
+  const incidenceQuery = params.includeIncidence
+    ? applyDateRange(
+        supabase
+          .from("incidences")
+          .select("id, project_zone_id, field_type, macro_zone, micro_zone, type_of_incidence, photos, created_at")
+          .eq("project_id", projectId)
+          .order("created_at", { ascending: true }),
+        bounds,
+      )
+    : Promise.resolve({ data: [], error: null } as { data: unknown[]; error: null })
+
+  const [flowRes, incidenceRes] = await Promise.all([flowQuery, incidenceQuery])
+  const relationWarnings: string[] = []
+
+  if (flowRes.error && !isMissingRelationError(flowRes.error)) throw new Error(flowRes.error.message)
+  if (incidenceRes.error && !isMissingRelationError(incidenceRes.error)) throw new Error(incidenceRes.error.message)
+
+  if (flowRes.error && isMissingRelationError(flowRes.error)) relationWarnings.push("field_records")
+  if (incidenceRes.error && isMissingRelationError(incidenceRes.error)) relationWarnings.push("incidences")
+
+  const rows: VisionDatasetRow[] = []
+
+  for (const rawRow of (flowRes.data ?? []) as Record<string, unknown>[]) {
+    const payload = isObject(rawRow.payload) ? rawRow.payload : {}
+    const metadata = isObject(payload.metadata) ? payload.metadata : payload
+    const details = isObject(metadata.details) ? metadata.details : {}
+    const label = normalizeVisionLabel(pickString(details, ["visionLabel", "vision_label"]) ?? pickString(metadata, ["visionLabel", "vision_label"]))
+    const photos = toStringArray(payload.photosUrls)
+    if (!label || photos.length === 0) continue
+
+    const phases = normalizePhaseList(metadata.phases_completed)
+    const phasePrimary = phases[0] ?? "FLOW"
+    const phaseList = phases.join("|")
+    const createdAt = toStringSafe(rawRow.created_at) ?? new Date().toISOString()
+
+    for (const imageUrl of photos) {
+      rows.push({
+        project_id: projectId,
+        capture_id: toStringSafe(rawRow.id),
+        source: "flow",
+        module: toStringSafe(rawRow.module) ?? "flow",
+        created_at: createdAt,
+        capture_date: createdAt.slice(0, 10),
+        capture_session_id: toStringSafe(rawRow.capture_session_id),
+        project_zone_id: toStringSafe(rawRow.project_zone_id),
+        field_type: toStringSafe(rawRow.field_type),
+        macro_zone: toStringSafe(rawRow.macro_zone),
+        micro_zone: toStringSafe(rawRow.micro_zone),
+        phase_primary: phasePrimary,
+        phase_list: phaseList || phasePrimary,
+        vision_label: label,
+        image_url: imageUrl,
+        incidence_type: null,
+      })
+    }
+  }
+
+  for (const rawRow of (incidenceRes.data ?? []) as Record<string, unknown>[]) {
+    const photos = toStringArray(rawRow.photos)
+    if (photos.length === 0) continue
+    const createdAt = toStringSafe(rawRow.created_at) ?? new Date().toISOString()
+    const incidenceType = toStringSafe(rawRow.type_of_incidence)
+
+    for (const imageUrl of photos) {
+      rows.push({
+        project_id: projectId,
+        capture_id: toStringSafe(rawRow.id),
+        source: "incidence",
+        module: "incidence",
+        created_at: createdAt,
+        capture_date: createdAt.slice(0, 10),
+        capture_session_id: null,
+        project_zone_id: toStringSafe(rawRow.project_zone_id),
+        field_type: toStringSafe(rawRow.field_type),
+        macro_zone: toStringSafe(rawRow.macro_zone),
+        micro_zone: toStringSafe(rawRow.micro_zone),
+        phase_primary: "INCIDENCE",
+        phase_list: "INCIDENCE",
+        vision_label: "rework",
+        image_url: imageUrl,
+        incidence_type: incidenceType,
+      })
+    }
+  }
+
+  rows.sort((a, b) => {
+    if (a.created_at === b.created_at) return String(a.source).localeCompare(String(b.source))
+    return String(a.created_at).localeCompare(String(b.created_at))
+  })
+
+  return {
+    rows,
+    relationWarnings,
+  }
+}
+
+export function visionDatasetRowsToCsv(rows: VisionDatasetRow[]): string {
+  return rowsToCsv(VISION_DATASET_COLUMNS, rows)
+}
