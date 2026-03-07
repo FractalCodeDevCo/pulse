@@ -31,14 +31,24 @@ export default function CaptureHubClient({ projectId }: CaptureHubClientProps) {
       <div className="text-center">
         <h1 className="text-3xl font-bold">Módulos de captura</h1>
         <p className="mt-1 text-sm text-neutral-400">Proyecto: {projectId}</p>
+        <p className="mt-2 text-xs text-neutral-500">
+          Legacy: reparaciones, patios, jardines y eventos especiales sin estructura por zonas.
+        </p>
       </div>
 
       <div className="flex w-80 flex-col gap-4">
         <Link
-          href={`/capture/compactacion${q}`}
+          href={`/pulse/roll-verification${q}`}
+          className="rounded-xl bg-cyan-600 py-4 text-center text-lg font-bold transition hover:bg-cyan-700"
+        >
+          Roll Verification
+        </Link>
+
+        <Link
+          href={`/pulse/roll-installation${q}`}
           className="rounded-xl bg-orange-600 py-4 text-center text-lg font-bold transition hover:bg-orange-700"
         >
-          Compactacion
+          Roll Installation
         </Link>
 
         <Link
@@ -56,10 +66,10 @@ export default function CaptureHubClient({ projectId }: CaptureHubClientProps) {
         </Link>
 
         <Link
-          href={`/capture/rollos${q}`}
-          className="rounded-xl bg-purple-600 py-4 text-center text-lg font-bold transition hover:bg-purple-700"
+          href={`/capture/incidencias${q}`}
+          className="rounded-xl bg-red-600 py-4 text-center text-lg font-bold transition hover:bg-red-700"
         >
-          Rollos
+          Incidencias
         </Link>
       </div>
 

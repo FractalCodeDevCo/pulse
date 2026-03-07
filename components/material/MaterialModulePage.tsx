@@ -2,14 +2,20 @@
 
 import Image from "next/image"
 import Link from "next/link"
-import { ChangeEvent, FormEvent, useMemo, useState } from "react"
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react"
 
+import { createCaptureSessionId } from "../../lib/captureSession"
+import { clearCaptureDraft, readCaptureDraft, saveCaptureDraft } from "../../lib/captureDraft"
+import { IMAGE_INPUT_ACCEPT, processImageFiles } from "../../lib/clientImage"
 import { FieldTypeSelector } from "../../components/shared/FieldTypeSelector"
+import ContextHeader from "../../components/pulse/ContextHeader"
 import { FieldType, readProjectFieldType, saveProjectFieldType } from "../../types/fieldType"
 import { MaterialKind, MaterialRecordDb, PassType, StatusColor } from "../../types/material"
 
 type MaterialModulePageProps = {
   projectId: string | null
+  projectZoneId?: string | null
+  zoneType?: string | null
 }
 
 type PhotoItem = {
@@ -33,30 +39,32 @@ type MaterialLocalRecord = {
   timestamp: string
 }
 
+type MaterialSummary = {
+  module: "material"
+  deviation_ratio: number
+  deviation_percent: number
+  status_color: StatusColor
+  valve_current: number
+  valve_delta: -1 | 0 | 1
+  valve_next: number
+  suggestion: string | null
+}
+
+type MaterialDraft = {
+  step: 1 | 2
+  fieldType: FieldType
+  tipoMaterial: MaterialKind | ""
+  tipoPasada: PassType | ""
+  valvula: number
+  bolsasEsperadas: string
+  bolsasUtilizadas: string
+  observaciones: string
+  photos: PhotoItem[]
+  captureSessionId: string
+}
+
 const MATERIAL_OPTIONS: MaterialKind[] = ["Arena", "Goma"]
 const PASS_OPTIONS: PassType[] = ["Sencilla", "Doble"]
-const VALVE_OPTIONS = [1, 2, 3, 4, 5]
-
-function readLocalRecords(storageKey: string): MaterialLocalRecord[] {
-  if (typeof window === "undefined") return []
-
-  try {
-    const raw = localStorage.getItem(storageKey)
-    if (!raw) return []
-    return JSON.parse(raw) as MaterialLocalRecord[]
-  } catch {
-    return []
-  }
-}
-
-function readAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result ?? ""))
-    reader.onerror = () => reject(new Error("No se pudo leer la imagen"))
-    reader.readAsDataURL(file)
-  })
-}
 
 function getStatusColor(desviacion: number): StatusColor {
   const abs = Math.abs(desviacion)
@@ -78,25 +86,32 @@ function getStatusStyles(statusColor: StatusColor): string {
   return "border-red-500 bg-red-500/15 text-red-200"
 }
 
-export default function MaterialModulePage({ projectId }: MaterialModulePageProps) {
-  const storageKey = `pulse_material_records_${projectId ?? "default"}`
-
+export default function MaterialModulePage({ projectId, projectZoneId = null, zoneType = null }: MaterialModulePageProps) {
+  const [step, setStep] = useState<1 | 2>(1)
   const [fieldType, setFieldType] = useState<FieldType>(() =>
     projectId ? readProjectFieldType(projectId) : "football",
   )
   const [tipoMaterial, setTipoMaterial] = useState<MaterialKind | "">("")
   const [tipoPasada, setTipoPasada] = useState<PassType | "">("")
-  const [valvula, setValvula] = useState<number | "">("")
+  const [valvula, setValvula] = useState<number>(1)
   const [bolsasEsperadas, setBolsasEsperadas] = useState<string>("")
   const [bolsasUtilizadas, setBolsasUtilizadas] = useState<string>("")
   const [observaciones, setObservaciones] = useState("")
   const [photos, setPhotos] = useState<PhotoItem[]>([])
+  const [captureSessionId, setCaptureSessionId] = useState(() => createCaptureSessionId())
 
-  const [records, setRecords] = useState<MaterialLocalRecord[]>(() => readLocalRecords(storageKey))
+  const [records, setRecords] = useState<MaterialLocalRecord[]>([])
   const [error, setError] = useState("")
   const [saveMessage, setSaveMessage] = useState("")
+  const [summary, setSummary] = useState<MaterialSummary | null>(null)
   const [isUploadingPhotos, setIsUploadingPhotos] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [draftRecovered, setDraftRecovered] = useState(false)
+  const [draftReady, setDraftReady] = useState(false)
+  const draftKey = useMemo(
+    () => (projectId ? `pulse_draft_material_${projectId}_${projectZoneId ?? "global"}` : null),
+    [projectId, projectZoneId],
+  )
 
   const expected = Number(bolsasEsperadas)
   const used = Number(bolsasUtilizadas)
@@ -112,6 +127,70 @@ export default function MaterialModulePage({ projectId }: MaterialModulePageProp
     return "Rojo"
   }, [statusColor])
 
+  useEffect(() => {
+    if (!draftKey) return
+    const draft = readCaptureDraft<MaterialDraft>(draftKey)
+    if (draft) {
+      setStep(draft.step)
+      setFieldType(draft.fieldType)
+      setTipoMaterial(draft.tipoMaterial)
+      setTipoPasada(draft.tipoPasada)
+      setValvula(draft.valvula)
+      setBolsasEsperadas(draft.bolsasEsperadas)
+      setBolsasUtilizadas(draft.bolsasUtilizadas)
+      setObservaciones(draft.observaciones)
+      setPhotos(draft.photos)
+      setCaptureSessionId(draft.captureSessionId || createCaptureSessionId())
+      setDraftRecovered(true)
+    }
+    setDraftReady(true)
+  }, [draftKey])
+
+  useEffect(() => {
+    if (!draftReady || !draftKey) return
+
+    const hasMeaningfulDraft = Boolean(
+      photos.length > 0 ||
+        tipoMaterial ||
+        tipoPasada ||
+        bolsasEsperadas ||
+        bolsasUtilizadas ||
+        observaciones.trim().length > 0 ||
+        step === 2,
+    )
+
+    if (!hasMeaningfulDraft) {
+      clearCaptureDraft(draftKey)
+      return
+    }
+
+    saveCaptureDraft<MaterialDraft>(draftKey, {
+      step,
+      fieldType,
+      tipoMaterial,
+      tipoPasada,
+      valvula,
+      bolsasEsperadas,
+      bolsasUtilizadas,
+      observaciones,
+      photos,
+      captureSessionId,
+    })
+  }, [
+    bolsasEsperadas,
+    bolsasUtilizadas,
+    captureSessionId,
+    draftKey,
+    draftReady,
+    fieldType,
+    observaciones,
+    photos,
+    step,
+    tipoMaterial,
+    tipoPasada,
+    valvula,
+  ])
+
   function handleFieldTypeChange(next: FieldType) {
     if (!projectId) return
     setFieldType(next)
@@ -126,11 +205,11 @@ export default function MaterialModulePage({ projectId }: MaterialModulePageProp
     setError("")
 
     try {
-      const nextPhotos: PhotoItem[] = []
-      for (const file of selectedFiles) {
-        const dataUrl = await readAsDataUrl(file)
-        nextPhotos.push({ dataUrl, fileName: file.name })
-      }
+      const urls = await processImageFiles(selectedFiles)
+      const nextPhotos: PhotoItem[] = urls.map((dataUrl, index) => ({
+        dataUrl,
+        fileName: selectedFiles[index]?.name ?? `photo_${Date.now()}_${index}`,
+      }))
 
       setPhotos((prev) => [...prev, ...nextPhotos])
     } catch {
@@ -144,16 +223,13 @@ export default function MaterialModulePage({ projectId }: MaterialModulePageProp
     setPhotos((prev) => prev.filter((_, i) => i !== index))
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-
+  async function saveMaterial(returnToHub: boolean) {
     if (!projectId) return setError("Selecciona proyecto antes de capturar Material.")
     if (!tipoMaterial) return setError("Tipo de material es requerido.")
     if (!tipoPasada) return setError("Tipo de pasada es requerido.")
     if (!valvula) return setError("Número de válvula es requerido.")
     if (!expected || expected <= 0) return setError("Bolsas esperadas debe ser mayor a 0.")
     if (!used || used <= 0) return setError("Bolsas utilizadas debe ser mayor a 0.")
-    if (photos.length < 1) return setError("Debes subir mínimo 1 foto de evidencia.")
 
     const localRecord: MaterialLocalRecord = {
       projectId,
@@ -171,13 +247,9 @@ export default function MaterialModulePage({ projectId }: MaterialModulePageProp
       timestamp: new Date().toISOString(),
     }
 
-    // Local backup first, so field work never loses data.
-    const nextRecords = [localRecord, ...records]
-    setRecords(nextRecords)
-    localStorage.setItem(storageKey, JSON.stringify(nextRecords))
-
     setIsSubmitting(true)
     setError("")
+    setSummary(null)
 
     try {
       const response = await fetch("/api/material-records", {
@@ -186,35 +258,68 @@ export default function MaterialModulePage({ projectId }: MaterialModulePageProp
         body: JSON.stringify({
           projectId,
           fieldType,
+          zoneType,
           tipoMaterial,
           tipoPasada,
           valvula,
           bolsasEsperadas: expected,
           bolsasUtilizadas: used,
+          projectZoneId,
+          captureSessionId,
+          captureStatus: "complete",
           observaciones,
           fotos: photos.map((photo) => photo.dataUrl),
         }),
       })
 
-      if (!response.ok) {
-        throw new Error("Cloud save failed")
-      }
+      if (!response.ok) throw new Error("Cloud save failed")
 
-      const data = (await response.json()) as MaterialRecordDb
+      const data = (await response.json()) as MaterialRecordDb & { summary?: MaterialSummary | null }
+      console.log("[material] save_success", { id: data.id, projectId, module: "material" })
+      setRecords((prev) => [localRecord, ...prev])
+      setCaptureSessionId(createCaptureSessionId())
+      setSummary(data.summary ?? null)
       setSaveMessage(`Guardado en nube. ID: ${data.id}`)
-    } catch {
-      setSaveMessage("Guardado local (sin conexión a nube).")
+      if (draftKey) clearCaptureDraft(draftKey)
+    } catch (error) {
+      console.error("[material] save_failed", {
+        projectId,
+        module: "material",
+        error: error instanceof Error ? error.message : "unknown_error",
+      })
+      setSaveMessage("Error al guardar en nube. Verifica campos y conexión.")
+      throw error
     } finally {
       setIsSubmitting(false)
     }
 
+    if (returnToHub) {
+      if (projectZoneId) {
+        window.location.href = `/pulse/zones/${encodeURIComponent(projectZoneId)}?project=${encodeURIComponent(projectId)}`
+      } else {
+        window.location.href = `/pulse?project=${encodeURIComponent(projectId)}`
+      }
+      return
+    }
+
     setTipoMaterial("")
     setTipoPasada("")
-    setValvula("")
+    setValvula(1)
     setBolsasEsperadas("")
     setBolsasUtilizadas("")
     setObservaciones("")
     setPhotos([])
+    setSummary(null)
+    setStep(1)
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    try {
+      await saveMaterial(false)
+    } catch {
+      // error message already set
+    }
   }
 
   if (!projectId) {
@@ -231,122 +336,41 @@ export default function MaterialModulePage({ projectId }: MaterialModulePageProp
   return (
     <main className="min-h-screen bg-neutral-950 px-4 py-8 text-white">
       <section className="mx-auto w-full max-w-3xl space-y-6">
-        <header className="space-y-2">
-          <p className="text-sm text-neutral-400">Pulse / Material / {projectId}</p>
-          <h1 className="text-3xl font-bold">Material</h1>
-          <p className="text-neutral-300">Registro de pasadas de arena y goma por obra.</p>
-        </header>
+        <ContextHeader
+          title="Material"
+          subtitle="Flujo rápido en 2 pasos: fotos y cuestionario."
+          backHref={projectZoneId ? `/pulse/zones/${encodeURIComponent(projectZoneId)}?project=${encodeURIComponent(projectId)}` : `/pulse?project=${encodeURIComponent(projectId)}`}
+          backLabel={projectZoneId ? "Zona" : "Proyecto"}
+          breadcrumbs={[
+            { label: "Pulse", href: "/" },
+            { label: projectId, href: `/pulse?project=${encodeURIComponent(projectId)}` },
+            { label: "Material" },
+          ]}
+          projectLabel={projectId}
+          statusLabel={`Paso ${step}/2`}
+          dateLabel={new Date().toLocaleDateString("es-MX")}
+        />
 
         <FieldTypeSelector value={fieldType} onChange={handleFieldTypeChange} />
 
-        <form onSubmit={handleSubmit} className="space-y-5 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
-          <section className="space-y-3">
-            <h2 className="text-lg font-semibold">1) Configuración de pasada</h2>
+        <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4 text-sm text-neutral-300">
+          Paso {step} de 2
+        </div>
 
+        {draftRecovered ? (
+          <p className="rounded-xl border border-cyan-500/70 bg-cyan-500/10 p-3 text-sm text-cyan-200">
+            Borrador recuperado. Puedes continuar con la captura.
+          </p>
+        ) : null}
+
+        {step === 1 ? (
+          <section className="space-y-4 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
+            <h2 className="text-lg font-semibold">1) Evidencia fotográfica</h2>
             <label className="block space-y-2">
-              <span className="text-sm text-neutral-300">Tipo de material</span>
-              <select
-                value={tipoMaterial}
-                onChange={(event) => setTipoMaterial(event.target.value as MaterialKind | "")}
-                className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3"
-                required
-              >
-                <option value="">Selecciona material</option>
-                {MATERIAL_OPTIONS.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="block space-y-2">
-              <span className="text-sm text-neutral-300">Tipo de pasada</span>
-              <select
-                value={tipoPasada}
-                onChange={(event) => setTipoPasada(event.target.value as PassType | "")}
-                className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3"
-                required
-              >
-                <option value="">Selecciona pasada</option>
-                {PASS_OPTIONS.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="block space-y-2">
-              <span className="text-sm text-neutral-300">Número de válvula</span>
-              <select
-                value={valvula}
-                onChange={(event) => setValvula(Number(event.target.value) as 1 | 2 | 3 | 4 | 5)}
-                className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3"
-                required
-              >
-                <option value="">Selecciona válvula</option>
-                {VALVE_OPTIONS.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </section>
-
-          <section className="space-y-3">
-            <h2 className="text-lg font-semibold">2) Control de bolsas</h2>
-
-            <label className="block space-y-2">
-              <span className="text-sm text-neutral-300">Bolsas esperadas</span>
-              <input
-                type="number"
-                min={1}
-                value={bolsasEsperadas}
-                onChange={(event) => setBolsasEsperadas(event.target.value)}
-                className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3"
-                required
-              />
-            </label>
-
-            <label className="block space-y-2">
-              <span className="text-sm text-neutral-300">Bolsas utilizadas</span>
-              <input
-                type="number"
-                min={1}
-                value={bolsasUtilizadas}
-                onChange={(event) => setBolsasUtilizadas(event.target.value)}
-                className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3"
-                required
-              />
-            </label>
-
-            {hasValidDeviation ? (
-              <div className={`rounded-xl border p-4 ${getStatusStyles(statusColor)}`}>
-                <p className="text-sm">Desviación: {desviacion.toFixed(2)}%</p>
-                <p className="text-2xl font-bold uppercase">{statusLabel}</p>
-              </div>
-            ) : null}
-          </section>
-
-          {hasValidDeviation && sugerencia ? (
-            <section className="space-y-2">
-              <h2 className="text-lg font-semibold">3) Sugerencia sutil de válvula</h2>
-              <p className="rounded-xl border border-neutral-700 bg-neutral-950 p-3 text-neutral-300">
-                {sugerencia}
-              </p>
-            </section>
-          ) : null}
-
-          <section className="space-y-3">
-            <h2 className="text-lg font-semibold">4) Evidencia fotográfica</h2>
-            <label className="block space-y-2">
-              <span className="text-sm text-neutral-300">Fotos de la capa aplicada (mínimo 1)</span>
+              <span className="text-sm text-neutral-300">Fotos de la capa aplicada (sin mínimo)</span>
               <input
                 type="file"
-                accept="image/*"
-                capture="environment"
+                accept={IMAGE_INPUT_ACCEPT}
                 multiple
                 onChange={handlePhotoChange}
                 className="block w-full rounded-xl border border-neutral-700 bg-neutral-950 p-2 text-sm"
@@ -378,34 +402,184 @@ export default function MaterialModulePage({ projectId }: MaterialModulePageProp
             ) : (
               <p className="text-sm text-neutral-400">Sin fotos cargadas.</p>
             )}
+
+            <button
+              type="button"
+              onClick={() => setStep(2)}
+              disabled={isUploadingPhotos}
+              className="w-full rounded-xl bg-emerald-600 px-4 py-3 text-lg font-semibold hover:bg-emerald-700 disabled:opacity-50"
+            >
+              Continue to Material
+            </button>
           </section>
+        ) : null}
 
-          <section className="space-y-3">
-            <h2 className="text-lg font-semibold">5) Observaciones</h2>
-            <textarea
-              value={observaciones}
-              onChange={(event) => setObservaciones(event.target.value)}
-              rows={4}
-              className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3"
-              placeholder="Notas opcionales de la pasada"
-            />
-          </section>
+        {step === 2 ? (
+          <form onSubmit={handleSubmit} className="space-y-5 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
+            <section className="space-y-3">
+              <h2 className="text-lg font-semibold">1) Configuración de pasada</h2>
 
-          {error ? <p className="text-sm text-red-300">{error}</p> : null}
+              <label className="block space-y-2">
+                <span className="text-sm text-neutral-300">Tipo de material</span>
+                <select
+                  value={tipoMaterial}
+                  onChange={(event) => setTipoMaterial(event.target.value as MaterialKind | "")}
+                  className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3"
+                  required
+                >
+                  <option value="">Selecciona material</option>
+                  {MATERIAL_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-          <button
-            type="submit"
-            disabled={isUploadingPhotos || isSubmitting}
-            className="w-full rounded-xl bg-blue-600 py-4 text-lg font-semibold hover:bg-blue-700 disabled:opacity-50"
-          >
-            SUBMIT
-          </button>
-        </form>
+              <label className="block space-y-2">
+                <span className="text-sm text-neutral-300">Tipo de pasada</span>
+                <select
+                  value={tipoPasada}
+                  onChange={(event) => setTipoPasada(event.target.value as PassType | "")}
+                  className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3"
+                  required
+                >
+                  <option value="">Selecciona pasada</option>
+                  {PASS_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block space-y-2">
+                <span className="text-sm text-neutral-300">Número de válvula (1-6)</span>
+                <input
+                  type="range"
+                  min={1}
+                  max={6}
+                  step={1}
+                  value={valvula}
+                  onChange={(event) => setValvula(Number(event.target.value))}
+                  className="w-full"
+                />
+                <p className="text-sm text-neutral-400">Seleccionado: {valvula}</p>
+              </label>
+            </section>
+
+            <section className="space-y-3">
+              <h2 className="text-lg font-semibold">2) Control de bolsas</h2>
+
+              <label className="block space-y-2">
+                <span className="text-sm text-neutral-300">Bolsas esperadas</span>
+                <input
+                  type="number"
+                  min={1}
+                  value={bolsasEsperadas}
+                  onChange={(event) => setBolsasEsperadas(event.target.value)}
+                  className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3"
+                  required
+                />
+              </label>
+
+              <label className="block space-y-2">
+                <span className="text-sm text-neutral-300">Bolsas utilizadas</span>
+                <input
+                  type="number"
+                  min={1}
+                  value={bolsasUtilizadas}
+                  onChange={(event) => setBolsasUtilizadas(event.target.value)}
+                  className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3"
+                  required
+                />
+              </label>
+
+              {hasValidDeviation ? (
+                <div className={`rounded-xl border p-4 ${getStatusStyles(statusColor)}`}>
+                  <p className="text-sm">Desviación: {desviacion.toFixed(2)}%</p>
+                  <p className="text-2xl font-bold uppercase">{statusLabel}</p>
+                </div>
+              ) : null}
+            </section>
+
+            {hasValidDeviation && sugerencia ? (
+              <section className="space-y-2">
+                <h2 className="text-lg font-semibold">3) Sugerencia sutil de válvula</h2>
+                <p className="rounded-xl border border-neutral-700 bg-neutral-950 p-3 text-neutral-300">
+                  {sugerencia}
+                </p>
+              </section>
+            ) : null}
+
+            <section className="space-y-3">
+              <h2 className="text-lg font-semibold">5) Observaciones</h2>
+              <textarea
+                value={observaciones}
+                onChange={(event) => setObservaciones(event.target.value)}
+                rows={4}
+                className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3"
+                placeholder="Notas opcionales de la pasada"
+              />
+            </section>
+
+            <div className="grid gap-2 sm:grid-cols-3">
+              <button
+                type="button"
+                onClick={() => setStep(1)}
+                className="w-full rounded-xl border border-neutral-600 py-3 font-semibold hover:bg-neutral-800"
+              >
+                Volver a fotos
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full rounded-xl bg-blue-600 py-3 font-semibold hover:bg-blue-700 disabled:opacity-50"
+              >
+                Save Material
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await saveMaterial(true)
+                  } catch {
+                    // error message already set
+                  }
+                }}
+                disabled={isSubmitting}
+                className="w-full rounded-xl border border-blue-500 py-3 font-semibold text-blue-300 hover:bg-blue-500/10 disabled:opacity-50"
+              >
+                {projectZoneId ? "Save & Return to Zone" : "Save & Return to Hub"}
+              </button>
+            </div>
+          </form>
+        ) : null}
+
+        {error ? (
+          <p className="rounded-xl border border-red-500/70 bg-red-500/10 p-3 text-sm text-red-300">{error}</p>
+        ) : null}
 
         {saveMessage ? (
           <p className="rounded-xl border border-blue-500/70 bg-blue-500/10 p-3 text-sm text-blue-300">
             {saveMessage}
           </p>
+        ) : null}
+
+        {summary ? (
+          <section className="space-y-2 rounded-2xl border border-cyan-500/50 bg-cyan-500/10 p-4">
+            <h3 className="text-sm font-semibold text-cyan-200">Resumen de Material</h3>
+            <p className="text-sm text-cyan-100">
+              Desviación: <span className="font-semibold">{summary.deviation_percent.toFixed(2)}%</span>
+            </p>
+            <p className="text-sm text-cyan-100">
+              Estado: <span className="font-semibold uppercase">{summary.status_color}</span>
+            </p>
+            <p className="text-sm text-cyan-100">
+              Válvula: {summary.valve_current} {summary.valve_delta === 0 ? "(sin ajuste)" : `→ ${summary.valve_next}`}
+            </p>
+            {summary.suggestion ? <p className="text-sm text-cyan-100">{summary.suggestion}</p> : null}
+          </section>
         ) : null}
 
         {records.length > 0 ? (

@@ -1,26 +1,44 @@
 create extension if not exists "pgcrypto";
 
+-- Generic storage for modules already in production
 create table if not exists public.field_records (
   id uuid primary key default gen_random_uuid(),
   project_id text not null,
   module text not null,
+  project_zone_id text,
+  capture_session_id text,
+  capture_status text not null default 'complete',
   field_type text,
+  macro_zone text,
+  micro_zone text,
   payload jsonb not null,
   created_at timestamptz not null default now()
 );
 
+alter table if exists public.field_records add column if not exists macro_zone text;
+alter table if exists public.field_records add column if not exists micro_zone text;
+alter table if exists public.field_records add column if not exists project_zone_id text;
+alter table if exists public.field_records add column if not exists capture_session_id text;
+alter table if exists public.field_records add column if not exists capture_status text not null default 'complete';
 create index if not exists idx_field_records_project on public.field_records(project_id);
 create index if not exists idx_field_records_module on public.field_records(module);
+create index if not exists idx_field_records_project_zone on public.field_records(project_zone_id);
 create index if not exists idx_field_records_created_at on public.field_records(created_at desc);
+create unique index if not exists uq_field_records_capture_session
+  on public.field_records(project_id, module, project_zone_id, capture_session_id);
 
+-- Material module table
 create table if not exists public.material_records (
   id uuid primary key default gen_random_uuid(),
   created_at timestamptz not null default now(),
   project_id text not null,
+  project_zone_id text,
+  capture_session_id text,
+  capture_status text not null default 'complete',
   field_type text,
   tipo_material text not null,
   tipo_pasada text not null,
-  valvula integer not null check (valvula between 1 and 5),
+  valvula integer not null check (valvula between 1 and 6),
   bolsas_esperadas numeric not null,
   bolsas_utilizadas numeric not null,
   desviacion numeric not null,
@@ -32,8 +50,626 @@ create table if not exists public.material_records (
 
 create index if not exists idx_material_records_project on public.material_records(project_id);
 create index if not exists idx_material_records_created_at on public.material_records(created_at desc);
+alter table if exists public.material_records add column if not exists project_zone_id text;
+alter table if exists public.material_records add column if not exists capture_session_id text;
+alter table if exists public.material_records add column if not exists capture_status text not null default 'complete';
+create unique index if not exists uq_material_records_capture_session
+  on public.material_records(project_id, capture_session_id);
+
+-- Independent incidence log table (separate from production records)
+create table if not exists public.incidences (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  project_id text not null,
+  project_zone_id text,
+  field_type text,
+  macro_zone text not null,
+  micro_zone text not null,
+  zone_type text,
+  type_of_incidence text not null,
+  priority_level text not null,
+  impact_level text,
+  photos jsonb not null default '[]'::jsonb,
+  note text,
+  payload jsonb not null default '{}'::jsonb
+);
+
+create index if not exists idx_incidences_project on public.incidences(project_id);
+create index if not exists idx_incidences_created_at on public.incidences(created_at desc);
+create index if not exists idx_incidences_type on public.incidences(type_of_incidence);
+alter table if exists public.incidences add column if not exists project_zone_id text;
+alter table if exists public.incidences add column if not exists zone_type text;
+
+-- Roll installation (rolls + compaction simplified)
+create table if not exists public.roll_installation (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  project_id text,
+  project_zone_id text,
+  capture_session_id text,
+  capture_status text not null default 'complete',
+  zone text not null,
+  roll_length_fit text not null,
+  total_rolls_used integer not null,
+  total_seams integer not null,
+  compaction_surface_firm boolean not null,
+  compaction_moisture_ok boolean not null,
+  compaction_double boolean not null,
+  compaction_method text not null,
+  photos jsonb not null
+);
+
+alter table if exists public.roll_installation add column if not exists project_id text;
+alter table if exists public.roll_installation add column if not exists project_zone_id text;
+alter table if exists public.roll_installation add column if not exists capture_session_id text;
+alter table if exists public.roll_installation add column if not exists capture_status text not null default 'complete';
+create index if not exists idx_roll_installation_created_at on public.roll_installation(created_at desc);
+create index if not exists idx_roll_installation_zone on public.roll_installation(zone);
+create unique index if not exists uq_roll_installation_capture_session
+  on public.roll_installation(project_id, project_zone_id, capture_session_id);
+
+-- Roll verification module
+create table if not exists public.roll_verification (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  zone text not null,
+  length_ft integer,
+  color_letter text,
+  status text not null,
+  notes text,
+  photo_url text not null
+);
+
+create index if not exists idx_roll_verification_created_at on public.roll_verification(created_at desc);
+create index if not exists idx_roll_verification_zone on public.roll_verification(zone);
+alter table if exists public.roll_installation add column if not exists project_id text;
+alter table if exists public.roll_installation add column if not exists project_zone_id text;
+alter table if exists public.roll_installation add column if not exists field_type text;
+alter table if exists public.roll_installation add column if not exists macro_zone text;
+alter table if exists public.roll_installation add column if not exists micro_zone text;
+alter table if exists public.roll_installation add column if not exists zone_type text;
+alter table if exists public.roll_verification add column if not exists project_id text;
+alter table if exists public.roll_verification add column if not exists project_zone_id text;
+alter table if exists public.roll_verification add column if not exists field_type text;
+alter table if exists public.roll_verification add column if not exists macro_zone text;
+alter table if exists public.roll_verification add column if not exists micro_zone text;
+alter table if exists public.roll_verification add column if not exists zone_type text;
+
+-- Zone-first architecture
+create table if not exists public.projects (
+  id uuid primary key default gen_random_uuid(),
+  code text unique,
+  name text not null,
+  sport text not null,
+  created_at timestamptz not null default now()
+);
+
+alter table if exists public.projects add column if not exists total_sqft numeric;
+alter table if exists public.projects add column if not exists start_date date;
+alter table if exists public.projects add column if not exists crew_name text;
+alter table if exists public.projects add column if not exists setup_notes text;
+alter table if exists public.projects add column if not exists plan_files jsonb not null default '[]'::jsonb;
+alter table if exists public.projects add column if not exists zone_targets jsonb not null default '[]'::jsonb;
+alter table if exists public.projects add column if not exists setup_completed boolean not null default false;
+
+create table if not exists public.zone_templates (
+  id uuid primary key default gen_random_uuid(),
+  sport text not null,
+  macro_zone text not null,
+  micro_zone text not null,
+  zone_type text not null,
+  unique (sport, macro_zone, micro_zone)
+);
+
+create table if not exists public.project_zones (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects(id) on delete cascade,
+  zone_template_id uuid not null references public.zone_templates(id),
+  status text not null default 'pending',
+  progress integer not null default 0,
+  created_at timestamptz not null default now(),
+  unique (project_id, zone_template_id)
+);
+
+-- Runtime zone registry used by app capture flow (project code based)
+create table if not exists public.project_zones_runtime (
+  id uuid primary key default gen_random_uuid(),
+  project_code text not null,
+  project_uuid uuid references public.projects(id) on delete cascade,
+  zone_name text not null,
+  macro_zone text not null,
+  micro_zone text not null,
+  zone_record_type text not null check (zone_record_type in ('GLOBAL', 'MICRO')),
+  zone_order integer not null,
+  is_deletable boolean not null default true,
+  created_at timestamptz not null default now(),
+  unique (project_code, macro_zone, micro_zone)
+);
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'project_zones_runtime_global_shape_check'
+  ) then
+    alter table if exists public.project_zones_runtime
+      add constraint project_zones_runtime_global_shape_check
+      check (
+        zone_record_type <> 'GLOBAL'
+        or (zone_name = 'Campo completo' and zone_order = 0 and is_deletable = false)
+      );
+  end if;
+end $$;
+
+create unique index if not exists uq_project_zones_runtime_single_global
+  on public.project_zones_runtime(project_code)
+  where zone_record_type = 'GLOBAL';
+
+create table if not exists public.zone_step_templates (
+  id uuid primary key default gen_random_uuid(),
+  zone_type text not null,
+  step_key text not null,
+  step_label text not null,
+  step_order integer not null,
+  required_photos integer not null default 0,
+  unique (zone_type, step_key)
+);
+
+create table if not exists public.zone_metrics (
+  id uuid primary key default gen_random_uuid(),
+  project_zone_id uuid not null references public.project_zones(id) on delete cascade,
+  step_key text not null,
+  payload jsonb not null default '{}'::jsonb,
+  photos jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_projects_sport on public.projects(sport);
+create index if not exists idx_project_zones_project on public.project_zones(project_id);
+create index if not exists idx_project_zones_runtime_project_code on public.project_zones_runtime(project_code);
+create index if not exists idx_zone_metrics_project_zone on public.zone_metrics(project_zone_id);
+
+-- Data science snapshots (daily cumulative per zone)
+create table if not exists public.zone_daily_snapshots (
+  id uuid primary key default gen_random_uuid(),
+  project_id text not null,
+  snapshot_date date not null,
+  zone_key text not null,
+  macro_zone text,
+  micro_zone text,
+  cumulative_ft numeric not null default 0,
+  cumulative_botes numeric not null default 0,
+  cumulative_rolls integer not null default 0,
+  cumulative_seams integer not null default 0,
+  captures_count integer not null default 0,
+  last_capture_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create unique index if not exists uq_zone_daily_snapshots_unique
+  on public.zone_daily_snapshots(project_id, snapshot_date, zone_key);
+create index if not exists idx_zone_daily_snapshots_project on public.zone_daily_snapshots(project_id);
+create index if not exists idx_zone_daily_snapshots_date on public.zone_daily_snapshots(snapshot_date);
+
+insert into public.zone_step_templates (zone_type, step_key, step_label, step_order, required_photos)
+values
+  ('PRECISION', 'COMPACT', 'Compaction', 1, 1),
+  ('PRECISION', 'ROLL_PLACEMENT', 'Roll Placement', 2, 1),
+  ('PRECISION', 'SEWING', 'Sewing', 3, 1),
+  ('PRECISION', 'CUT', 'Cut', 4, 1),
+  ('PRECISION', 'ADHESIVE', 'Adhesive', 5, 3),
+  ('STANDARD', 'COMPACT', 'Compaction', 1, 1),
+  ('STANDARD', 'ROLL_PLACEMENT', 'Roll Placement', 2, 1),
+  ('STANDARD', 'SEWING', 'Sewing', 3, 1),
+  ('STANDARD', 'ADHESIVE', 'Adhesive', 4, 3),
+  ('PERIMETER', 'COMPACT', 'Compaction', 1, 1),
+  ('PERIMETER', 'ROLL_PLACEMENT', 'Roll Placement', 2, 1),
+  ('PERIMETER', 'CUT', 'Cut', 3, 1),
+  ('PERIMETER', 'ADHESIVE', 'Adhesive', 4, 3),
+  ('MARKINGS', 'COMPACT', 'Compaction', 1, 1),
+  ('MARKINGS', 'ROLL_PLACEMENT', 'Roll Placement', 2, 1),
+  ('MARKINGS', 'CUT', 'Cut', 3, 1),
+  ('MARKINGS', 'ADHESIVE', 'Adhesive', 4, 3)
+on conflict (zone_type, step_key) do nothing;
+
+delete from public.zone_step_templates
+where step_key in ('ALIGNMENT', 'INSERT');
+
+-- Sports hierarchical zone catalog (sport -> macro -> micro)
+create table if not exists public.sport_zone_catalog (
+  id uuid primary key default gen_random_uuid(),
+  sport text not null,
+  macro_zone text not null,
+  micro_zone text not null,
+  unique (sport, macro_zone, micro_zone)
+);
+
+insert into public.sport_zone_catalog (sport, macro_zone, micro_zone)
+values
+  ('baseball', 'Infield', 'Infield'),
+  ('baseball', 'Outfield', 'Outfield'),
+  ('baseball', 'Sidelines/Foul/Warning Track', 'Sidelines/Foul/Warning Track'),
+  ('softball', 'Infield', 'Infield'),
+  ('softball', 'Outfield', 'Outfield'),
+  ('softball', 'Sidelines/Foul/Warning Track', 'Sidelines/Foul/Warning Track'),
+  ('football', 'Central', 'Central'),
+  ('football', 'Endzones', 'Endzones'),
+  ('football', 'Outfield', 'Outfield'),
+  ('football', 'Sidelines', 'Sidelines'),
+  ('soccer', 'Central', 'Central'),
+  ('soccer', 'Area Izq', 'Area Izq'),
+  ('soccer', 'Area Der', 'Area Der')
+on conflict (sport, macro_zone, micro_zone) do nothing;
+
+create index if not exists idx_sport_zone_catalog_sport on public.sport_zone_catalog(sport);
+
+insert into public.zone_templates (sport, macro_zone, micro_zone, zone_type)
+select
+  sport,
+  macro_zone,
+  micro_zone,
+  case
+    when lower(macro_zone) like '%warning%' or lower(macro_zone) like '%sideline%' or lower(macro_zone) like '%foul%' then 'PERIMETER'
+    when lower(macro_zone) like '%numbers%' or lower(macro_zone) like '%logo%' or lower(micro_zone) like '%logo%' or lower(micro_zone) like '%mark%' then 'MARKINGS'
+    when lower(macro_zone) like '%infield%' or lower(macro_zone) like '%endzone%' or lower(micro_zone) like '%box%' or lower(micro_zone) like '%mound%' or lower(micro_zone) like '%plate%' then 'PRECISION'
+    else 'STANDARD'
+  end as zone_type
+from public.sport_zone_catalog
+on conflict (sport, macro_zone, micro_zone) do nothing;
+
+-- Roll verification table (control before installation)
+create table if not exists public.roll_verifications (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  project_id text not null,
+  field_type text not null,
+  macro_zone text not null,
+  micro_zone text not null,
+  roll_color text not null,
+  roll_feet_total numeric not null,
+  roll_lot_id text,
+  label_photo_url text not null,
+  status text not null check (status in ('pending', 'confirmed', 'rejected')),
+  rejection_reason text,
+  payload jsonb not null default '{}'::jsonb
+);
+
+create index if not exists idx_roll_verifications_project on public.roll_verifications(project_id);
+create index if not exists idx_roll_verifications_zone on public.roll_verifications(project_id, macro_zone, micro_zone);
+create index if not exists idx_roll_verifications_created_at on public.roll_verifications(created_at desc);
+
+-- Zones catalog
+create table if not exists public.zones (
+  id text primary key,
+  name text not null unique
+);
+
+insert into public.zones (id, name)
+values
+  ('CENTRAL', 'Central'),
+  ('SIDELINE_RIGHT', 'Sideline Derecho'),
+  ('SIDELINE_LEFT', 'Sideline Izquierdo'),
+  ('CABECERAS', 'Cabeceras')
+on conflict (id) do update set name = excluded.name;
+
+-- Unified Rollos + Compactacion phase (zone-based)
+create table if not exists public.rollos (
+  id uuid primary key default gen_random_uuid(),
+  zone_id text not null references public.zones(id),
+  project_id text,
+  field_type text,
+  total_rolls integer not null check (total_rolls >= 0),
+  total_seams integer not null check (total_seams >= 0),
+  phase_status text not null check (phase_status in ('COMPACTING', 'IN_PROGRESS', 'COMPLETED')),
+  compaction_type text not null check (compaction_type in ('PLATE', 'ROLLER', 'MANUAL')),
+  surface_firm boolean not null default false,
+  moisture_ok boolean not null default false,
+  double_compaction boolean not null default false,
+  roll_length_status text not null check (roll_length_status in ('NORMAL', 'JUSTO', 'MAJOR_MISMATCH')),
+  observations text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_rollos_project on public.rollos(project_id);
+create index if not exists idx_rollos_zone on public.rollos(zone_id);
+create index if not exists idx_rollos_created_at on public.rollos(created_at desc);
+
+create table if not exists public.rollos_photos (
+  id uuid primary key default gen_random_uuid(),
+  rollos_id uuid not null references public.rollos(id) on delete cascade,
+  image_url text not null
+);
+
+create index if not exists idx_rollos_photos_rollos on public.rollos_photos(rollos_id);
+
+-- Compatibility migration for previous rollos schema
+alter table if exists public.rollos add column if not exists total_rolls integer;
+alter table if exists public.rollos add column if not exists total_seams integer;
+alter table if exists public.rollos add column if not exists phase_status text;
+alter table if exists public.rollos add column if not exists compaction_type text;
+alter table if exists public.rollos add column if not exists surface_firm boolean;
+alter table if exists public.rollos add column if not exists moisture_ok boolean;
+alter table if exists public.rollos add column if not exists double_compaction boolean;
+alter table if exists public.rollos add column if not exists roll_length_status text;
+
+-- Keep compactacion table for backward compatibility
+create table if not exists public.compactacion (
+  id uuid primary key default gen_random_uuid(),
+  zone_id text not null references public.zones(id),
+  project_id text,
+  field_type text,
+  compactacion_type text not null check (compactacion_type in ('GENERAL', 'AJUSTE')),
+  direction_aligned_to_rolls boolean not null,
+  surface_firm boolean not null,
+  moisture_ok boolean not null,
+  traffic_light_status text not null check (traffic_light_status in ('GREEN', 'YELLOW', 'RED')),
+  observations text,
+  crew_id text not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_compactacion_project on public.compactacion(project_id);
+create index if not exists idx_compactacion_zone on public.compactacion(zone_id);
+create index if not exists idx_compactacion_created_at on public.compactacion(created_at desc);
+
+create table if not exists public.compactacion_photos (
+  id uuid primary key default gen_random_uuid(),
+  compactacion_id uuid not null references public.compactacion(id) on delete cascade,
+  image_url text not null
+);
+
+create index if not exists idx_compactacion_photos_compactacion on public.compactacion_photos(compactacion_id);
 
 -- Storage bucket for evidence photos
 insert into storage.buckets (id, name, public)
 values ('pulse-evidence', 'pulse-evidence', true)
 on conflict (id) do nothing;
+
+-- ===============================
+-- Pulse v0 data-science schema
+-- ===============================
+
+alter table if exists public.projects add column if not exists location text;
+alter table if exists public.projects add column if not exists start_date date;
+
+-- Keep legacy zones(id text) and extend it for project-level zone modeling.
+alter table if exists public.zones add column if not exists project_id uuid references public.projects(id) on delete cascade;
+alter table if exists public.zones add column if not exists zone_type text;
+alter table if exists public.zones add column if not exists sub_zone text;
+alter table if exists public.zones add column if not exists created_at timestamptz not null default now();
+
+create table if not exists public.glue_baselines (
+  zone_type text primary key,
+  mu numeric not null,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.captures_glue (
+  id uuid primary key default gen_random_uuid(),
+  project_id text not null,
+  zone_id text,
+  linear_ft_est numeric not null,
+  cans_used numeric not null,
+  temp_bucket text,
+  humidity_bucket text,
+  photos jsonb not null default '[]'::jsonb,
+  capture_session_id text,
+  capture_status text not null default 'complete',
+  r numeric,
+  mu numeric,
+  ratio_to_baseline numeric,
+  traffic_light text,
+  predicted_cans numeric,
+  savings_usd numeric,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_captures_glue_project on public.captures_glue(project_id);
+create index if not exists idx_captures_glue_zone on public.captures_glue(zone_id);
+create index if not exists idx_captures_glue_created_at on public.captures_glue(created_at desc);
+
+create table if not exists public.captures_roll_install (
+  id uuid primary key default gen_random_uuid(),
+  project_id text not null,
+  zone_id text,
+  seams_count int not null default 0,
+  photos jsonb not null default '[]'::jsonb,
+  capture_session_id text,
+  capture_status text not null default 'complete',
+  roll_length_sem text not null default 'green',
+  risk_score numeric,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_captures_roll_install_project on public.captures_roll_install(project_id);
+create index if not exists idx_captures_roll_install_zone on public.captures_roll_install(zone_id);
+create index if not exists idx_captures_roll_install_created_at on public.captures_roll_install(created_at desc);
+
+create table if not exists public.captures_roll_verify (
+  id uuid primary key default gen_random_uuid(),
+  project_id text not null,
+  zone_id text,
+  label_photo text not null,
+  roll_length_ft numeric,
+  roll_width_ft numeric,
+  product_code text,
+  color text,
+  verification_status text not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_captures_roll_verify_project on public.captures_roll_verify(project_id);
+create index if not exists idx_captures_roll_verify_zone on public.captures_roll_verify(zone_id);
+create index if not exists idx_captures_roll_verify_created_at on public.captures_roll_verify(created_at desc);
+
+create table if not exists public.captures_compaction (
+  id uuid primary key default gen_random_uuid(),
+  project_id text not null,
+  zone_id text,
+  surface_firm boolean not null,
+  moisture_ok boolean not null,
+  double_compaction boolean not null,
+  method text not null,
+  photos jsonb,
+  capture_session_id text,
+  capture_status text not null default 'complete',
+  compaction_risk_score numeric,
+  compaction_traffic text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_captures_compaction_project on public.captures_compaction(project_id);
+create index if not exists idx_captures_compaction_zone on public.captures_compaction(zone_id);
+create index if not exists idx_captures_compaction_created_at on public.captures_compaction(created_at desc);
+
+create table if not exists public.captures_material_pass (
+  id uuid primary key default gen_random_uuid(),
+  project_id text not null,
+  zone_id text,
+  pass_number int not null,
+  bags_expected_per_pass numeric not null,
+  bags_used numeric not null,
+  valve_setting int not null check (valve_setting between 1 and 6),
+  photos jsonb not null default '[]'::jsonb,
+  capture_session_id text,
+  capture_status text not null default 'complete',
+  deviation numeric,
+  valve_next_delta int,
+  valve_next_setting int check (valve_next_setting between 1 and 6),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_captures_material_pass_project on public.captures_material_pass(project_id);
+create index if not exists idx_captures_material_pass_zone on public.captures_material_pass(zone_id);
+create index if not exists idx_captures_material_pass_created_at on public.captures_material_pass(created_at desc);
+
+create table if not exists public.incidents (
+  id uuid primary key default gen_random_uuid(),
+  project_id text not null,
+  zone_id text,
+  type text not null,
+  severity text not null,
+  photos jsonb,
+  notes text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_incidents_project on public.incidents(project_id);
+create index if not exists idx_incidents_zone on public.incidents(zone_id);
+create index if not exists idx_incidents_created_at on public.incidents(created_at desc);
+
+-- Keep active runtime tables aligned with v0 computed metrics
+alter table if exists public.roll_installation add column if not exists roll_length_sem text;
+alter table if exists public.roll_installation add column if not exists roll_risk_score numeric;
+alter table if exists public.roll_installation add column if not exists compaction_risk_score numeric;
+alter table if exists public.roll_installation add column if not exists compaction_traffic text;
+
+-- Session-level dedupe for stable persistence
+create unique index if not exists uq_captures_glue_session
+  on public.captures_glue(project_id, zone_id, capture_session_id)
+  where capture_session_id is not null;
+
+create unique index if not exists uq_captures_roll_install_session
+  on public.captures_roll_install(project_id, zone_id, capture_session_id)
+  where capture_session_id is not null;
+
+create unique index if not exists uq_captures_compaction_session
+  on public.captures_compaction(project_id, zone_id, capture_session_id)
+  where capture_session_id is not null;
+
+create unique index if not exists uq_captures_material_pass_session
+  on public.captures_material_pass(project_id, zone_id, capture_session_id)
+  where capture_session_id is not null;
+
+-- Public technical insights managed from web admin
+create table if not exists public.technical_insights (
+  id uuid primary key default gen_random_uuid(),
+  slug text not null unique,
+  title text not null,
+  summary text not null,
+  body text not null default '',
+  status text not null default 'draft' check (status in ('draft', 'published')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_technical_insights_status on public.technical_insights(status);
+create index if not exists idx_technical_insights_created_at on public.technical_insights(created_at desc);
+
+-- Auth roles for Pulse app access
+create table if not exists public.app_user_roles (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  role text not null check (role in ('admin', 'pm', 'installer')),
+  assigned_by uuid references auth.users(id),
+  assigned_at timestamptz not null default now()
+);
+
+create index if not exists idx_app_user_roles_role on public.app_user_roles(role);
+
+-- Logical backup registry
+create table if not exists public.backup_snapshots (
+  id uuid primary key default gen_random_uuid(),
+  storage_bucket text not null,
+  storage_path text not null,
+  checksum text not null,
+  row_counts jsonb not null default '{}'::jsonb,
+  created_by uuid references auth.users(id),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_backup_snapshots_created_at on public.backup_snapshots(created_at desc);
+
+-- Private storage bucket for backup snapshots
+insert into storage.buckets (id, name, public)
+values ('pulse-backups', 'pulse-backups', false)
+on conflict (id) do nothing;
+
+-- Capture audit trail (who changed what and when)
+create table if not exists public.capture_change_log (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  project_id text not null,
+  source_table text not null,
+  capture_id text not null,
+  module text,
+  action text not null check (action in ('create', 'update', 'delete', 'upsert')),
+  actor_user_id uuid references auth.users(id),
+  actor_email text,
+  before_data jsonb,
+  after_data jsonb
+);
+
+create index if not exists idx_capture_change_log_project on public.capture_change_log(project_id);
+create index if not exists idx_capture_change_log_capture on public.capture_change_log(source_table, capture_id);
+create index if not exists idx_capture_change_log_created_at on public.capture_change_log(created_at desc);
+
+-- Metadata versions by capture
+create table if not exists public.capture_metadata_versions (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  project_id text not null,
+  source_table text not null,
+  capture_id text not null,
+  module text,
+  version integer not null check (version > 0),
+  metadata jsonb not null default '{}'::jsonb,
+  edited_by uuid references auth.users(id),
+  editor_email text
+);
+
+create unique index if not exists uq_capture_metadata_versions_unique
+  on public.capture_metadata_versions(source_table, capture_id, version);
+create index if not exists idx_capture_metadata_versions_project on public.capture_metadata_versions(project_id);
+create index if not exists idx_capture_metadata_versions_capture on public.capture_metadata_versions(source_table, capture_id);
+
+-- Plan intelligence per project (parsed from uploaded installation plans)
+create table if not exists public.project_plan_intelligence (
+  project_id text primary key,
+  analysis jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_project_plan_intelligence_updated_at
+  on public.project_plan_intelligence(updated_at desc);

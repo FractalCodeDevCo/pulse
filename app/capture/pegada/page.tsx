@@ -6,20 +6,15 @@ import Image from "next/image"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { ChangeEvent, FormEvent, Suspense, useEffect, useMemo, useState } from "react"
-import { saveCloudRecord } from "../../../lib/recordClient"
 
-type FieldType = "football" | "soccer" | "beisbol" | "softbol"
-type ZoneKey =
-  | "lineas"
-  | "numeros"
-  | "letras"
-  | "hashmarks"
-  | "logo"
-  | "general"
-  | "batbox"
-  | "coach_base"
-  | "pitcher_mound"
-  | "linea_corredor"
+import ContextHeader from "../../../components/pulse/ContextHeader"
+import { createCaptureSessionId } from "../../../lib/captureSession"
+import { clearCaptureDraft, readCaptureDraft, saveCaptureDraft } from "../../../lib/captureDraft"
+import { IMAGE_INPUT_ACCEPT, processImageFile } from "../../../lib/clientImage"
+import { saveCloudRecord } from "../../../lib/recordClient"
+import { readZonePhotosCache } from "../../../lib/zonePhotoCache"
+import { FIELD_TYPE_LABELS, FieldType } from "../../../types/fieldType"
+import { MacroZone, getMacroZoneOptions, getMicroZoneOptions } from "../../../types/zoneHierarchy"
 
 type PhotoField = "prep" | "antes" | "despues"
 
@@ -32,7 +27,12 @@ type PegadaRecord = {
   id: string
   createdAt: string
   fieldType: FieldType
-  zone: ZoneKey
+  zone: string
+  macro_zone: MacroZone
+  micro_zone: string
+  critical_infield_area?: string
+  critical_infield_areas?: string[]
+  markbox?: string
   ftTotales: number
   botesUsados: number
   clima: string[]
@@ -45,55 +45,88 @@ type PegadaRecord = {
   }
 }
 
+type PegadaSummary = {
+  module: "pegada"
+  traffic_light: "green" | "yellow" | "red"
+  ratio_to_baseline: number
+  r_cans_per_ft: number
+  baseline_mu: number
+  baseline_mu_next: number
+  predicted_cans: number
+  savings_usd: number
+  can_price_usd: number
+  zone_type: string
+}
+
+type PegadaDraft = {
+  step: 1 | 2
+  fieldType: FieldType
+  macroZone: MacroZone | ""
+  microZone: string
+  prepPhoto: PhotoState
+  antesPhoto: PhotoState
+  despuesPhoto: PhotoState
+  ftTotales: number
+  botesUsados: number
+  criticalInfieldAreas: string[]
+  lineasMarkbox: boolean
+  clima: string[]
+  condicion: string
+  observaciones: string
+  captureSessionId: string
+}
+
 const DEFAULT_FIXED_FT = 10
-
-const FIELD_TYPE_LABELS: Record<FieldType, string> = {
-  football: "Football",
-  soccer: "Soccer",
-  beisbol: "Beisbol",
-  softbol: "Softbol",
-}
-
-const ZONE_LABELS: Record<ZoneKey, string> = {
-  lineas: "Lineas",
-  numeros: "Numeros",
-  letras: "Letras",
-  hashmarks: "Hashmarks",
-  logo: "Logo",
-  general: "General",
-  batbox: "Bat Box",
-  coach_base: "Coach Base",
-  pitcher_mound: "Pitcher Mound",
-  linea_corredor: "Linea del corredor",
-}
-
-const ZONES_BY_FIELD_TYPE: Record<FieldType, ZoneKey[]> = {
-  football: ["lineas", "numeros", "letras", "hashmarks", "logo", "general"],
-  soccer: ["lineas", "general", "logo", "letras"],
-  beisbol: [
-    "batbox",
-    "lineas",
-    "coach_base",
-    "pitcher_mound",
-    "linea_corredor",
-    "logo",
-    "letras",
-    "general",
-  ],
-  softbol: [
-    "batbox",
-    "lineas",
-    "coach_base",
-    "pitcher_mound",
-    "linea_corredor",
-    "logo",
-    "letras",
-    "general",
-  ],
-}
 
 const CLIMATE_OPTIONS = ["Soleado", "Nublado", "Lluvioso", "Viento", "Humedad alta"]
 const CONDITION_OPTIONS = ["Excelente", "Buena", "Regular", "Mala"]
+
+const SPORT_CRITICAL_OPTIONS: Record<FieldType, string[]> = {
+  beisbol: [
+    "Coach A",
+    "Coach B",
+    "Línea del corredor",
+    "Batter Box",
+    "Pitcher Mound",
+    "Logo",
+    "Letras",
+    "Curva",
+    "Curva diámetro chico",
+    "Unión lineal",
+  ],
+  softbol: [
+    "Coach A",
+    "Coach B",
+    "Línea del corredor",
+    "Batter Box",
+    "Pitcher Mound",
+    "Logo",
+    "Letras",
+    "Curva",
+    "Curva diámetro chico",
+    "Unión lineal",
+  ],
+  football: [
+    "Números",
+    "Hashmarks",
+    "Tick marks",
+    "Logo",
+    "Letras",
+    "Curva",
+    "Curva diámetro chico",
+    "Unión lineal",
+  ],
+  soccer: [
+    "Curva",
+    "Curva diámetro chico",
+    "Líneas",
+    "Logo",
+    "Letras",
+    "Unión lineal",
+  ],
+}
+
+const LINEAR_OPTION = "Unión lineal"
 
 function readStoredFieldType(storageKey: string): FieldType {
   if (typeof window === "undefined") return "football"
@@ -102,7 +135,7 @@ function readStoredFieldType(storageKey: string): FieldType {
     const raw = localStorage.getItem(storageKey)
     if (!raw) return "football"
     const parsed = JSON.parse(raw) as FieldType
-    if (parsed in ZONES_BY_FIELD_TYPE) return parsed
+    if (parsed in FIELD_TYPE_LABELS) return parsed
   } catch {
     // fallback
   }
@@ -117,27 +150,6 @@ function emptyPhoto(): PhotoState {
   }
 }
 
-function readAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result ?? ""))
-    reader.onerror = () => reject(new Error("No se pudo leer la foto"))
-    reader.readAsDataURL(file)
-  })
-}
-
-function readPegadaRecords(storageKey: string): PegadaRecord[] {
-  if (typeof window === "undefined") return []
-
-  try {
-    const raw = localStorage.getItem(storageKey)
-    if (!raw) return []
-    return JSON.parse(raw) as PegadaRecord[]
-  } catch {
-    return []
-  }
-}
-
 export default function PegadaPage() {
   return (
     <Suspense fallback={<main className="flex min-h-screen items-center justify-center bg-neutral-950 text-white">Cargando Pegada...</main>}>
@@ -149,14 +161,19 @@ export default function PegadaPage() {
 function PegadaPageContent() {
   const searchParams = useSearchParams()
   const projectId = searchParams.get("project")
+  const projectZoneId = searchParams.get("projectZoneId")
+  const presetMacroZone = searchParams.get("macroZone")
+  const presetMicroZone = searchParams.get("microZone")
+  const presetZoneType = searchParams.get("zoneType")
+  const prefillFromZone = searchParams.get("prefill") === "1"
 
-  const recordsKey = `pulse_pegada_records_${projectId ?? "default"}`
   const fieldTypeKey = `pulse_project_field_type_${projectId ?? "default"}`
 
   const [step, setStep] = useState<1 | 2 | 3>(1)
 
   const [fieldType, setFieldType] = useState<FieldType>("football")
-  const [zone, setZone] = useState<ZoneKey>("lineas")
+  const [macroZone, setMacroZone] = useState<MacroZone | "">((presetMacroZone as MacroZone | null) ?? "")
+  const [microZone, setMicroZone] = useState(presetMicroZone ?? "")
 
   const [prepPhoto, setPrepPhoto] = useState<PhotoState>(emptyPhoto())
   const [antesPhoto, setAntesPhoto] = useState<PhotoState>(emptyPhoto())
@@ -164,32 +181,169 @@ function PegadaPageContent() {
 
   const [ftTotales, setFtTotales] = useState<number>(30)
   const [botesUsados, setBotesUsados] = useState<number>(1)
+  const [criticalInfieldAreas, setCriticalInfieldAreas] = useState<string[]>([])
+  const [lineasMarkbox, setLineasMarkbox] = useState(false)
   const [clima, setClima] = useState<string[]>([])
   const [condicion, setCondicion] = useState<string>("")
   const [observaciones, setObservaciones] = useState<string>("")
+  const [captureSessionId, setCaptureSessionId] = useState(() => createCaptureSessionId())
 
   const [isReadingPhoto, setIsReadingPhoto] = useState(false)
   const [error, setError] = useState("")
   const [saveMessage, setSaveMessage] = useState("")
+  const [summary, setSummary] = useState<PegadaSummary | null>(null)
+  const [prefillApplied, setPrefillApplied] = useState(false)
+  const [draftReady, setDraftReady] = useState(false)
+  const [draftRecovered, setDraftRecovered] = useState(false)
+  const draftKey = useMemo(
+    () => (projectId ? `pulse_draft_pegada_${projectId}_${projectZoneId ?? "global"}` : null),
+    [projectId, projectZoneId],
+  )
+  const backToZoneOrHub =
+    projectId && projectZoneId
+      ? `/pulse/zones/${encodeURIComponent(projectZoneId)}?project=${encodeURIComponent(projectId)}`
+      : `/pulse?project=${encodeURIComponent(projectId ?? "")}`
 
   useEffect(() => {
     const storedFieldType = readStoredFieldType(fieldTypeKey)
     setFieldType(storedFieldType)
-    setZone(ZONES_BY_FIELD_TYPE[storedFieldType][0])
   }, [fieldTypeKey])
 
-  const zoneOptions = useMemo(() => ZONES_BY_FIELD_TYPE[fieldType], [fieldType])
-  const isGeneralZone = zone === "general"
+  useEffect(() => {
+    if (!draftKey) return
+    const draft = readCaptureDraft<PegadaDraft>(draftKey)
+    if (draft) {
+      setStep(draft.step)
+      setFieldType(draft.fieldType)
+      setMacroZone(draft.macroZone)
+      setMicroZone(draft.microZone)
+      setPrepPhoto(draft.prepPhoto)
+      setAntesPhoto(draft.antesPhoto)
+      setDespuesPhoto(draft.despuesPhoto)
+      setFtTotales(draft.ftTotales)
+      setBotesUsados(draft.botesUsados)
+      setCriticalInfieldAreas(draft.criticalInfieldAreas)
+      setLineasMarkbox(draft.lineasMarkbox)
+      setClima(draft.clima)
+      setCondicion(draft.condicion)
+      setObservaciones(draft.observaciones)
+      setCaptureSessionId(draft.captureSessionId || createCaptureSessionId())
+      setDraftRecovered(true)
+    }
+    setDraftReady(true)
+  }, [draftKey])
 
-  const hasAllPhotos = useMemo(() => {
-    return Boolean(prepPhoto.dataUrl && antesPhoto.dataUrl && despuesPhoto.dataUrl)
-  }, [prepPhoto.dataUrl, antesPhoto.dataUrl, despuesPhoto.dataUrl])
+  useEffect(() => {
+    if (prefillApplied) return
+    if (!draftReady || draftRecovered) return
+    if (!prefillFromZone || !projectId || !projectZoneId) return
+
+    const cached = readZonePhotosCache(projectId, projectZoneId)
+    setPrefillApplied(true)
+
+    if (cached.length < 1) {
+      setError("No encontramos fotos de zona en caché. Vuelve a Paso 1 de la zona y sube fotos.")
+      return
+    }
+
+    setPrepPhoto({ dataUrl: cached[0] ?? null, fileName: "prep-zone.jpg" })
+    setAntesPhoto({ dataUrl: cached[1] ?? null, fileName: "antes-zone.jpg" })
+    setDespuesPhoto({ dataUrl: cached[2] ?? null, fileName: "despues-zone.jpg" })
+    setStep(2)
+    setError("")
+  }, [draftReady, draftRecovered, prefillApplied, prefillFromZone, projectId, projectZoneId])
+
+  useEffect(() => {
+    if (!draftReady || !draftKey) return
+    if (step === 3) return
+
+    const hasMeaningfulDraft = Boolean(
+      prepPhoto.dataUrl ||
+        antesPhoto.dataUrl ||
+        despuesPhoto.dataUrl ||
+        macroZone ||
+        microZone ||
+        criticalInfieldAreas.length > 0 ||
+        lineasMarkbox ||
+        clima.length > 0 ||
+        condicion ||
+        observaciones.trim().length > 0 ||
+        ftTotales !== 30 ||
+        botesUsados !== 1 ||
+        step === 2,
+    )
+
+    if (!hasMeaningfulDraft) {
+      clearCaptureDraft(draftKey)
+      return
+    }
+
+    saveCaptureDraft<PegadaDraft>(draftKey, {
+      step: step > 2 ? 2 : step,
+      fieldType,
+      macroZone,
+      microZone,
+      prepPhoto,
+      antesPhoto,
+      despuesPhoto,
+      ftTotales,
+      botesUsados,
+      criticalInfieldAreas,
+      lineasMarkbox,
+      clima,
+      condicion,
+      observaciones,
+      captureSessionId,
+    })
+  }, [
+    antesPhoto,
+    botesUsados,
+    captureSessionId,
+    clima,
+    condicion,
+    criticalInfieldAreas,
+    despuesPhoto,
+    draftKey,
+    draftReady,
+    fieldType,
+    ftTotales,
+    lineasMarkbox,
+    macroZone,
+    microZone,
+    observaciones,
+    prepPhoto,
+    step,
+  ])
+
+  const microZoneOptions = useMemo(() => {
+    if (!macroZone) return []
+    return getMicroZoneOptions(fieldType, macroZone)
+  }, [fieldType, macroZone])
+  const macroZoneOptions = useMemo(() => getMacroZoneOptions(fieldType), [fieldType])
+
+  const criticalOptions = SPORT_CRITICAL_OPTIONS[fieldType] ?? []
+  const hasCriticalSelection = criticalInfieldAreas.length > 0
+  const isLinearOnlySelection =
+    criticalInfieldAreas.length === 1 && criticalInfieldAreas[0] === LINEAR_OPTION
+  const disableFtSlider = hasCriticalSelection && !isLinearOnlySelection
+
+  const totalSteps = prefillFromZone ? 2 : 3
+  const displayStep = prefillFromZone ? (step === 3 ? 2 : step) : step
 
   function handleFieldTypeChange(next: FieldType) {
     setFieldType(next)
-    setZone(ZONES_BY_FIELD_TYPE[next][0])
     localStorage.setItem(fieldTypeKey, JSON.stringify(next))
-    setError("")
+      setMacroZone("")
+      setMicroZone("")
+      setCriticalInfieldAreas([])
+      setError("")
+  }
+
+  function toggleCriticalInfieldArea(item: string) {
+    setCriticalInfieldAreas((current) => {
+      if (current.includes(item)) return current.filter((value) => value !== item)
+      return [...current, item]
+    })
   }
 
   async function handlePhotoChange(field: PhotoField, event: ChangeEvent<HTMLInputElement>) {
@@ -200,7 +354,7 @@ function PegadaPageContent() {
     setError("")
 
     try {
-      const dataUrl = await readAsDataUrl(file)
+      const dataUrl = await processImageFile(file)
       const nextState: PhotoState = { dataUrl, fileName: file.name }
 
       if (field === "prep") setPrepPhoto(nextState)
@@ -221,39 +375,47 @@ function PegadaPageContent() {
   }
 
   function goToQuestionnaire() {
-    if (!hasAllPhotos) {
-      setError("Debes subir las 3 fotos para continuar.")
-      return
-    }
-
     setError("")
     setStep(2)
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
+  async function savePegada(returnToHub: boolean) {
+    if (!macroZone) {
+      setError("MacroZone es requerida.")
+      return false
+    }
+
+    if (!microZone) {
+      setError("MicroZone es requerida.")
+      return false
+    }
 
     if (!condicion) {
       setError("Selecciona una condición.")
-      return
+      return false
     }
 
     if (botesUsados <= 0) {
       setError("Botes utilizados debe ser mayor a 0.")
-      return
+      return false
     }
 
-    if (isGeneralZone && ftTotales <= 0) {
-      setError("Ft totales debe ser mayor a 0 en zona General.")
-      return
+    if (!disableFtSlider && ftTotales <= 0) {
+      setError("Ft totales debe ser mayor a 0.")
+      return false
     }
 
     const record: PegadaRecord = {
       id: crypto.randomUUID(),
       createdAt: new Date().toISOString(),
       fieldType,
-      zone,
-      ftTotales: isGeneralZone ? ftTotales : DEFAULT_FIXED_FT,
+      zone: microZone,
+      macro_zone: macroZone,
+      micro_zone: microZone,
+      critical_infield_area: hasCriticalSelection ? criticalInfieldAreas[0] : undefined,
+      critical_infield_areas: hasCriticalSelection ? criticalInfieldAreas : undefined,
+      markbox: undefined,
+      ftTotales: disableFtSlider ? DEFAULT_FIXED_FT : ftTotales,
       botesUsados,
       clima,
       condicion,
@@ -265,17 +427,19 @@ function PegadaPageContent() {
       },
     }
 
-    const existing = readPegadaRecords(recordsKey)
-    localStorage.setItem(recordsKey, JSON.stringify([record, ...existing]))
-
     if (projectId) {
+      setSummary(null)
       try {
-        await saveCloudRecord({
+        const response = await saveCloudRecord({
           module: "pegada",
           projectId,
           fieldType,
           payload: {
             ...record,
+            project_zone_id: projectZoneId,
+            zone_type: presetZoneType,
+            capture_session_id: captureSessionId,
+            capture_status: "complete",
             evidencePhotos: {
               prep: prepPhoto.dataUrl,
               antes: antesPhoto.dataUrl,
@@ -283,31 +447,60 @@ function PegadaPageContent() {
             },
           } as Record<string, unknown>,
         })
+        console.log("[pegada] save_success", { id: response.id, projectId, module: "pegada" })
+        setSummary((response.summary as PegadaSummary | null | undefined) ?? null)
         setSaveMessage("Guardado en nube.")
-      } catch {
-        setSaveMessage("Guardado local (sin conexión a nube).")
+        if (draftKey) clearCaptureDraft(draftKey)
+      } catch (error) {
+        console.error("[pegada] save_failed", {
+          projectId,
+          module: "pegada",
+          error: error instanceof Error ? error.message : "unknown_error",
+        })
+        setSaveMessage("Error al guardar en nube. Revisa conexión y campos.")
+        return false
       }
     } else {
-      setSaveMessage("Captura guardada localmente.")
+      setSaveMessage("Proyecto inválido para guardado.")
+      return false
     }
 
     setError("")
-    setStep(3)
+    if (returnToHub && projectId) {
+      window.location.href = backToZoneOrHub
+      return true
+    }
+
+    resetForm({ keepSaveMessage: true })
+    return true
   }
 
-  function resetForm() {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    await savePegada(false)
+  }
+
+  function resetForm(options?: { keepSaveMessage?: boolean }) {
+    const keepSaveMessage = options?.keepSaveMessage ?? false
+    if (draftKey) clearCaptureDraft(draftKey)
     setPrepPhoto(emptyPhoto())
     setAntesPhoto(emptyPhoto())
     setDespuesPhoto(emptyPhoto())
-    setZone(ZONES_BY_FIELD_TYPE[fieldType][0])
+    setMacroZone("")
+    setMicroZone("")
+    setCriticalInfieldAreas([])
+    setLineasMarkbox(false)
     setFtTotales(30)
     setBotesUsados(1)
     setClima([])
     setCondicion("")
     setObservaciones("")
-    setSaveMessage("")
+    setCaptureSessionId(createCaptureSessionId())
+    setSaveMessage(keepSaveMessage ? "Guardado en nube. Formulario reiniciado para nueva captura." : "")
+    setSummary(null)
     setError("")
     setStep(1)
+    setDraftRecovered(false)
   }
 
   if (!projectId) {
@@ -324,11 +517,21 @@ function PegadaPageContent() {
   return (
     <main className="min-h-screen bg-neutral-950 px-4 py-8 text-white">
       <section className="mx-auto w-full max-w-3xl space-y-6">
-        <header className="space-y-2">
-          <p className="text-sm text-neutral-400">Pulse / Pegada / {projectId}</p>
-          <h1 className="text-3xl font-bold">Captura de Pegada</h1>
-          <p className="text-neutral-300">Flujo simple: fotos, cuestionario y guardado.</p>
-        </header>
+        <ContextHeader
+          title="Captura de Pegada"
+          subtitle="Flujo simple: fotos, cuestionario y guardado."
+          backHref={backToZoneOrHub}
+          backLabel={projectZoneId ? "Zona" : "Proyecto"}
+          breadcrumbs={[
+            { label: "Pulse", href: "/" },
+            { label: projectId, href: `/pulse?project=${encodeURIComponent(projectId)}` },
+            { label: "Pegada" },
+          ]}
+          projectLabel={projectId}
+          zoneLabel={macroZone && microZone ? `${macroZone} / ${microZone}` : null}
+          statusLabel={step === 3 ? "Completado" : `Paso ${displayStep}/${totalSteps}`}
+          dateLabel={new Date().toLocaleDateString("es-MX")}
+        />
 
         <section className="space-y-3 rounded-2xl border border-neutral-800 bg-neutral-900 p-4">
           <p className="text-sm text-neutral-400">Tipo de campo (por proyecto)</p>
@@ -354,8 +557,14 @@ function PegadaPageContent() {
         </section>
 
         <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4 text-sm text-neutral-300">
-          Paso {step} de 3
+          Paso {displayStep} de {totalSteps}
         </div>
+
+        {draftRecovered ? (
+          <div className="rounded-xl border border-cyan-500/70 bg-cyan-500/10 p-3 text-sm text-cyan-200">
+            Borrador recuperado. Puedes continuar con la captura.
+          </div>
+        ) : null}
 
         {error ? (
           <div className="rounded-xl border border-red-500/70 bg-red-500/10 p-3 text-red-300">{error}</div>
@@ -363,8 +572,8 @@ function PegadaPageContent() {
 
         {step === 1 ? (
           <section className="space-y-5 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
-            <h2 className="text-xl font-semibold">1) Fotos obligatorias</h2>
-            <p className="text-sm text-neutral-400">Prep, Antes de Pegado y Después de Pegado.</p>
+            <h2 className="text-xl font-semibold">1) Fotos de referencia (opcionales)</h2>
+            <p className="text-sm text-neutral-400">Si ya subiste fotos al iniciar captura, puedes continuar sin volver a subir aquí.</p>
 
             <div className="grid gap-4 md:grid-cols-3">
               <PhotoInputCard
@@ -401,26 +610,77 @@ function PegadaPageContent() {
             className="space-y-5 rounded-2xl border border-neutral-800 bg-neutral-900 p-5"
           >
             <h2 className="text-xl font-semibold">2) Cuestionario</h2>
+            {prefillFromZone ? (
+              <p className="rounded-xl border border-emerald-500/70 bg-emerald-500/10 p-3 text-sm text-emerald-200">
+                Fotos cargadas desde Paso 1 de la zona.
+              </p>
+            ) : null}
 
             <label className="block space-y-2">
-              <span className="text-sm text-neutral-300">Zona</span>
+              <span className="text-sm text-neutral-300">MacroZone</span>
               <select
-                value={zone}
-                onChange={(event) => setZone(event.target.value as ZoneKey)}
+                value={macroZone}
+                onChange={(event) => {
+                  setMacroZone(event.target.value as MacroZone | "")
+                  setMicroZone("")
+                  setCriticalInfieldAreas([])
+                }}
                 className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3"
                 required
               >
-                {zoneOptions.map((item) => (
-                  <option key={item} value={item}>
-                    {ZONE_LABELS[item]}
+                <option value="">Selecciona MacroZone</option>
+                {macroZoneOptions.map((macro) => (
+                  <option key={macro.value} value={macro.value}>
+                    {macro.label}
                   </option>
                 ))}
               </select>
             </label>
 
             <label className="block space-y-2">
+              <span className="text-sm text-neutral-300">MicroZone</span>
+              <select
+                value={microZone}
+                onChange={(event) => setMicroZone(event.target.value)}
+                className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3"
+                required
+                disabled={!macroZone}
+              >
+                <option value="">Selecciona MicroZone</option>
+                {microZoneOptions.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {criticalOptions.length > 0 ? (
+              <fieldset className="space-y-2">
+                <legend className="text-sm text-neutral-300">Zona crítica (opción múltiple)</legend>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {criticalOptions.map((item) => {
+                    const active = criticalInfieldAreas.includes(item)
+                    return (
+                      <button
+                        key={item}
+                        type="button"
+                        onClick={() => toggleCriticalInfieldArea(item)}
+                        className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
+                          active ? "border-amber-500 bg-amber-500/20 text-amber-200" : "border-neutral-700 bg-neutral-950"
+                        }`}
+                      >
+                        {item}
+                      </button>
+                    )
+                  })}
+                </div>
+              </fieldset>
+            ) : null}
+
+            <label className="block space-y-2">
               <span className="text-sm text-neutral-300">
-                Ft Totales {isGeneralZone ? `(${ftTotales})` : "(fijo por plantilla)"}
+                Ft Totales ({disableFtSlider ? "fijo por selección actual" : ftTotales})
               </span>
               <input
                 type="range"
@@ -428,7 +688,7 @@ function PegadaPageContent() {
                 max={500}
                 value={ftTotales}
                 onChange={(event) => setFtTotales(Number(event.target.value))}
-                disabled={!isGeneralZone}
+                disabled={disableFtSlider}
                 className="w-full disabled:cursor-not-allowed disabled:opacity-40"
               />
             </label>
@@ -487,7 +747,7 @@ function PegadaPageContent() {
             </label>
 
             <label className="block space-y-2">
-              <span className="text-sm text-neutral-300">Observaciones</span>
+              <span className="text-sm text-neutral-300">Observaciones (opcional)</span>
               <textarea
                 value={observaciones}
                 onChange={(event) => setObservaciones(event.target.value)}
@@ -497,18 +757,27 @@ function PegadaPageContent() {
             </label>
 
             <div className="flex flex-col gap-3 sm:flex-row">
-              <button
-                type="button"
-                onClick={() => setStep(1)}
-                className="w-full rounded-xl border border-neutral-600 px-4 py-4 text-lg font-semibold hover:bg-neutral-800"
-              >
-                Volver a fotos
-              </button>
+              {!prefillFromZone ? (
+                <button
+                  type="button"
+                  onClick={() => setStep(1)}
+                  className="w-full rounded-xl border border-neutral-600 px-4 py-4 text-lg font-semibold hover:bg-neutral-800"
+                >
+                  Volver a fotos
+                </button>
+              ) : null}
               <button
                 type="submit"
                 className="w-full rounded-xl bg-emerald-600 px-4 py-4 text-lg font-semibold hover:bg-emerald-700"
               >
-                Guardar captura
+                Save Pegada
+              </button>
+              <button
+                type="button"
+                onClick={() => void savePegada(true)}
+                className="w-full rounded-xl border border-blue-500 px-4 py-4 text-lg font-semibold text-blue-300 hover:bg-blue-500/10"
+              >
+                {projectZoneId ? "Save & Return to Zone" : "Save & Return to Hub"}
               </button>
             </div>
           </form>
@@ -523,9 +792,33 @@ function PegadaPageContent() {
               </p>
             ) : null}
 
+            {summary ? (
+              <div
+                className={`space-y-2 rounded-xl border p-4 ${
+                  summary.traffic_light === "green"
+                    ? "border-emerald-500/70 bg-emerald-500/10 text-emerald-200"
+                    : summary.traffic_light === "yellow"
+                      ? "border-amber-500/70 bg-amber-500/10 text-amber-200"
+                      : "border-red-500/70 bg-red-500/10 text-red-200"
+                }`}
+              >
+                <p className="text-sm font-semibold uppercase">Semáforo: {summary.traffic_light}</p>
+                <p className="text-sm">Ratio vs baseline: {summary.ratio_to_baseline.toFixed(3)}</p>
+                <p className="text-sm">Predicción de botes: {summary.predicted_cans.toFixed(2)}</p>
+                <p className="text-sm">Costo evitable estimado: ${summary.savings_usd.toFixed(2)} USD</p>
+              </div>
+            ) : null}
+
+            <Link
+              href={backToZoneOrHub}
+              className="block w-full rounded-xl border border-blue-500 px-4 py-4 text-center text-lg font-semibold text-blue-300 hover:bg-blue-500/10"
+            >
+              Back to Hub
+            </Link>
+
             <button
               type="button"
-              onClick={resetForm}
+              onClick={() => resetForm()}
               className="w-full rounded-xl bg-neutral-100 px-4 py-4 text-lg font-semibold text-neutral-950 hover:bg-white"
             >
               Nueva captura
@@ -550,8 +843,7 @@ function PhotoInputCard({ title, photo, onChange }: PhotoInputCardProps) {
 
       <input
         type="file"
-        accept="image/*"
-        capture="environment"
+        accept={IMAGE_INPUT_ACCEPT}
         onChange={onChange}
         className="block w-full rounded-lg border border-neutral-700 bg-neutral-900 p-2 text-sm"
       />
