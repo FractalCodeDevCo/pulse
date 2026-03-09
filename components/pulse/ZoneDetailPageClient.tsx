@@ -285,8 +285,10 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
       rollPlacement: {
         totalRollsUsed,
         rollLengthFit,
-        compactionMethod,
         rollLabelsCount: rollColorLabels.length,
+      },
+      compaction: {
+        method: compactionMethod,
       },
       sewing: {
         totalSeams: sewingTotalSeams,
@@ -309,8 +311,8 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
     quickNotes,
     totalRollsUsed,
     rollLengthFit,
-    compactionMethod,
     rollColorLabels.length,
+    compactionMethod,
     sewingTotalSeams,
     adhesiveBotes,
     adhesiveCondicion,
@@ -1190,8 +1192,10 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
           rollPlacement: {
             totalRollsUsed: totalRollsUsed.trim() || null,
             rollLengthFit: rollLengthFit || null,
-            compactionMethod: compactionMethod || null,
             rollLabelsCount: rollColorLabels.length,
+          },
+          compaction: {
+            method: compactionMethod || null,
           },
           sewing: {
             totalSeams: sewingTotalSeams.trim() || null,
@@ -1265,8 +1269,10 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
             rollPlacement: {
               totalRollsUsed: totalRollsUsed.trim() || null,
               rollLengthFit: rollLengthFit || null,
-              compactionMethod: compactionMethod || null,
               rollLabelsCount: rollColorLabels.length,
+            },
+            compaction: {
+              method: compactionMethod || null,
             },
             sewing: {
               totalSeams: sewingTotalSeams.trim() || null,
@@ -1530,19 +1536,6 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                                 <option value="red">Red - Falta/Sobra demasiado</option>
                               </select>
                             </label>
-                            <label className="block space-y-2">
-                              <span className="text-sm text-neutral-300">Compaction Method</span>
-                              <select
-                                value={compactionMethod}
-                                onChange={(event) => setCompactionMethod(event.target.value as "Plate" | "Roller" | "Manual" | "")}
-                                className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
-                              >
-                                <option value="">Selecciona</option>
-                                <option value="Plate">Plate</option>
-                                <option value="Roller">Roller</option>
-                                <option value="Manual">Manual</option>
-                              </select>
-                            </label>
                           </div>
 
                           <label className="block space-y-2">
@@ -1688,7 +1681,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                             </div>
                           </div>
 
-                          <div className="grid gap-2 sm:grid-cols-3">
+                          <div className="grid gap-2 sm:grid-cols-1">
                             <button
                               type="button"
                               onClick={() => setSurfaceFirm((prev) => !prev)}
@@ -1698,39 +1691,15 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                             >
                               Surface Firm: {surfaceFirm ? "Yes" : "No"}
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => setMoistureOk((prev) => !prev)}
-                              className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
-                                moistureOk ? "border-emerald-500 bg-emerald-500/20 text-emerald-200" : "border-neutral-700"
-                              }`}
-                            >
-                              Moisture OK: {moistureOk ? "Yes" : "No"}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setDoubleCompaction((prev) => !prev)}
-                              className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
-                                doubleCompaction ? "border-emerald-500 bg-emerald-500/20 text-emerald-200" : "border-neutral-700"
-                              }`}
-                            >
-                              Double: {doubleCompaction ? "Yes" : "No"}
-                            </button>
                           </div>
                           <p className="text-xs text-neutral-400">
                             Puedes guardar sin fotos o usando las primeras fotos de zona.
                           </p>
 
-                          <div className="grid gap-2 sm:grid-cols-2">
+                          <div className="grid gap-2 sm:grid-cols-1">
                             <div className="rounded-xl border border-neutral-700 px-3 py-3 text-center text-xs text-neutral-400">
                               Roll Placement se guarda con Guardar flujo
                             </div>
-                            <Link
-                              href={`/pulse/roll-verification?${query}`}
-                              className="rounded-xl border border-cyan-500 py-3 text-center font-semibold text-cyan-300 hover:bg-cyan-500/10"
-                            >
-                              Roll Verification
-                            </Link>
                           </div>
 
                           <Link
@@ -2069,16 +2038,6 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                             />
                           </label>
 
-                          <label className="block space-y-2">
-                            <span className="text-sm text-neutral-300">Nota rápida (opcional)</span>
-                            <textarea
-                              rows={2}
-                              value={quickNotes[step.key] ?? ""}
-                              onChange={(event) => setQuickNotes((prev) => ({ ...prev, [step.key]: event.target.value }))}
-                              className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
-                            />
-                          </label>
-
                           <p className="rounded-xl border border-neutral-700 px-3 py-3 text-center text-xs text-neutral-400">
                             Sewing se guarda con Guardar flujo
                           </p>
@@ -2096,19 +2055,50 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                         </>
                       ) : null}
 
-                      {step.key !== "ROLL_PLACEMENT" && step.key !== "ADHESIVE" && step.key !== "MATERIAL" && step.key !== "SEWING" ? (
+                      {step.key === "COMPACT" ? (
                         <>
                           <label className="block space-y-2">
-                            <span className="text-sm text-neutral-300">Nota rápida (opcional)</span>
-                            <textarea
-                              rows={2}
-                              value={quickNotes[step.key] ?? ""}
-                              onChange={(event) =>
-                                setQuickNotes((prev) => ({ ...prev, [step.key]: event.target.value }))
-                              }
+                            <span className="text-sm text-neutral-300">Tipo de compactación</span>
+                            <select
+                              value={compactionMethod}
+                              onChange={(event) => setCompactionMethod(event.target.value as "Plate" | "Roller" | "Manual" | "")}
                               className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
-                            />
+                            >
+                              <option value="">Selecciona</option>
+                              <option value="Plate">Plate</option>
+                              <option value="Roller">Roller</option>
+                              <option value="Manual">Manual</option>
+                            </select>
                           </label>
+                          <button
+                            type="button"
+                            onClick={() => toggleStep(step.key)}
+                            className="w-full rounded-xl border border-neutral-600 py-3 font-semibold hover:bg-neutral-800"
+                          >
+                            Marcar paso {step.label}
+                          </button>
+                          <p className="rounded-xl border border-neutral-700 px-3 py-3 text-center text-xs text-neutral-400">
+                            Este paso se guarda con Guardar flujo
+                          </p>
+                          {stepSaveErrors[step.key] ? (
+                            <p className="rounded-xl border border-red-500/70 bg-red-500/10 p-3 text-sm text-red-300">
+                              {stepSaveErrors[step.key]}
+                            </p>
+                          ) : null}
+                          {stepSaveMessages[step.key] ? (
+                            <p className="rounded-xl border border-emerald-500/70 bg-emerald-500/10 p-3 text-sm text-emerald-300">
+                              {stepSaveMessages[step.key]}
+                            </p>
+                          ) : null}
+                        </>
+                      ) : null}
+
+                      {step.key !== "ROLL_PLACEMENT" &&
+                      step.key !== "ADHESIVE" &&
+                      step.key !== "MATERIAL" &&
+                      step.key !== "SEWING" &&
+                      step.key !== "COMPACT" ? (
+                        <>
                           <button
                             type="button"
                             onClick={() => toggleStep(step.key)}
