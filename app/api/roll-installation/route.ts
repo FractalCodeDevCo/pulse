@@ -2,6 +2,7 @@ import { randomUUID } from "crypto"
 import { NextResponse } from "next/server"
 
 import { requireAuth } from "../../../lib/auth/guard"
+import { writeUnifiedCaptures } from "../../../lib/captures/writeUnifiedCaptures"
 import { computeCompactionRisk, computeRollInstallRisk, normalizeSemaforo } from "../../../lib/metricsV0"
 import { uploadDataUrlToStorage } from "../../../lib/storage/safeUpload"
 import { getSupabaseAdminClient } from "../../../lib/supabase/server"
@@ -194,6 +195,8 @@ export async function POST(request: Request) {
     ) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
+    const projectId = body.project_id
+    const projectZoneId = body.project_zone_id
     if (body.total_rolls_used !== undefined && toNonNegativeInt(body.total_rolls_used) === null) {
       return NextResponse.json({ error: "total_rolls_used must be an integer >= 0" }, { status: 400 })
     }
@@ -203,7 +206,7 @@ export async function POST(request: Request) {
 
     const supabase = getSupabaseAdminClient()
     const rollSem = normalizeSemaforo(normalizedRollLengthFit) as TrafficLight
-    const wrongRollIncident = await hasWrongRollIncident(supabase, body.project_id, body.project_zone_id)
+    const wrongRollIncident = await hasWrongRollIncident(supabase, projectId, projectZoneId)
     const rollRisk = computeRollInstallRisk({
       rollLengthSem: rollSem,
       seamsCount: normalizedTotalSeams,
@@ -227,8 +230,8 @@ export async function POST(request: Request) {
     const existingRecord = await supabase
       .from("roll_installation")
       .select("*")
-      .eq("project_id", body.project_id)
-      .eq("project_zone_id", body.project_zone_id)
+      .eq("project_id", projectId)
+      .eq("project_zone_id", projectZoneId)
       .eq("capture_session_id", body.capture_session_id)
       .maybeSingle()
 
@@ -254,8 +257,8 @@ export async function POST(request: Request) {
     const captureStatus = requestedStatus
     const baseRow = {
       id,
-      project_id: body.project_id,
-      project_zone_id: body.project_zone_id,
+      project_id: projectId,
+      project_zone_id: projectZoneId,
       field_type: body.field_type ?? null,
       macro_zone: body.macro_zone ?? null,
       micro_zone: body.micro_zone ?? null,
@@ -298,85 +301,54 @@ export async function POST(request: Request) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    const rollInstallCaptureRow = {
-      project_id: body.project_id,
-      zone_id: body.project_zone_id,
-      seams_count: normalizedTotalSeams,
-      photos: uploadedPhotos,
-      capture_session_id: body.capture_session_id,
-      capture_status: captureStatus,
-      roll_length_sem: rollSem,
-      risk_score: rollRisk.riskScore,
-    }
-
-    let rollCaptureError: { message: string } | null = null
-    const rollCaptureUpsert = await supabase
-      .from("captures_roll_install")
-      .upsert(rollInstallCaptureRow, { onConflict: "project_id,zone_id,capture_session_id" })
-      .select("id")
-      .single()
-    rollCaptureError = rollCaptureUpsert.error
-
-    if (rollCaptureError && hasOnConflictConstraintError(rollCaptureError.message)) {
-      const rollCaptureFallback = await supabase
-        .from("captures_roll_install")
-        .insert(rollInstallCaptureRow)
-        .select("id")
-        .single()
-      rollCaptureError = rollCaptureFallback.error
-    }
-
-    if (rollCaptureError && !isSchemaCompatibilityError(rollCaptureError.message)) {
-      console.error("[roll-installation-api] captures_roll_install_failed", {
-        error: rollCaptureError.message,
-        projectId: body.project_id,
-        projectZoneId: body.project_zone_id,
-      })
-    }
-
-    const compactionCaptureRow = {
-      project_id: body.project_id,
-      zone_id: body.project_zone_id,
-      surface_firm: Boolean(normalizedSurfaceFirm),
-      moisture_ok: Boolean(normalizedMoistureOk),
-      double_compaction: Boolean(normalizedDoubleCompaction),
-      method: normalizedCompactionMethod,
-      photos: uploadedPhotos,
-      capture_session_id: body.capture_session_id,
-      capture_status: captureStatus,
-      compaction_risk_score: compactionRisk.riskScore,
-      compaction_traffic: compactionRisk.traffic,
-    }
-
-    let compactionCaptureError: { message: string } | null = null
-    const compactionCaptureUpsert = await supabase
-      .from("captures_compaction")
-      .upsert(compactionCaptureRow, { onConflict: "project_id,zone_id,capture_session_id" })
-      .select("id")
-      .single()
-    compactionCaptureError = compactionCaptureUpsert.error
-
-    if (compactionCaptureError && hasOnConflictConstraintError(compactionCaptureError.message)) {
-      const compactionCaptureFallback = await supabase
-        .from("captures_compaction")
-        .insert(compactionCaptureRow)
-        .select("id")
-        .single()
-      compactionCaptureError = compactionCaptureFallback.error
-    }
-
-    if (compactionCaptureError && !isSchemaCompatibilityError(compactionCaptureError.message)) {
-      console.error("[roll-installation-api] captures_compaction_failed", {
-        error: compactionCaptureError.message,
-        projectId: body.project_id,
-        projectZoneId: body.project_zone_id,
-      })
+    if (uploadedPhotos.length > 0) {
+      try {
+        await writeUnifiedCaptures({
+          supabase,
+          captures: uploadedPhotos.map((photo) => ({
+            projectId,
+            phase: "roll_install",
+            imageUrl: photo.url,
+            crew: auth.context.email,
+            zone: body.zone ?? body.micro_zone ?? body.macro_zone ?? null,
+            metadata: {
+              projectZoneId,
+              captureSessionId: body.capture_session_id,
+              captureStatus,
+              fieldType: body.field_type ?? null,
+              macroZone: body.macro_zone ?? null,
+              microZone: body.micro_zone ?? null,
+              zoneType: body.zone_type ?? null,
+              rollLengthFit: normalizedRollLengthFit,
+              totalRollsUsed: normalizedTotalRollsUsed,
+              totalSeams: normalizedTotalSeams,
+              rollLengthSem: rollSem,
+              rollRiskScore: rollRisk.riskScore,
+              compaction: {
+                surfaceFirm: Boolean(normalizedSurfaceFirm),
+                moistureOk: Boolean(normalizedMoistureOk),
+                doubleCompaction: Boolean(normalizedDoubleCompaction),
+                method: normalizedCompactionMethod,
+                riskScore: compactionRisk.riskScore,
+                traffic: compactionRisk.traffic,
+              },
+              photoType: photo.type,
+            },
+          })),
+        })
+      } catch (captureError) {
+        console.error("[roll-installation-api] unified_captures_insert_failed", {
+          error: captureError instanceof Error ? captureError.message : "unknown",
+          projectId,
+          projectZoneId,
+        })
+      }
     }
 
     console.log("[roll-installation-api] save_success", {
       id: data?.id ?? null,
-      projectId: body.project_id,
-      projectZoneId: body.project_zone_id,
+      projectId,
+      projectZoneId,
       rollRisk: rollRisk.riskScore,
       compactionRisk: compactionRisk.riskScore,
     })

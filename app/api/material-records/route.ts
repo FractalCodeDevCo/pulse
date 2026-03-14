@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { requireAuth } from "../../../lib/auth/guard"
+import { writeUnifiedCaptures } from "../../../lib/captures/writeUnifiedCaptures"
 import { computeMaterialPass } from "../../../lib/metricsV0"
 import { uploadDataUrlToStorage } from "../../../lib/storage/safeUpload"
 import { getSupabaseAdminClient } from "../../../lib/supabase/server"
@@ -109,6 +110,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
 
+    const projectId = body.projectId
+
     if (body.valvula < 1 || body.valvula > 6) {
       return NextResponse.json({ error: "Valve must be between 1 and 6" }, { status: 400 })
     }
@@ -146,7 +149,7 @@ export async function POST(request: Request) {
     const existingRecord = await supabase
       .from("material_records")
       .select("*")
-      .eq("project_id", body.projectId)
+      .eq("project_id", projectId)
       .eq("capture_session_id", body.captureSessionId)
       .maybeSingle()
 
@@ -163,7 +166,7 @@ export async function POST(request: Request) {
     const inputPhotos = body.fotos ?? []
     const fotoUrls: string[] = []
     for (let index = 0; index < inputPhotos.length; index += 1) {
-      fotoUrls.push(await uploadMaterialPhoto(supabase, inputPhotos[index], body.projectId, index))
+      fotoUrls.push(await uploadMaterialPhoto(supabase, inputPhotos[index], projectId, index))
     }
 
     const captureStatus = normalizeCaptureStatus(body.captureStatus)
@@ -171,7 +174,7 @@ export async function POST(request: Request) {
     let { data, error } = await supabase
       .from("material_records")
       .insert({
-        project_id: body.projectId,
+        project_id: projectId,
         project_zone_id: body.projectZoneId ?? null,
         capture_session_id: body.captureSessionId,
         capture_status: captureStatus,
@@ -194,7 +197,7 @@ export async function POST(request: Request) {
       const fallback = await supabase
         .from("material_records")
         .insert({
-          project_id: body.projectId,
+          project_id: projectId,
           field_type: body.fieldType ?? null,
           tipo_material: body.tipoMaterial,
           tipo_pasada: body.tipoPasada,
@@ -217,49 +220,46 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    const materialPassRow = {
-      project_id: body.projectId,
-      zone_id: body.projectZoneId ?? null,
-      pass_number: passNumber,
-      bags_expected_per_pass: body.bolsasEsperadas,
-      bags_used: body.bolsasUtilizadas,
-      valve_setting: body.valvula,
-      photos: fotoUrls,
-      capture_session_id: body.captureSessionId,
-      capture_status: captureStatus,
-      deviation: materialMetrics.deviation,
-      valve_next_delta: materialMetrics.valveDelta,
-      valve_next_setting: materialMetrics.valveNext,
-    }
-
-    let materialPassError: { message: string } | null = null
-    const materialPassUpsert = await supabase
-      .from("captures_material_pass")
-      .upsert(materialPassRow, { onConflict: "project_id,zone_id,capture_session_id" })
-      .select("id")
-      .single()
-    materialPassError = materialPassUpsert.error
-
-    if (materialPassError && hasOnConflictConstraintError(materialPassError.message)) {
-      const materialPassFallback = await supabase
-        .from("captures_material_pass")
-        .insert(materialPassRow)
-        .select("id")
-        .single()
-      materialPassError = materialPassFallback.error
-    }
-
-    if (materialPassError && !isSchemaCompatibilityError(materialPassError.message)) {
-      console.error("[material-api] captures_material_pass_failed", {
-        error: materialPassError.message,
-        projectId: body.projectId,
-        projectZoneId: body.projectZoneId,
-      })
+    if (fotoUrls.length > 0) {
+      try {
+        await writeUnifiedCaptures({
+          supabase,
+          captures: fotoUrls.map((imageUrl) => ({
+            projectId,
+            phase: "material",
+            imageUrl,
+            crew: auth.context.email,
+            notes: body.observaciones?.trim() || null,
+            metadata: {
+              projectZoneId: body.projectZoneId ?? null,
+              captureSessionId: body.captureSessionId,
+              captureStatus,
+              fieldType: body.fieldType ?? null,
+              zoneType: body.zoneType ?? null,
+              passNumber,
+              tipoMaterial: body.tipoMaterial,
+              tipoPasada: body.tipoPasada,
+              valvula: body.valvula,
+              bolsasEsperadas: body.bolsasEsperadas,
+              bolsasUtilizadas: body.bolsasUtilizadas,
+              deviation: materialMetrics.deviation,
+              valveNextDelta: materialMetrics.valveDelta,
+              valveNextSetting: materialMetrics.valveNext,
+            },
+          })),
+        })
+      } catch (captureError) {
+        console.error("[material-api] unified_captures_insert_failed", {
+          error: captureError instanceof Error ? captureError.message : "unknown",
+          projectId,
+          projectZoneId: body.projectZoneId,
+        })
+      }
     }
 
     console.log("[material-api] save_success", {
       id: data?.id ?? null,
-      projectId: body.projectId,
+      projectId,
       projectZoneId: body.projectZoneId ?? null,
       deviation: summary.deviation_percent,
       valveNext: summary.valve_next,

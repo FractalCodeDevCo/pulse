@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 
 import { requireAuth } from "../../../lib/auth/guard"
 import { extractFieldRecordMetadata, recordCaptureEvent, recordMetadataVersion } from "../../../lib/audit/captureAudit"
+import { writeUnifiedCaptures } from "../../../lib/captures/writeUnifiedCaptures"
 import { computeGlueMetrics } from "../../../lib/metricsV0"
 import { uploadDataUrlToStorage } from "../../../lib/storage/safeUpload"
 import { getSupabaseAdminClient } from "../../../lib/supabase/server"
@@ -184,6 +185,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid module for production records" }, { status: 400 })
     }
 
+    const projectId = body.projectId
     const supabase = getSupabaseAdminClient()
     const projectZoneId = toStringOrNull(body.payload.project_zone_id)
     const captureSessionId = toStringOrNull(body.payload.capture_session_id)
@@ -226,11 +228,11 @@ export async function POST(request: Request) {
     const photosUrls: string[] = []
 
     for (let index = 0; index < photoCandidates.length; index += 1) {
-      photosUrls.push(await uploadDataUrl(supabase, photoCandidates[index], body.projectId, body.module, `${body.module}_${index}`))
+      photosUrls.push(await uploadDataUrl(supabase, photoCandidates[index], projectId, body.module, `${body.module}_${index}`))
     }
 
     const unifiedPayload: UnifiedCapturePayload = {
-      projectId: body.projectId,
+      projectId,
       moduleType: body.module,
       fieldType: body.fieldType ?? null,
       zone: (typeof body.payload.zone === "string" ? body.payload.zone : null),
@@ -267,7 +269,7 @@ export async function POST(request: Request) {
     })
 
     const insertRow = {
-      project_id: body.projectId,
+      project_id: projectId,
       module: body.module,
       field_type: body.fieldType ?? null,
       project_zone_id: projectZoneId,
@@ -302,7 +304,7 @@ export async function POST(request: Request) {
       const fallback = await supabase
         .from("field_records")
         .insert({
-          project_id: body.projectId,
+          project_id: projectId,
           module: body.module,
           field_type: body.fieldType ?? null,
           macro_zone: macroZone,
@@ -319,7 +321,7 @@ export async function POST(request: Request) {
       console.error("[capture-api] insert_failed", {
         error: error.message,
         module: body.module,
-        projectId: body.projectId,
+        projectId,
       })
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
@@ -354,7 +356,7 @@ export async function POST(request: Request) {
             console.error("[capture-api] glue_baseline_read_failed", {
               error: baselineRead.error.message,
               zoneType,
-              projectId: body.projectId,
+              projectId,
             })
           }
         } else if (baselineRead.data?.mu !== null && baselineRead.data?.mu !== undefined) {
@@ -380,56 +382,7 @@ export async function POST(request: Request) {
           console.error("[capture-api] glue_baseline_upsert_failed", {
             error: baselineUpsert.error.message,
             zoneType,
-            projectId: body.projectId,
-          })
-        }
-
-        const glueInsertRow = {
-          project_id: body.projectId,
-          zone_id: projectZoneId,
-          linear_ft_est: linearFtEst,
-          cans_used: cansUsed,
-          temp_bucket: tempBucket,
-          humidity_bucket: humidityBucket,
-          photos: photosUrls,
-          capture_session_id: captureSessionId,
-          capture_status: captureStatus,
-          r: glueMetrics.r,
-          mu: glueMetrics.muAfter,
-          ratio_to_baseline: glueMetrics.ratioToBaseline,
-          traffic_light: glueMetrics.traffic,
-          predicted_cans: glueMetrics.predictedCans,
-          savings_usd: glueMetrics.savingsUsd,
-        }
-
-        let glueWriteError: { message: string } | null = null
-        if (captureSessionId && projectZoneId) {
-          const glueUpsert = await supabase
-            .from("captures_glue")
-            .upsert(glueInsertRow, { onConflict: "project_id,zone_id,capture_session_id" })
-            .select("id")
-            .single()
-          glueWriteError = glueUpsert.error
-
-          if (glueWriteError && hasOnConflictConstraintError(glueWriteError.message)) {
-            const glueFallback = await supabase
-              .from("captures_glue")
-              .insert(glueInsertRow)
-              .select("id")
-              .single()
-            glueWriteError = glueFallback.error
-          }
-        } else {
-          const glueInsert = await supabase.from("captures_glue").insert(glueInsertRow).select("id").single()
-          glueWriteError = glueInsert.error
-        }
-
-        if (glueWriteError && !isSchemaCompatibilityError(glueWriteError.message)) {
-          console.error("[capture-api] captures_glue_insert_failed", {
-            error: glueWriteError.message,
-            projectId: body.projectId,
-            projectZoneId,
-            captureSessionId,
+              projectId,
           })
         }
 
@@ -448,6 +401,48 @@ export async function POST(request: Request) {
       }
     }
 
+    if (photosUrls.length > 0) {
+      const unifiedPhase = body.module === "pegada" ? "glue" : body.module === "compactacion" ? "compaction" : phase
+      const note =
+        toStringOrNull(body.payload.note) ??
+        toStringOrNull(body.payload.notes) ??
+        toStringOrNull(body.payload.observaciones) ??
+        null
+
+      try {
+        await writeUnifiedCaptures({
+          supabase,
+          captures: photosUrls.map((imageUrl) => ({
+            projectId,
+            phase: unifiedPhase,
+            imageUrl,
+            timestamp: unifiedPayload.createdAt,
+            crew: auth.context.email,
+            zone: unifiedPayload.zone ?? microZone ?? macroZone,
+            notes: note,
+            metadata: {
+              module: body.module,
+              fieldType: body.fieldType ?? null,
+              projectZoneId,
+              captureSessionId,
+              captureStatus,
+              macroZone,
+              microZone,
+              internalPhase: phase,
+              summary,
+              payload: unifiedPayload.metadata,
+            },
+          })),
+        })
+      } catch (captureError) {
+        console.error("[capture-api] unified_captures_insert_failed", {
+          error: captureError instanceof Error ? captureError.message : "unknown",
+          module: body.module,
+          projectId,
+        })
+      }
+    }
+
     log("insert_success", {
       id: data.id as string | null,
       module: data.module as string | null,
@@ -457,7 +452,7 @@ export async function POST(request: Request) {
     const insertedId = typeof data.id === "string" ? data.id : null
     if (insertedId) {
       await recordMetadataVersion({
-        projectId: body.projectId,
+        projectId,
         sourceTable: "field_records",
         captureId: insertedId,
         module: body.module,
@@ -467,7 +462,7 @@ export async function POST(request: Request) {
       })
 
       await recordCaptureEvent({
-        projectId: body.projectId,
+        projectId,
         sourceTable: "field_records",
         captureId: insertedId,
         module: body.module ?? null,

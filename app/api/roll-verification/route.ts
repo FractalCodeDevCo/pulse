@@ -2,6 +2,7 @@ import { randomUUID } from "crypto"
 import { NextResponse } from "next/server"
 
 import { requireAuth } from "../../../lib/auth/guard"
+import { writeUnifiedCaptures } from "../../../lib/captures/writeUnifiedCaptures"
 import { getSupabaseAdminClient } from "../../../lib/supabase/server"
 
 export const runtime = "nodejs"
@@ -101,21 +102,33 @@ export async function POST(request: Request) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    const captureRow = {
-      project_id: body.project_id,
-      zone_id: body.project_zone_id ?? null,
-      label_photo: photoUrl,
-      roll_length_ft: typeof body.length_ft === "number" ? body.length_ft : null,
-      roll_width_ft: null,
-      product_code: null,
-      color: body.color_letter?.trim() || null,
-      verification_status: body.status === "Mismatch" ? "mismatch" : "ok",
-    }
-
-    const captureInsert = await supabase.from("captures_roll_verify").insert(captureRow).select("id").single()
-    if (captureInsert.error && !isSchemaCompatibilityError(captureInsert.error.message)) {
-      console.error("[roll-verification-api] captures_roll_verify_failed", {
-        error: captureInsert.error.message,
+    try {
+      await writeUnifiedCaptures({
+        supabase,
+        captures: [
+          {
+            projectId: body.project_id,
+            phase: "verify",
+            imageUrl: photoUrl,
+            crew: auth.context.email,
+            zone: body.zone ?? body.micro_zone ?? body.macro_zone ?? null,
+            notes: body.notes?.trim() || null,
+            metadata: {
+              projectZoneId: body.project_zone_id ?? null,
+              fieldType: body.field_type ?? null,
+              macroZone: body.macro_zone ?? null,
+              microZone: body.micro_zone ?? null,
+              zoneType: body.zone_type ?? null,
+              lengthFt: typeof body.length_ft === "number" ? body.length_ft : null,
+              colorLetter: body.color_letter?.trim() || null,
+              verificationStatus: body.status === "Mismatch" ? "mismatch" : "ok",
+            },
+          },
+        ],
+      })
+    } catch (captureError) {
+      console.error("[roll-verification-api] unified_captures_insert_failed", {
+        error: captureError instanceof Error ? captureError.message : "unknown",
         projectId: body.project_id ?? null,
         projectZoneId: body.project_zone_id ?? null,
       })

@@ -16,6 +16,7 @@ const BACKUP_TABLES = [
   "incidences",
   "roll_verification",
   "roll_verifications",
+  "captures",
   "zone_daily_snapshots",
 ] as const
 

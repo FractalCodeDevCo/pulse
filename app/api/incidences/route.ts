@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { requireAuth } from "../../../lib/auth/guard"
+import { writeUnifiedCaptures } from "../../../lib/captures/writeUnifiedCaptures"
 import { getSupabaseAdminClient } from "../../../lib/supabase/server"
 
 export const runtime = "nodejs"
@@ -110,6 +111,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing required incidence fields" }, { status: 400 })
     }
 
+    const projectId = body.project_id
+
     const sourcePhotos = Array.isArray(body.photos) ? body.photos.filter((p) => typeof p === "string") : []
     if (sourcePhotos.length < 1 || sourcePhotos.length > 3) {
       return NextResponse.json({ error: "Photos must be between 1 and 3" }, { status: 400 })
@@ -119,11 +122,11 @@ export async function POST(request: Request) {
     const photoUrls: string[] = []
 
     for (let index = 0; index < sourcePhotos.length; index += 1) {
-      photoUrls.push(await uploadDataUrl(supabase, sourcePhotos[index], body.project_id, `incidence_${index}`))
+      photoUrls.push(await uploadDataUrl(supabase, sourcePhotos[index], projectId, `incidence_${index}`))
     }
 
     const payload = {
-      project_id: body.project_id,
+      project_id: projectId,
       project_zone_id: body.project_zone_id ?? null,
       module: "incidence",
       macro_zone: body.macro_zone,
@@ -137,7 +140,7 @@ export async function POST(request: Request) {
     }
 
     log("insert_attempt", {
-      projectId: body.project_id,
+      projectId,
       macroZone: body.macro_zone,
       microZone: body.micro_zone,
       photosCount: photoUrls.length,
@@ -146,7 +149,7 @@ export async function POST(request: Request) {
     const { data, error } = await supabase
       .from("incidences")
       .insert({
-        project_id: body.project_id,
+        project_id: projectId,
         project_zone_id: body.project_zone_id ?? null,
         field_type: body.field_type ?? null,
         macro_zone: body.macro_zone,
@@ -165,7 +168,7 @@ export async function POST(request: Request) {
     if (error) {
       console.error("[incidences-api] insert_failed", {
         error: error.message,
-        projectId: body.project_id,
+        projectId,
       })
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
@@ -175,7 +178,7 @@ export async function POST(request: Request) {
     const incidentInsert = await supabase
       .from("incidents")
       .insert({
-        project_id: body.project_id,
+        project_id: projectId,
         zone_id: body.project_zone_id ?? null,
         type: incidentType,
         severity: incidentSeverity,
@@ -188,7 +191,36 @@ export async function POST(request: Request) {
     if (incidentInsert.error && !isSchemaCompatibilityError(incidentInsert.error.message)) {
       console.error("[incidences-api] incidents_insert_failed", {
         error: incidentInsert.error.message,
-        projectId: body.project_id,
+        projectId,
+      })
+    }
+
+    try {
+      await writeUnifiedCaptures({
+        supabase,
+        captures: photoUrls.map((imageUrl) => ({
+          projectId,
+          phase: "incident",
+          imageUrl,
+          crew: auth.context.email,
+          zone: body.micro_zone ?? body.macro_zone ?? null,
+          notes: body.note ?? null,
+          metadata: {
+            projectZoneId: body.project_zone_id ?? null,
+            fieldType: body.field_type ?? null,
+            macroZone: body.macro_zone,
+            microZone: body.micro_zone,
+            zoneType: body.zone_type ?? null,
+            typeOfIncidence: body.type_of_incidence,
+            impactLevel: body.impact_level ?? body.priority_level,
+            priorityLevel: body.priority_level,
+          },
+        })),
+      })
+    } catch (captureError) {
+      console.error("[incidences-api] unified_captures_insert_failed", {
+        error: captureError instanceof Error ? captureError.message : "unknown",
+          projectId,
       })
     }
 

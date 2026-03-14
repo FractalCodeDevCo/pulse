@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { requireAuth } from "../../../lib/auth/guard"
+import { writeUnifiedCaptures } from "../../../lib/captures/writeUnifiedCaptures"
 import { getSupabaseAdminClient } from "../../../lib/supabase/server"
 
 export const runtime = "nodejs"
@@ -72,13 +73,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing required verification fields" }, { status: 400 })
     }
 
+    const projectId = body.project_id
+
     if (body.status === "rejected" && !body.rejection_reason?.trim()) {
       return NextResponse.json({ error: "Rejection reason is required" }, { status: 400 })
     }
 
-    const labelPhotoUrl = await uploadLabelPhoto(body.label_photo, body.project_id)
+    const labelPhotoUrl = await uploadLabelPhoto(body.label_photo, projectId)
     const payload = {
-      project_id: body.project_id,
+      project_id: projectId,
       module: "roll_verification",
       macro_zone: body.macro_zone,
       micro_zone: body.micro_zone,
@@ -111,9 +114,40 @@ export async function POST(request: Request) {
       .single()
 
     if (error) {
-      console.error("[roll-verifications-api] insert_failed", { error: error.message, projectId: body.project_id })
+      console.error("[roll-verifications-api] insert_failed", { error: error.message, projectId })
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
+
+    try {
+      await writeUnifiedCaptures({
+        supabase,
+        captures: [
+          {
+            projectId,
+            phase: "verify",
+            imageUrl: labelPhotoUrl,
+            crew: auth.context.email,
+            zone: body.micro_zone ?? body.macro_zone ?? null,
+            notes: body.rejection_reason?.trim() ?? null,
+            metadata: {
+              fieldType: body.field_type,
+              macroZone: body.macro_zone,
+              microZone: body.micro_zone,
+              rollColor: body.roll_color,
+              rollFeetTotal: body.roll_feet_total,
+              rollLotId: body.roll_lot_id ?? null,
+              status: body.status,
+              rejectionReason: body.status === "rejected" ? body.rejection_reason?.trim() ?? null : null,
+            },
+          },
+        ],
+      })
+    } catch (captureError) {
+        console.error("[roll-verifications-api] unified_captures_insert_failed", {
+          error: captureError instanceof Error ? captureError.message : "unknown",
+          projectId,
+        })
+      }
 
     return NextResponse.json(data)
   } catch (error) {

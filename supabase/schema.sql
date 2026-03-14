@@ -446,104 +446,28 @@ create table if not exists public.glue_baselines (
   updated_at timestamptz not null default now()
 );
 
-create table if not exists public.captures_glue (
+create table if not exists public.captures (
   id uuid primary key default gen_random_uuid(),
   project_id text not null,
-  zone_id text,
-  linear_ft_est numeric not null,
-  cans_used numeric not null,
-  temp_bucket text,
-  humidity_bucket text,
-  photos jsonb not null default '[]'::jsonb,
-  capture_session_id text,
-  capture_status text not null default 'complete',
-  r numeric,
-  mu numeric,
-  ratio_to_baseline numeric,
-  traffic_light text,
-  predicted_cans numeric,
-  savings_usd numeric,
-  created_at timestamptz not null default now()
+  phase text not null,
+  image_url text not null,
+  timestamp timestamptz not null default now(),
+  crew text,
+  zone text,
+  notes text,
+  metadata jsonb not null default '{}'::jsonb
 );
 
-create index if not exists idx_captures_glue_project on public.captures_glue(project_id);
-create index if not exists idx_captures_glue_zone on public.captures_glue(zone_id);
-create index if not exists idx_captures_glue_created_at on public.captures_glue(created_at desc);
+create index if not exists idx_captures_project on public.captures(project_id);
+create index if not exists idx_captures_phase on public.captures(phase);
+create index if not exists idx_captures_zone on public.captures(zone);
+create index if not exists idx_captures_timestamp on public.captures(timestamp desc);
 
-create table if not exists public.captures_roll_install (
-  id uuid primary key default gen_random_uuid(),
-  project_id text not null,
-  zone_id text,
-  seams_count int not null default 0,
-  photos jsonb not null default '[]'::jsonb,
-  capture_session_id text,
-  capture_status text not null default 'complete',
-  roll_length_sem text not null default 'green',
-  risk_score numeric,
-  created_at timestamptz not null default now()
-);
-
-create index if not exists idx_captures_roll_install_project on public.captures_roll_install(project_id);
-create index if not exists idx_captures_roll_install_zone on public.captures_roll_install(zone_id);
-create index if not exists idx_captures_roll_install_created_at on public.captures_roll_install(created_at desc);
-
-create table if not exists public.captures_roll_verify (
-  id uuid primary key default gen_random_uuid(),
-  project_id text not null,
-  zone_id text,
-  label_photo text not null,
-  roll_length_ft numeric,
-  roll_width_ft numeric,
-  product_code text,
-  color text,
-  verification_status text not null,
-  created_at timestamptz not null default now()
-);
-
-create index if not exists idx_captures_roll_verify_project on public.captures_roll_verify(project_id);
-create index if not exists idx_captures_roll_verify_zone on public.captures_roll_verify(zone_id);
-create index if not exists idx_captures_roll_verify_created_at on public.captures_roll_verify(created_at desc);
-
-create table if not exists public.captures_compaction (
-  id uuid primary key default gen_random_uuid(),
-  project_id text not null,
-  zone_id text,
-  surface_firm boolean not null,
-  moisture_ok boolean not null,
-  double_compaction boolean not null,
-  method text not null,
-  photos jsonb,
-  capture_session_id text,
-  capture_status text not null default 'complete',
-  compaction_risk_score numeric,
-  compaction_traffic text,
-  created_at timestamptz not null default now()
-);
-
-create index if not exists idx_captures_compaction_project on public.captures_compaction(project_id);
-create index if not exists idx_captures_compaction_zone on public.captures_compaction(zone_id);
-create index if not exists idx_captures_compaction_created_at on public.captures_compaction(created_at desc);
-
-create table if not exists public.captures_material_pass (
-  id uuid primary key default gen_random_uuid(),
-  project_id text not null,
-  zone_id text,
-  pass_number int not null,
-  bags_expected_per_pass numeric not null,
-  bags_used numeric not null,
-  valve_setting int not null check (valve_setting between 1 and 6),
-  photos jsonb not null default '[]'::jsonb,
-  capture_session_id text,
-  capture_status text not null default 'complete',
-  deviation numeric,
-  valve_next_delta int,
-  valve_next_setting int check (valve_next_setting between 1 and 6),
-  created_at timestamptz not null default now()
-);
-
-create index if not exists idx_captures_material_pass_project on public.captures_material_pass(project_id);
-create index if not exists idx_captures_material_pass_zone on public.captures_material_pass(zone_id);
-create index if not exists idx_captures_material_pass_created_at on public.captures_material_pass(created_at desc);
+drop table if exists public.captures_glue;
+drop table if exists public.captures_roll_install;
+drop table if exists public.captures_roll_verify;
+drop table if exists public.captures_compaction;
+drop table if exists public.captures_material_pass;
 
 create table if not exists public.incidents (
   id uuid primary key default gen_random_uuid(),
@@ -565,23 +489,6 @@ alter table if exists public.roll_installation add column if not exists roll_len
 alter table if exists public.roll_installation add column if not exists roll_risk_score numeric;
 alter table if exists public.roll_installation add column if not exists compaction_risk_score numeric;
 alter table if exists public.roll_installation add column if not exists compaction_traffic text;
-
--- Session-level dedupe for stable persistence
-create unique index if not exists uq_captures_glue_session
-  on public.captures_glue(project_id, zone_id, capture_session_id)
-  where capture_session_id is not null;
-
-create unique index if not exists uq_captures_roll_install_session
-  on public.captures_roll_install(project_id, zone_id, capture_session_id)
-  where capture_session_id is not null;
-
-create unique index if not exists uq_captures_compaction_session
-  on public.captures_compaction(project_id, zone_id, capture_session_id)
-  where capture_session_id is not null;
-
-create unique index if not exists uq_captures_material_pass_session
-  on public.captures_material_pass(project_id, zone_id, capture_session_id)
-  where capture_session_id is not null;
 
 -- Public technical insights managed from web admin
 create table if not exists public.technical_insights (

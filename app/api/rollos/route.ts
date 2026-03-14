@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 
+import { writeUnifiedCaptures } from "../../../lib/captures/writeUnifiedCaptures"
 import { getSupabaseAdminClient } from "../../../lib/supabase/server"
 import { CompactionType, PhaseStatus, RollLengthStatus } from "../../../types/rollos"
 import { Zone } from "../../../types/zones"
@@ -93,6 +94,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
 
+    const projectId = body.projectId
+
     const photos = (body.photos ?? []).slice(0, 3)
     if (photos.length < 1) {
       return NextResponse.json({ error: "At least one photo is required" }, { status: 400 })
@@ -100,7 +103,7 @@ export async function POST(request: Request) {
 
     const photoUrls: string[] = []
     for (let index = 0; index < photos.length; index += 1) {
-      photoUrls.push(await uploadImage(photos[index], body.projectId, index))
+      photoUrls.push(await uploadImage(photos[index], projectId, index))
     }
 
     const supabase = getSupabaseAdminClient()
@@ -109,7 +112,7 @@ export async function POST(request: Request) {
       .from("rollos")
       .insert({
         zone_id: body.zone,
-        project_id: body.projectId,
+        project_id: projectId,
         field_type: body.fieldType ?? null,
         total_rolls: body.totalRolls,
         total_seams: body.totalSeams,
@@ -139,6 +142,37 @@ export async function POST(request: Request) {
     if (photosError) {
       return NextResponse.json({ error: photosError.message }, { status: 500 })
     }
+
+    try {
+      await writeUnifiedCaptures({
+        supabase,
+        captures: photoUrls.map((imageUrl) => ({
+            projectId,
+          phase: "roll_install",
+          imageUrl,
+          timestamp: body.timestamp ?? new Date().toISOString(),
+          crew: null,
+          zone: String(body.zone),
+          notes: body.observations ?? null,
+          metadata: {
+            fieldType: body.fieldType ?? null,
+            totalRolls: body.totalRolls,
+            totalSeams: body.totalSeams,
+            phaseStatus: body.phaseStatus,
+            compactionType: body.compactionType,
+            surfaceFirm: body.surfaceFirm ?? false,
+            moistureOk: body.moistureOk ?? false,
+            doubleCompaction: body.doubleCompaction ?? false,
+            rollLengthStatus: body.rollLengthStatus,
+          },
+        })),
+      })
+    } catch (captureError) {
+        console.error("[rollos-api] unified_captures_insert_failed", {
+          error: captureError instanceof Error ? captureError.message : "unknown",
+          projectId,
+        })
+      }
 
     const { data: fullData, error: fullError } = await supabase
       .from("rollos")
