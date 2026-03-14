@@ -1,50 +1,94 @@
 import { FieldType } from "./fieldType"
-import { Zone } from "./zones"
+import { MacroZone } from "./zoneHierarchy"
 
-export enum TrafficLightStatus {
-  GREEN = "GREEN",
-  YELLOW = "YELLOW",
-  RED = "RED",
+export enum PhaseStatus {
+  COMPACTING = "COMPACTING",
+  IN_PROGRESS = "IN_PROGRESS",
+  COMPLETED = "COMPLETED",
 }
 
-export enum RollStatusSelection {
-  JUSTO_NORMAL = "JUSTO_NORMAL",
-  FALTO = "FALTO",
-  SOBRO = "SOBRO",
-  SOBRO_DEMASIADO = "SOBRO_DEMASIADO",
+export enum CompactionType {
+  PLATE = "PLATE",
+  ROLLER = "ROLLER",
+  MANUAL = "MANUAL",
 }
 
-export interface RollLabelData {
-  length: number
-  color?: string
-  dyeLot?: string
-  rollId?: string
+export enum RollLengthStatus {
+  NORMAL = "NORMAL",
+  JUSTO = "JUSTO",
+  MAJOR_MISMATCH = "MAJOR_MISMATCH",
 }
 
 export interface RollosFormValues {
-  zone: Zone | ""
-  labelPhoto: string | null
-  installationPhoto: string | null
-  length: string
-  color: string
-  dyeLot: string
-  rollId: string
-  status: RollStatusSelection | ""
-  comments: string
-  manualOverride: boolean
-  certifiedRoll?: boolean
+  macroZone: MacroZone | ""
+  microZone: string
+  zone: string
+  rollColor: string
+  rollFeetTotal: string
+  rollLotId: string
+  totalRolls: string
+  totalSeams: string
+  plannedFeetNeeded: string
+  preCutCalculated: boolean | null
+  phaseStatus: PhaseStatus | ""
+  compactionType: CompactionType | ""
+  actualFeetUsed: string
+  remainingFeet: string
+  materialShortage: boolean | null
+  reworkRequired: boolean | null
+  criticalEvent: string
+  surfaceFirm: boolean
+  moistureOk: boolean
+  doubleCompaction: boolean
+  rollLengthStatus: RollLengthStatus | ""
+  photos: string[]
+  observations: string
 }
 
 export interface RollosRecord {
+  id?: string
+  projectId: string
   fieldType: FieldType
-  zone: Zone
-  labelData: RollLabelData
-  manualOverride: boolean
-  status: RollStatusSelection
-  trafficLightStatus: TrafficLightStatus
-  comments?: string
-  labelPhoto?: string
-  installationPhoto?: string
-  certifiedRoll?: boolean
+  zone: string
+  macro_zone: MacroZone
+  micro_zone: string
+  rollColor: string
+  rollFeetTotal: number
+  rollLotId?: string
+  totalRolls: number
+  totalSeams: number
+  plannedFeetNeeded: number
+  preCutCalculated: boolean
+  phaseStatus: PhaseStatus
+  compactionType: CompactionType
+  actualFeetUsed: number
+  remainingFeet: number
+  materialShortage: boolean
+  reworkRequired: boolean
+  criticalEvent?: string
+  surfaceFirm: boolean
+  moistureOk: boolean
+  doubleCompaction: boolean
+  rollLengthStatus: RollLengthStatus
+  photos: string[]
+  observations?: string
   timestamp: string
+}
+
+export interface RollosRow {
+  id: string
+  zone_id: string
+  project_id: string | null
+  field_type: string | null
+  total_rolls: number
+  total_seams: number
+  phase_status: PhaseStatus
+  compaction_type: CompactionType
+  surface_firm: boolean
+  moisture_ok: boolean
+  double_compaction: boolean
+  roll_length_status: RollLengthStatus
+  observations: string | null
+  created_at: string
+  rollos_photos: Array<{ image_url: string }> | null
 }

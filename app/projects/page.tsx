@@ -4,50 +4,43 @@ export const dynamic = "force-dynamic"
 
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Suspense, useMemo, useState } from "react"
+import { Suspense, useEffect, useMemo, useState } from "react"
 
-import { MOCK_PROJECTS, slugifyProjectName } from "../../lib/projects"
+import ContextHeader from "../../components/pulse/ContextHeader"
+import { FIELD_TYPE_LABELS, FieldType, saveProjectFieldType } from "../../types/fieldType"
+import {
+  AppProject,
+  createProject,
+  ensureProjectZones,
+  MOCK_PROJECTS,
+  readLastProjectId,
+  readProjectsFromStorage,
+  saveLastProject,
+  saveProjects,
+  slugifyProjectName,
+} from "../../lib/projects"
 
 type FlowMode = "new" | "load"
-type ProjectOption = { id: string; name: string }
 
-const PROJECTS_STORAGE_KEY = "pulse_projects"
-const LAST_PROJECT_STORAGE_KEY = "pulse_last_project"
+function mergeProjects(localProjects: AppProject[], remoteProjects: AppProject[]): AppProject[] {
+  const map = new Map<string, AppProject>()
 
-function readProjectsFromStorage(): ProjectOption[] {
-  if (typeof window === "undefined") return MOCK_PROJECTS
-
-  try {
-    const raw = localStorage.getItem(PROJECTS_STORAGE_KEY)
-    if (!raw) return MOCK_PROJECTS
-    const parsed = JSON.parse(raw) as ProjectOption[]
-    if (Array.isArray(parsed) && parsed.length > 0) return parsed
-  } catch {
-    // fallback
+  for (const project of remoteProjects) {
+    map.set(project.id, project)
+  }
+  for (const project of localProjects) {
+    if (!map.has(project.id)) map.set(project.id, project)
   }
 
-  return MOCK_PROJECTS
+  return [...map.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 }
 
-function readLastProjectId(defaultId: string): string {
-  if (typeof window === "undefined") return defaultId
-
+function formatDate(value: string): string {
   try {
-    const raw = localStorage.getItem(LAST_PROJECT_STORAGE_KEY)
-    if (!raw) return defaultId
-    const parsed = JSON.parse(raw) as string
-    return parsed || defaultId
+    return new Date(value).toLocaleDateString()
   } catch {
-    return defaultId
+    return value
   }
-}
-
-function saveProjects(projects: ProjectOption[]) {
-  localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(projects))
-}
-
-function saveLastProject(projectId: string) {
-  localStorage.setItem(LAST_PROJECT_STORAGE_KEY, JSON.stringify(projectId))
 }
 
 export default function ProjectsPage() {
@@ -64,53 +57,117 @@ function ProjectsPageContent() {
   const flow = (searchParams.get("flow") === "new" ? "new" : "load") as FlowMode
 
   const initialProjects = readProjectsFromStorage()
-  const defaultProjectId = initialProjects[0]?.id ?? ""
+  const defaultProjectId = initialProjects[0]?.id ?? MOCK_PROJECTS[0]?.id ?? ""
 
-  const [projects, setProjects] = useState<ProjectOption[]>(initialProjects)
-  const [selectedProjectId, setSelectedProjectId] = useState<string>(() =>
-    readLastProjectId(defaultProjectId),
-  )
+  const [projects, setProjects] = useState<AppProject[]>(initialProjects)
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(() => readLastProjectId(defaultProjectId))
   const [newProjectName, setNewProjectName] = useState("")
+  const [newProjectSport, setNewProjectSport] = useState<FieldType>("football")
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadCloudProjects() {
+      try {
+        const response = await fetch("/api/projects", { cache: "no-store" })
+        const data = (await response.json()) as { projects?: AppProject[] }
+        if (!response.ok || !Array.isArray(data.projects)) return
+        if (cancelled) return
+
+        setProjects((prev) => {
+          const merged = mergeProjects(prev, data.projects ?? [])
+          saveProjects(merged)
+          return merged
+        })
+      } catch {
+        // keep local projects
+      }
+    }
+
+    void loadCloudProjects()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const canContinue = useMemo(() => {
     if (flow === "load") return Boolean(selectedProjectId)
     return Boolean(newProjectName.trim() || selectedProjectId)
   }, [flow, newProjectName, selectedProjectId])
+  const selectedProject = useMemo(
+    () => projects.find((project) => project.id === selectedProjectId) ?? null,
+    [projects, selectedProjectId],
+  )
 
-  function continueToCapture() {
+  async function syncProjectToCloud(project: AppProject) {
+    try {
+      await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: project.id,
+          name: project.name,
+          fieldType: project.fieldType,
+        }),
+      })
+    } catch {
+      // local project remains available even without cloud sync
+    }
+  }
+
+  function continueToZones() {
     if (!canContinue) return
 
-    let targetProjectId = selectedProjectId
+    let targetProject = projects.find((project) => project.id === selectedProjectId) ?? null
+    let nextProjects = projects
 
     if (flow === "new" && newProjectName.trim()) {
       const createdId = slugifyProjectName(newProjectName)
-      const createdProject = { id: createdId, name: newProjectName.trim() }
-
-      const withoutDuplicate = projects.filter((project) => project.id !== createdId)
-      const nextProjects = [createdProject, ...withoutDuplicate]
+      targetProject = createProject({
+        id: createdId,
+        name: newProjectName.trim(),
+        fieldType: newProjectSport,
+      })
+      nextProjects = [targetProject, ...projects.filter((project) => project.id !== createdId)]
       setProjects(nextProjects)
-      saveProjects(nextProjects)
-      targetProjectId = createdId
-    } else {
-      saveProjects(projects)
+      void syncProjectToCloud(targetProject)
     }
 
-    saveLastProject(targetProjectId)
-    router.push(`/capture?project=${encodeURIComponent(targetProjectId)}`)
+    if (!targetProject && selectedProjectId) {
+      targetProject = projects.find((project) => project.id === selectedProjectId) ?? null
+    }
+    if (!targetProject) return
+
+    saveProjects(nextProjects)
+    saveLastProject(targetProject.id)
+    saveProjectFieldType(targetProject.id, targetProject.fieldType)
+    ensureProjectZones(targetProject.id, targetProject.fieldType)
+
+    router.push(`/pulse?project=${encodeURIComponent(targetProject.id)}`)
   }
 
   return (
     <main className="min-h-screen bg-neutral-950 px-4 py-8 text-white">
       <section className="mx-auto w-full max-w-2xl space-y-6">
-        <header className="space-y-2">
-          <p className="text-sm text-neutral-400">Pulse / Projects</p>
-          <h1 className="text-3xl font-bold">{flow === "new" ? "Nuevo proyecto" : "Cargar proyecto"}</h1>
-          <p className="text-neutral-300">Selecciona un proyecto para abrir sus capturas de obra.</p>
-        </header>
+        <ContextHeader
+          title={flow === "new" ? "Nuevo proyecto" : "Cargar proyecto"}
+          subtitle="Configura proyecto y deporte para generar zonas automáticamente."
+          backHref="/"
+          backLabel="Inicio"
+          breadcrumbs={[
+            { label: "Pulse", href: "/" },
+            { label: "Proyectos" },
+          ]}
+          statusLabel={flow === "new" ? "Alta" : "Carga"}
+          dateLabel={new Date().toLocaleDateString("es-MX")}
+        />
+        <Link href="/projects/admin" className="inline-block text-sm font-semibold text-amber-300 hover:underline">
+          PM/Admin: crear/editar setup + cargar plano
+        </Link>
 
         <section className="space-y-4 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
           <label className="block space-y-2">
-            <span className="text-sm text-neutral-300">Proyectos (ficticio por ahora)</span>
+            <span className="text-sm text-neutral-300">Proyectos</span>
             <select
               value={selectedProjectId}
               onChange={(event) => setSelectedProjectId(event.target.value)}
@@ -118,23 +175,51 @@ function ProjectsPageContent() {
             >
               {projects.map((project) => (
                 <option key={project.id} value={project.id}>
-                  {project.name}
+                  {project.name} · {FIELD_TYPE_LABELS[project.fieldType]}
                 </option>
               ))}
             </select>
           </label>
+          {selectedProject ? (
+            <p className="text-xs text-neutral-400">Fecha alta: {formatDate(selectedProject.createdAt)}</p>
+          ) : null}
 
           {flow === "new" ? (
-            <label className="block space-y-2">
-              <span className="text-sm text-neutral-300">Nombre de nuevo proyecto (opcional)</span>
-              <input
-                type="text"
-                value={newProjectName}
-                onChange={(event) => setNewProjectName(event.target.value)}
-                placeholder="Ej: Obra Centro"
-                className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3"
-              />
-            </label>
+            <>
+              <label className="block space-y-2">
+                <span className="text-sm text-neutral-300">Nombre de nuevo proyecto</span>
+                <input
+                  type="text"
+                  value={newProjectName}
+                  onChange={(event) => setNewProjectName(event.target.value)}
+                  placeholder="Ej: Campo Municipal Norte"
+                  className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3"
+                />
+              </label>
+
+              <div className="space-y-2">
+                <span className="text-sm text-neutral-300">Deporte</span>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {(Object.keys(FIELD_TYPE_LABELS) as FieldType[]).map((item) => {
+                    const active = newProjectSport === item
+                    return (
+                      <button
+                        key={item}
+                        type="button"
+                        onClick={() => setNewProjectSport(item)}
+                        className={`rounded-xl px-3 py-3 text-sm font-semibold ${
+                          active
+                            ? "bg-emerald-600 text-white"
+                            : "border border-neutral-700 bg-neutral-950 hover:bg-neutral-800"
+                        }`}
+                      >
+                        {FIELD_TYPE_LABELS[item]}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            </>
           ) : null}
 
           <div className="flex flex-col gap-3 sm:flex-row">
@@ -147,15 +232,13 @@ function ProjectsPageContent() {
 
             <button
               type="button"
-              onClick={continueToCapture}
+              onClick={continueToZones}
               disabled={!canContinue}
               className={`w-full rounded-xl px-4 py-3 text-center font-semibold ${
-                canContinue
-                  ? "bg-emerald-600 hover:bg-emerald-700"
-                  : "cursor-not-allowed bg-neutral-700 text-neutral-400"
+                canContinue ? "bg-emerald-600 hover:bg-emerald-700" : "cursor-not-allowed bg-neutral-700 text-neutral-400"
               }`}
             >
-              Continuar a módulos
+              Continuar a zonas
             </button>
           </div>
         </section>
