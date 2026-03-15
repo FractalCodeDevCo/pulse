@@ -31,6 +31,14 @@ type RequestBody = {
   capture_session_id?: string | null
   capture_status?: "incomplete" | "complete" | null
   photos?: IncomingPhotos
+  photo_exif_contexts?: Array<{
+    index?: number
+    source?: string
+    type?: string
+    capturedAt?: string | null
+    latitude?: number | null
+    longitude?: number | null
+  }>
 }
 
 type CaptureStatus = "incomplete" | "complete"
@@ -253,6 +261,7 @@ export async function POST(request: Request) {
       const url = await uploadPhoto(id, type, source)
       uploadedPhotos.push({ type, url })
     }
+    const photoExifContexts = Array.isArray(body.photo_exif_contexts) ? body.photo_exif_contexts : []
 
     const captureStatus = requestedStatus
     const baseRow = {
@@ -341,6 +350,7 @@ export async function POST(request: Request) {
                 traffic: compactionRisk.traffic,
               },
               photoType: photo.type,
+              photoExifContexts,
             },
           })),
         })

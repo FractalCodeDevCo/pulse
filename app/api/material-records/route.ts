@@ -29,6 +29,13 @@ type RequestBody = {
     signal?: string
     source?: string
   }>
+  photoExifContexts?: Array<{
+    index?: number
+    source?: string
+    capturedAt?: string | null
+    latitude?: number | null
+    longitude?: number | null
+  }>
 }
 
 type CaptureStatus = "incomplete" | "complete"
@@ -174,6 +181,7 @@ export async function POST(request: Request) {
       fotoUrls.push(await uploadMaterialPhoto(supabase, inputPhotos[index], projectId, index))
     }
     const photoReviews = Array.isArray(body.photoReviews) ? body.photoReviews.slice(0, 6) : []
+    const photoExifContexts = Array.isArray(body.photoExifContexts) ? body.photoExifContexts.slice(0, 6) : []
 
     const captureStatus = normalizeCaptureStatus(body.captureStatus)
 
@@ -256,6 +264,7 @@ export async function POST(request: Request) {
               valveNextDelta: materialMetrics.valveDelta,
               valveNextSetting: materialMetrics.valveNext,
               photoReviews,
+              photoExifContexts,
             },
           })),
         })
