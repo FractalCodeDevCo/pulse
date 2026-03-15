@@ -172,12 +172,18 @@ type CaptureContext = {
   } | null
 }
 
+type PhotoReviewSignal = "green" | "yellow" | "red"
+
+const MAX_CAPTURE_PHOTOS = 6
+const PHOTO_SIGNAL_OPTIONS: PhotoReviewSignal[] = ["green", "yellow", "red"]
+
 export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneDetailPageClientProps) {
   const project = useMemo(() => (projectId ? getProjectById(projectId) : null), [projectId])
   const [zone, setZone] = useState(() => (projectId ? getProjectZoneById(projectId, projectZoneId) : null))
   const [openStep, setOpenStep] = useState<ZoneStepKey | null>(null)
   const [zonePhotos, setZonePhotos] = useState<string[]>([])
   const [zonePhotoExif, setZonePhotoExif] = useState<Array<PhotoExifContext | null>>([])
+  const [zonePhotoSignals, setZonePhotoSignals] = useState<PhotoReviewSignal[]>([])
   const [isReadingPhotos, setIsReadingPhotos] = useState(false)
 
   // Roll Placement inline metadata
@@ -218,6 +224,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   const [materialSessionId, setMaterialSessionId] = useState(() => createCaptureSessionId())
   const [materialPhotos, setMaterialPhotos] = useState<string[]>([])
   const [materialPhotoExif, setMaterialPhotoExif] = useState<Array<PhotoExifContext | null>>([])
+  const [materialPhotoSignals, setMaterialPhotoSignals] = useState<PhotoReviewSignal[]>([])
   const [isSavingMaterial, setIsSavingMaterial] = useState(false)
   const [materialMessage, setMaterialMessage] = useState("")
   const [materialError, setMaterialError] = useState("")
@@ -493,6 +500,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
     setOpenStep(null)
     setZonePhotos([])
     setZonePhotoExif([])
+    setZonePhotoSignals([])
     setRollLengthFit("")
     setTotalRollsUsed("")
     setSewingTotalSeams("")
@@ -520,6 +528,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
     setMaterialSessionId(createCaptureSessionId())
     setMaterialPhotos([])
     setMaterialPhotoExif([])
+    setMaterialPhotoSignals([])
     setStepSessionIds({})
     setStepSaveMessages({})
     setStepSaveErrors({})
@@ -708,8 +717,13 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
     try {
       const selectedFiles = Array.from(files)
       const [urls, exifContexts] = await Promise.all([processImageFiles(selectedFiles), readPhotoExifBatch(selectedFiles)])
-      setZonePhotos((prev) => [...prev, ...urls].slice(0, 6))
-      setZonePhotoExif((prev) => [...prev, ...exifContexts].slice(0, 6))
+      const currentCount = zonePhotos.length + materialPhotos.length
+      const remaining = Math.max(0, MAX_CAPTURE_PHOTOS - currentCount)
+      const nextUrls = urls.slice(0, remaining)
+      const nextExif = exifContexts.slice(0, remaining)
+      setZonePhotos((prev) => [...prev, ...nextUrls].slice(0, MAX_CAPTURE_PHOTOS))
+      setZonePhotoExif((prev) => [...prev, ...nextExif].slice(0, MAX_CAPTURE_PHOTOS))
+      setZonePhotoSignals((prev) => [...prev, ...nextUrls.map(() => "yellow" as const)].slice(0, MAX_CAPTURE_PHOTOS))
     } finally {
       setIsReadingPhotos(false)
     }
@@ -718,6 +732,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   function removeZonePhoto(index: number) {
     setZonePhotos((prev) => prev.filter((_, i) => i !== index))
     setZonePhotoExif((prev) => prev.filter((_, i) => i !== index))
+    setZonePhotoSignals((prev) => prev.filter((_, i) => i !== index))
   }
 
   function toggleAdhesiveCriticalInfieldArea(item: string) {
@@ -734,8 +749,13 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
     try {
       const selectedFiles = Array.from(files)
       const [urls, exifContexts] = await Promise.all([processImageFiles(selectedFiles), readPhotoExifBatch(selectedFiles)])
-      setMaterialPhotos((prev) => [...prev, ...urls].slice(0, 8))
-      setMaterialPhotoExif((prev) => [...prev, ...exifContexts].slice(0, 8))
+      const currentCount = zonePhotos.length + materialPhotos.length
+      const remaining = Math.max(0, MAX_CAPTURE_PHOTOS - currentCount)
+      const nextUrls = urls.slice(0, remaining)
+      const nextExif = exifContexts.slice(0, remaining)
+      setMaterialPhotos((prev) => [...prev, ...nextUrls].slice(0, MAX_CAPTURE_PHOTOS))
+      setMaterialPhotoExif((prev) => [...prev, ...nextExif].slice(0, MAX_CAPTURE_PHOTOS))
+      setMaterialPhotoSignals((prev) => [...prev, ...nextUrls.map(() => "yellow" as const)].slice(0, MAX_CAPTURE_PHOTOS))
     } finally {
       setIsReadingPhotos(false)
     }
@@ -744,6 +764,27 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   function removeMaterialPhoto(index: number) {
     setMaterialPhotos((prev) => prev.filter((_, i) => i !== index))
     setMaterialPhotoExif((prev) => prev.filter((_, i) => i !== index))
+    setMaterialPhotoSignals((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  function setZonePhotoSignal(index: number, signal: PhotoReviewSignal) {
+    setZonePhotoSignals((prev) => prev.map((item, i) => (i === index ? signal : item)))
+  }
+
+  function setMaterialPhotoSignal(index: number, signal: PhotoReviewSignal) {
+    setMaterialPhotoSignals((prev) => prev.map((item, i) => (i === index ? signal : item)))
+  }
+
+  function buildPhotoReviews(
+    photos: string[],
+    signals: PhotoReviewSignal[],
+    source: "zone" | "material",
+  ): Array<{ index: number; source: "zone" | "material"; signal: PhotoReviewSignal }> {
+    return photos.slice(0, MAX_CAPTURE_PHOTOS).map((_, index) => ({
+      index,
+      source,
+      signal: signals[index] ?? "yellow",
+    }))
   }
 
   function getStepSessionId(stepKey: ZoneStepKey): string {
@@ -755,7 +796,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
 
     const moduleForStep = stepKey === "COMPACT" ? "compactacion" : "rollos"
     const sessionId = getStepSessionId(stepKey)
-    const stepPhotos = zonePhotos.slice(0, 3)
+    const stepPhotos = zonePhotos.slice(0, MAX_CAPTURE_PHOTOS)
 
     setStepSaveErrors((prev) => ({ ...prev, [stepKey]: "" }))
     setStepSaveMessages((prev) => ({ ...prev, [stepKey]: "" }))
@@ -779,6 +820,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
             capture_status: "complete",
             step_key: stepKey,
             step_label: stepTemplates.find((step) => step.key === stepKey)?.label ?? stepKey,
+            photo_reviews: buildPhotoReviews(stepPhotos, zonePhotoSignals, "zone"),
             photos: stepPhotos,
           },
         }),
@@ -877,7 +919,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
 
     const stepKey: ZoneStepKey = "SEWING"
     const sessionId = getStepSessionId(stepKey)
-    const stepPhotos = zonePhotos.slice(0, 3)
+    const stepPhotos = zonePhotos.slice(0, MAX_CAPTURE_PHOTOS)
 
     setStepSaveErrors((prev) => ({ ...prev, [stepKey]: "" }))
     setStepSaveMessages((prev) => ({ ...prev, [stepKey]: "" }))
@@ -902,6 +944,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
             step_key: stepKey,
             step_label: stepTemplates.find((step) => step.key === stepKey)?.label ?? stepKey,
             total_seams: parsedSeams,
+            photo_reviews: buildPhotoReviews(stepPhotos, zonePhotoSignals, "zone"),
             photos: stepPhotos,
           },
         }),
@@ -964,6 +1007,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
             observaciones: adhesiveObservaciones.trim(),
             capture_session_id: adhesiveSessionId,
             capture_status: "complete",
+            photo_reviews: buildPhotoReviews(zonePhotos.slice(0, 3), zonePhotoSignals, "zone"),
             evidencePhotos: {
               prep: prep ?? undefined,
               antes: antes ?? undefined,
@@ -1019,7 +1063,8 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
           bolsasEsperadas: expected,
           bolsasUtilizadas: used,
           observaciones: materialObservaciones,
-          fotos: materialPhotos,
+          fotos: materialPhotos.slice(0, MAX_CAPTURE_PHOTOS),
+          photoReviews: buildPhotoReviews(materialPhotos, materialPhotoSignals, "material"),
         }),
       })
       const data = (await response.json()) as { error?: string; summary?: MaterialSummary | null }
@@ -1163,7 +1208,14 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
       const combinedPhotos = [...zonePhotos, ...materialPhotos]
         .filter((photo, index, arr) => typeof photo === "string" && photo.length > 0 && arr.indexOf(photo) === index)
         .filter((photo) => photo.startsWith("data:image/") || photo.startsWith("http://") || photo.startsWith("https://"))
-      const photos = combinedPhotos.slice(0, 3)
+      const photos = combinedPhotos.slice(0, MAX_CAPTURE_PHOTOS)
+      const photoReviews = [
+        ...buildPhotoReviews(zonePhotos, zonePhotoSignals, "zone"),
+        ...buildPhotoReviews(materialPhotos, materialPhotoSignals, "material").map((item) => ({
+          ...item,
+          index: item.index + zonePhotos.length,
+        })),
+      ].slice(0, MAX_CAPTURE_PHOTOS)
       const skippedPhotos = Math.max(0, combinedPhotos.length - photos.length)
       const selectedFieldUnit = fieldUnits.find((unit) => unit.id === selectedFieldUnitId) ?? null
       const flowPayload: Record<string, unknown> = {
@@ -1179,6 +1231,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
         phaseSessionIds: stepSessionIds,
         photos,
         flowMetadata: {
+          photo_reviews: photoReviews,
           visionLabel: flowVisionLabel,
           rollPlacement: {
             totalRollsUsed: totalRollsUsed.trim() || null,
@@ -1241,7 +1294,14 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
         const combinedPhotos = [...zonePhotos, ...materialPhotos]
           .filter((photo, index, arr) => typeof photo === "string" && photo.length > 0 && arr.indexOf(photo) === index)
           .filter((photo) => photo.startsWith("data:image/") || photo.startsWith("http://") || photo.startsWith("https://"))
-          .slice(0, 3)
+          .slice(0, MAX_CAPTURE_PHOTOS)
+        const photoReviews = [
+          ...buildPhotoReviews(zonePhotos, zonePhotoSignals, "zone"),
+          ...buildPhotoReviews(materialPhotos, materialPhotoSignals, "material").map((item) => ({
+            ...item,
+            index: item.index + zonePhotos.length,
+          })),
+        ].slice(0, MAX_CAPTURE_PHOTOS)
         const fallbackPayload: Record<string, unknown> = {
           projectId,
           fieldType: zone.fieldType,
@@ -1255,6 +1315,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
           phaseSessionIds: stepSessionIds,
           photos: combinedPhotos,
           flowMetadata: {
+            photo_reviews: photoReviews,
             visionLabel: flowVisionLabel,
             rollPlacement: {
               totalRollsUsed: totalRollsUsed.trim() || null,
@@ -1421,6 +1482,28 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                     unoptimized
                     className="h-28 w-full rounded-xl border border-neutral-700 object-cover"
                   />
+                  <div className="flex items-center justify-center gap-2">
+                    {PHOTO_SIGNAL_OPTIONS.map((signal) => {
+                      const active = (zonePhotoSignals[index] ?? "yellow") === signal
+                      const cls =
+                        signal === "green"
+                          ? "bg-emerald-500"
+                          : signal === "yellow"
+                            ? "bg-amber-400"
+                            : "bg-red-500"
+                      return (
+                        <button
+                          key={`${photo}-${signal}`}
+                          type="button"
+                          onClick={() => setZonePhotoSignal(index, signal)}
+                          className={`h-6 w-6 rounded-full border transition ${cls} ${
+                            active ? "scale-110 border-white" : "border-transparent opacity-55"
+                          }`}
+                          aria-label={`photo-${index + 1}-${signal}`}
+                        />
+                      )
+                    })}
+                  </div>
                   <button
                     type="button"
                     onClick={() => removeZonePhoto(index)}
@@ -1434,7 +1517,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
           ) : null}
 
           <p className="rounded-xl border border-neutral-700 px-3 py-3 text-sm text-neutral-300">
-            {canOpenProcesses ? "Procesos desbloqueados." : "Sube al menos 1 foto para desbloquear procesos."}
+            {canOpenProcesses ? `Procesos desbloqueados. Fotos cargadas: ${zonePhotos.length}/${MAX_CAPTURE_PHOTOS}.` : "Sube al menos 1 foto para desbloquear procesos."}
           </p>
         </section>
 
@@ -1446,7 +1529,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
               : "Compaction → Roll Placement → Sewing → Cut → Adhesive."}
           </p>
           <p className="rounded-lg border border-neutral-700 px-3 py-2 text-xs text-neutral-300">
-            Guardar flujo usa máximo 3 fotos por envío para mantener señal limpia.
+            Guardar flujo usa máximo 6 fotos por envío. Cada foto puede llevar semáforo verde, amarillo o rojo.
           </p>
 
           <div className={canOpenProcesses ? "space-y-2" : "pointer-events-none space-y-2 opacity-50"}>
@@ -1889,6 +1972,28 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                                         unoptimized
                                         className="h-24 w-full rounded-xl border border-neutral-700 object-cover"
                                       />
+                                      <div className="flex items-center justify-center gap-2">
+                                        {PHOTO_SIGNAL_OPTIONS.map((signal) => {
+                                          const active = (materialPhotoSignals[index] ?? "yellow") === signal
+                                          const cls =
+                                            signal === "green"
+                                              ? "bg-emerald-500"
+                                              : signal === "yellow"
+                                                ? "bg-amber-400"
+                                                : "bg-red-500"
+                                          return (
+                                            <button
+                                              key={`${photo}-${signal}`}
+                                              type="button"
+                                              onClick={() => setMaterialPhotoSignal(index, signal)}
+                                              className={`h-6 w-6 rounded-full border transition ${cls} ${
+                                                active ? "scale-110 border-white" : "border-transparent opacity-55"
+                                              }`}
+                                              aria-label={`material-photo-${index + 1}-${signal}`}
+                                            />
+                                          )
+                                        })}
+                                      </div>
                                       <button
                                         type="button"
                                         onClick={() => removeMaterialPhoto(index)}
@@ -1902,6 +2007,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                               ) : (
                                 <p className="text-xs text-neutral-400">Sin fotos cargadas.</p>
                               )}
+                              <p className="text-xs text-neutral-400">Máximo total por flujo/captura: {MAX_CAPTURE_PHOTOS} fotos.</p>
                               <button
                                 type="button"
                                 onClick={() => setMaterialStep(2)}

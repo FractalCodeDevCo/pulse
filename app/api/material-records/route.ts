@@ -24,6 +24,11 @@ type RequestBody = {
   bolsasUtilizadas?: number
   observaciones?: string
   fotos?: string[]
+  photoReviews?: Array<{
+    index?: number
+    signal?: string
+    source?: string
+  }>
 }
 
 type CaptureStatus = "incomplete" | "complete"
@@ -163,11 +168,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: existingRecord.error.message }, { status: 500 })
     }
 
-    const inputPhotos = body.fotos ?? []
+    const inputPhotos = (body.fotos ?? []).slice(0, 6)
     const fotoUrls: string[] = []
     for (let index = 0; index < inputPhotos.length; index += 1) {
       fotoUrls.push(await uploadMaterialPhoto(supabase, inputPhotos[index], projectId, index))
     }
+    const photoReviews = Array.isArray(body.photoReviews) ? body.photoReviews.slice(0, 6) : []
 
     const captureStatus = normalizeCaptureStatus(body.captureStatus)
 
@@ -224,7 +230,7 @@ export async function POST(request: Request) {
       try {
         await writeUnifiedCaptures({
           supabase,
-          captures: fotoUrls.map((imageUrl) => ({
+          captures: fotoUrls.map((imageUrl, index) => ({
             projectId,
             phase: "material",
             imageUrl,
@@ -235,6 +241,8 @@ export async function POST(request: Request) {
             fieldType: body.fieldType ?? null,
             zoneType: body.zoneType ?? null,
             notes: body.observaciones?.trim() || null,
+            qualityLabel:
+              typeof photoReviews[index]?.signal === "string" ? photoReviews[index].signal?.toLowerCase() ?? null : null,
             sourceTable: "material_records",
             sourceId: typeof data?.id === "string" ? data.id : null,
             metadata: {
@@ -247,6 +255,7 @@ export async function POST(request: Request) {
               deviation: materialMetrics.deviation,
               valveNextDelta: materialMetrics.valveDelta,
               valveNextSetting: materialMetrics.valveNext,
+              photoReviews,
             },
           })),
         })

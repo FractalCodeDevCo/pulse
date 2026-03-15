@@ -51,7 +51,7 @@ export async function POST(request: Request) {
     const supabase = getSupabaseAdminClient()
     const captureSessionId = body.flowSessionId?.trim() || randomUUID()
     const sourcePhotos = Array.isArray(body.photos)
-      ? body.photos.filter((photo): photo is string => typeof photo === "string" && photo.length > 0).slice(0, 8)
+      ? body.photos.filter((photo): photo is string => typeof photo === "string" && photo.length > 0).slice(0, 6)
       : []
     const photosUrls: string[] = []
     for (let index = 0; index < sourcePhotos.length; index += 1) {

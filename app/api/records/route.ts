@@ -138,7 +138,17 @@ function extractPhotoCandidates(payload: Record<string, unknown>): string[] {
     if (isImageLike(value)) photos.push(value)
   }
 
-  return photos
+  return photos.slice(0, 6)
+}
+
+function extractPhotoReviewSignals(payload: Record<string, unknown>): Array<string | null> {
+  const raw = payload.photo_reviews
+  if (!Array.isArray(raw)) return []
+  return raw.slice(0, 6).map((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return null
+    const signal = "signal" in item ? item.signal : null
+    return typeof signal === "string" && signal.trim().length > 0 ? signal.trim().toLowerCase() : null
+  })
 }
 
 function stripPhotoFields(payload: Record<string, unknown>): Record<string, unknown> {
@@ -208,6 +218,7 @@ export async function POST(request: Request) {
     }
 
     const photoCandidates = extractPhotoCandidates(body.payload)
+    const photoReviewSignals = extractPhotoReviewSignals(body.payload)
     if (body.module === "pegada") {
       if (!projectZoneId) {
         return NextResponse.json({ error: "project_zone_id is required for pegada." }, { status: 400 })
@@ -421,7 +432,7 @@ export async function POST(request: Request) {
       try {
         await writeUnifiedCaptures({
           supabase,
-          captures: photosUrls.map((imageUrl) => ({
+          captures: photosUrls.map((imageUrl, index) => ({
             projectId,
             phase: unifiedPhase,
             imageUrl,
@@ -437,7 +448,7 @@ export async function POST(request: Request) {
             notes: note,
             feetInstalled: unifiedPhase === "glue" ? payloadFt : null,
             glueBuckets: unifiedPhase === "glue" ? payloadBotes : null,
-            qualityLabel: visionLabel,
+            qualityLabel: photoReviewSignals[index] ?? visionLabel,
             sourceTable: "field_records",
             sourceId: insertedId,
             metadata: {
