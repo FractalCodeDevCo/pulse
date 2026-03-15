@@ -16,6 +16,9 @@ type CaptureItem = {
   summary: string
   metadata: Record<string, unknown>
   editable: boolean
+  labelEditable: boolean
+  qualityLabel: "green" | "yellow" | "red" | null
+  sourceTable: string
 }
 
 type ZoneOption = {
@@ -189,9 +192,10 @@ type CaptureStoryCardProps = {
   saving: boolean
   onDelete: (capture: CaptureItem) => void
   onSaveMetadata: (capture: CaptureItem, metadata: Record<string, unknown>) => void
+  onSaveSignal: (capture: CaptureItem, photoIndex: number, signal: "green" | "yellow" | "red") => void
 }
 
-function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata }: CaptureStoryCardProps) {
+function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata, onSaveSignal }: CaptureStoryCardProps) {
   const [index, setIndex] = useState(0)
   const [showMenu, setShowMenu] = useState(false)
   const [editing, setEditing] = useState(false)
@@ -209,7 +213,7 @@ function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata 
   const [flowAdhesiveCondicion, setFlowAdhesiveCondicion] = useState("")
   const [flowMaterialTipo, setFlowMaterialTipo] = useState("")
   const [flowMaterialPasada, setFlowMaterialPasada] = useState("")
-  const [flowVisionLabel, setFlowVisionLabel] = useState<"ok" | "check" | "rework">("check")
+  const [photoSignal, setPhotoSignal] = useState<"green" | "yellow" | "red">("yellow")
   const total = capture.photos.length
 
   useEffect(() => {
@@ -225,7 +229,6 @@ function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata 
     const sewing = asObject(details.sewing)
     const adhesive = asObject(details.adhesive)
     const material = asObject(details.material)
-    const visionLabelRaw = asString(details.visionLabel).toLowerCase()
 
     setFlowPhases(asStringArray(metadata.phases_completed))
     setFlowQuickNotes(
@@ -242,7 +245,8 @@ function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata 
     setFlowAdhesiveCondicion(asString(adhesive.condicion))
     setFlowMaterialTipo(asString(material.tipo))
     setFlowMaterialPasada(asString(material.pasada))
-    setFlowVisionLabel(visionLabelRaw === "ok" || visionLabelRaw === "check" || visionLabelRaw === "rework" ? visionLabelRaw : "check")
+    const currentPhotoReviews = readPhotoReviews(metadata)
+    setPhotoSignal(currentPhotoReviews.find((item) => item.index === 0)?.signal ?? capture.qualityLabel ?? "yellow")
     setAdvancedMode(false)
     setEditorError("")
   }, [capture.id, capture.metadata])
@@ -254,6 +258,11 @@ function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata 
   const climateText = captureContext ? climateBadgeText(captureContext) : null
   const photoReviews = readPhotoReviews(asObject(capture.metadata))
   const activePhotoReview = photoReviews.find((item) => item.index === index) ?? null
+  const activeSignal = activePhotoReview?.signal ?? capture.qualityLabel ?? null
+
+  useEffect(() => {
+    setPhotoSignal(activeSignal ?? "yellow")
+  }, [activeSignal, index])
 
   function toggleFlowPhase(phase: string) {
     setFlowPhases((current) => {
@@ -284,7 +293,6 @@ function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata 
       phases_completed: flowPhases,
       details: {
         ...currentDetails,
-        visionLabel: flowVisionLabel,
         quickNotes,
         rollPlacement: {
           totalRollsUsed: asNullableString(flowRollsUsed),
@@ -423,12 +431,12 @@ function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata 
                 width={1200}
                 height={800}
                 unoptimized
-                className={`h-72 w-full rounded-xl border-2 object-cover ${signalBorderClass(activePhotoReview?.signal ?? null)}`}
+                className={`h-72 w-full rounded-xl border-2 object-cover ${signalBorderClass(activeSignal)}`}
               />
-              {activePhotoReview ? (
+              {activeSignal ? (
                 <div className="absolute right-3 top-3 inline-flex items-center gap-2 rounded-full border border-black/20 bg-black/55 px-3 py-1 text-xs font-semibold text-white">
-                  <span className={`h-3 w-3 rounded-full ${signalDotClass(activePhotoReview.signal)}`} />
-                  <span>{activePhotoReview.signal.toUpperCase()}</span>
+                  <span className={`h-3 w-3 rounded-full ${signalDotClass(activeSignal)}`} />
+                  <span>{activeSignal.toUpperCase()}</span>
                 </div>
               ) : null}
             </div>
@@ -436,12 +444,13 @@ function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata 
               <div className="flex flex-wrap gap-2">
                 {capture.photos.map((photo, photoIndex) => {
                   const review = photoReviews.find((item) => item.index === photoIndex) ?? null
+                  const reviewSignal = review?.signal ?? capture.qualityLabel ?? null
                   return (
                     <button
                       key={`${capture.id}-${photoIndex}`}
                       type="button"
                       onClick={() => setIndex(photoIndex)}
-                      className={`overflow-hidden rounded-lg border-2 ${index === photoIndex ? signalBorderClass(review?.signal ?? null) : "border-neutral-700"}`}
+                      className={`overflow-hidden rounded-lg border-2 ${index === photoIndex ? signalBorderClass(reviewSignal) : "border-neutral-700"}`}
                     >
                       <Image
                         src={photo}
@@ -454,6 +463,40 @@ function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata 
                     </button>
                   )
                 })}
+              </div>
+            ) : null}
+            {capture.labelEditable ? (
+              <div className="rounded-xl border border-neutral-700 bg-neutral-950 p-3">
+                <p className="mb-3 text-xs text-neutral-400">Etiqueta visual para Vision</p>
+                <div className="flex flex-wrap items-center gap-3">
+                  {(["green", "yellow", "red"] as const).map((signal) => {
+                    const active = photoSignal === signal
+                    return (
+                      <button
+                        key={signal}
+                        type="button"
+                        onClick={() => setPhotoSignal(signal)}
+                        disabled={saving}
+                        className={`h-9 w-9 rounded-full border-2 transition ${
+                          signal === "green"
+                            ? `border-emerald-400 ${active ? "bg-emerald-500" : "bg-emerald-500/20"}`
+                            : signal === "yellow"
+                              ? `border-amber-300 ${active ? "bg-amber-400" : "bg-amber-400/20"}`
+                              : `border-red-400 ${active ? "bg-red-500" : "bg-red-500/20"}`
+                        }`}
+                        aria-label={`Marcar foto como ${signal}`}
+                      />
+                    )
+                  })}
+                  <button
+                    type="button"
+                    onClick={() => onSaveSignal(capture, index, photoSignal)}
+                    disabled={saving}
+                    className="rounded-lg bg-cyan-600 px-3 py-2 text-xs font-semibold hover:bg-cyan-700 disabled:opacity-50"
+                  >
+                    {saving ? "Guardando..." : "Guardar etiqueta"}
+                  </button>
+                </div>
               </div>
             ) : null}
           </div>
@@ -523,22 +566,6 @@ function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata 
                 </label>
 
                 <div className="grid gap-2 sm:grid-cols-2">
-                  <label className="space-y-1">
-                    <span className="text-xs text-neutral-400">Vision Label</span>
-                    <select
-                      value={flowVisionLabel}
-                      onChange={(event) => {
-                        const next = event.target.value
-                        if (next === "ok" || next === "check" || next === "rework") setFlowVisionLabel(next)
-                      }}
-                      className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-2 text-xs"
-                      disabled={saving}
-                    >
-                      <option value="ok">OK</option>
-                      <option value="check">CHECK</option>
-                      <option value="rework">REWORK</option>
-                    </select>
-                  </label>
                   <label className="space-y-1">
                     <span className="text-xs text-neutral-400">Rolls Used</span>
                     <input
@@ -759,6 +786,7 @@ export default function ProjectHistoryClient({ projectId, initialZoneKey = null 
           projectId,
           id: capture.id,
           module: capture.module,
+          sourceTable: capture.sourceTable,
           metadata,
         }),
       })
@@ -777,6 +805,58 @@ export default function ProjectHistoryClient({ projectId, initialZoneKey = null 
       )
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo guardar cambios.")
+    } finally {
+      setSavingCaptureId(null)
+    }
+  }
+
+  async function saveCaptureSignal(capture: CaptureItem, photoIndex: number, signal: "green" | "yellow" | "red") {
+    if (!projectId || !capture.labelEditable) return
+
+    setSavingCaptureId(capture.id)
+    setError("")
+    try {
+      const currentMetadata = asObject(capture.metadata)
+      const details = asObject(currentMetadata.details)
+      const existingReviews = readPhotoReviews(currentMetadata).filter((item) => item.index !== photoIndex)
+      const nextReviews = [...existingReviews, { index: photoIndex, source: "history", signal }].sort((a, b) => a.index - b.index)
+      const metadata = {
+        ...currentMetadata,
+        photo_reviews: nextReviews,
+        details: {
+          ...details,
+          photo_reviews: nextReviews,
+        },
+      }
+
+      const response = await fetch("/api/project-captures", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          id: capture.id,
+          module: capture.module,
+          sourceTable: capture.sourceTable,
+          qualityLabel: signal,
+          metadata,
+        }),
+      })
+      const data = (await response.json()) as { error?: string; metadata?: Record<string, unknown>; qualityLabel?: "green" | "yellow" | "red" | null }
+      if (!response.ok) throw new Error(data.error ?? "No se pudo guardar etiqueta.")
+
+      setCaptures((current) =>
+        current.map((item) =>
+          item.id === capture.id && item.module === capture.module
+            ? {
+                ...item,
+                metadata: data.metadata ?? metadata,
+                qualityLabel: data.qualityLabel ?? signal,
+              }
+            : item,
+        ),
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo guardar etiqueta.")
     } finally {
       setSavingCaptureId(null)
     }
@@ -864,6 +944,7 @@ export default function ProjectHistoryClient({ projectId, initialZoneKey = null 
                 saving={savingCaptureId === capture.id}
                 onDelete={deleteCapture}
                 onSaveMetadata={saveCaptureMetadata}
+                onSaveSignal={saveCaptureSignal}
               />
             ))}
           </div>

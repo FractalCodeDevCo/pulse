@@ -18,6 +18,8 @@ type CaptureItem = {
   metadata: Record<string, unknown>
   sourceTable: string
   editable: boolean
+  labelEditable: boolean
+  qualityLabel: "green" | "yellow" | "red" | null
 }
 
 type UnifiedCaptureRow = {
@@ -159,6 +161,11 @@ export async function GET(request: Request) {
         metadata,
         sourceTable: "captures",
         editable: false,
+        labelEditable: Boolean(row.image_url),
+        qualityLabel:
+          row.quality_label === "green" || row.quality_label === "yellow" || row.quality_label === "red"
+            ? row.quality_label
+            : null,
       })
     }
 
@@ -187,6 +194,8 @@ type MutationBody = {
   projectId?: string
   id?: string
   module?: string
+  sourceTable?: string
+  qualityLabel?: string
   metadata?: Record<string, unknown>
 }
 
@@ -240,17 +249,76 @@ export async function DELETE(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const auth = await requireAuth(request, ["admin", "pm"])
+  const auth = await requireAuth(request, ["admin", "pm", "installer"])
   if (!auth.ok) return auth.response
   try {
     const body = (await request.json()) as MutationBody
     const projectId = toStringSafe(body.projectId)
     const id = toStringSafe(body.id)
     const module = toStringSafe(body.module)
+    const sourceTable = toStringSafe(body.sourceTable)
     const metadata = isObject(body.metadata) ? body.metadata : null
+    const qualityLabel =
+      body.qualityLabel === "green" || body.qualityLabel === "yellow" || body.qualityLabel === "red"
+        ? body.qualityLabel
+        : null
 
     if (!projectId || !id || !module || !metadata) {
       return NextResponse.json({ error: "projectId, id, module, metadata are required" }, { status: 400 })
+    }
+
+    if (sourceTable === "captures") {
+      const supabase = getSupabaseAdminClient()
+      const currentRes = await supabase
+        .from("captures")
+        .select("metadata, quality_label, phase")
+        .eq("id", id)
+        .eq("project_id", projectId)
+        .single()
+
+      if (currentRes.error) return NextResponse.json({ error: currentRes.error.message }, { status: 500 })
+
+      const beforeMetadata = isObject(currentRes.data?.metadata) ? currentRes.data.metadata : {}
+      const { error } = await supabase
+        .from("captures")
+        .update({
+          metadata,
+          quality_label: qualityLabel,
+        })
+        .eq("id", id)
+        .eq("project_id", projectId)
+
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+      await recordMetadataVersion({
+        projectId,
+        sourceTable: "captures",
+        captureId: id,
+        module: typeof currentRes.data?.phase === "string" ? currentRes.data.phase : module,
+        metadata,
+        editedBy: auth.context.userId,
+        editorEmail: auth.context.email,
+      })
+
+      await recordCaptureEvent({
+        projectId,
+        sourceTable: "captures",
+        captureId: id,
+        module: typeof currentRes.data?.phase === "string" ? currentRes.data.phase : module,
+        action: "update",
+        actorUserId: auth.context.userId,
+        actorEmail: auth.context.email,
+        beforeData: {
+          metadata: beforeMetadata,
+          quality_label: currentRes.data?.quality_label ?? null,
+        },
+        afterData: {
+          metadata,
+          quality_label: qualityLabel,
+        },
+      })
+
+      return NextResponse.json({ ok: true, metadata, qualityLabel })
     }
 
     const target = resolveCaptureTable(module)

@@ -124,6 +124,18 @@ function inferPlanZoneKeys(macroZone: string, microZone: string): string[] {
   return [...keys]
 }
 
+type PhotoExifEntry = {
+  index: number
+  source: "zone" | "material"
+  capturedAt: string | null
+  latitude: number | null
+  longitude: number | null
+}
+
+type NamedPhotoExifEntry = PhotoExifEntry & {
+  type: "compacting" | "in_progress" | "completed" | "prep" | "antes" | "despues"
+}
+
 type PlanSuggestedRoll = {
   label: string
   totalLinearFt: number | null
@@ -234,7 +246,6 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   const [stepSaveMessages, setStepSaveMessages] = useState<Record<string, string>>({})
   const [stepSaveErrors, setStepSaveErrors] = useState<Record<string, string>>({})
   const [flowSessionId, setFlowSessionId] = useState(() => createCaptureSessionId())
-  const [flowVisionLabel, setFlowVisionLabel] = useState<"ok" | "check" | "rework">("check")
   const [isSavingFlow, setIsSavingFlow] = useState(false)
   const [flowMessage, setFlowMessage] = useState("")
   const [flowError, setFlowError] = useState("")
@@ -306,7 +317,6 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
         tipo: materialTipo,
         pasada: materialPasada,
       },
-      visionLabel: flowVisionLabel,
     })
   }, [
     zone,
@@ -322,7 +332,6 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
     adhesiveCondicion,
     materialTipo,
     materialPasada,
-    flowVisionLabel,
   ])
   const saveState = isSavingFlow
     ? "saving"
@@ -787,6 +796,37 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
     }))
   }
 
+  function buildPhotoExifContexts(
+    photos: string[],
+    exifList: Array<PhotoExifContext | null>,
+    source: "zone" | "material",
+  ): PhotoExifEntry[] {
+    return photos.slice(0, MAX_CAPTURE_PHOTOS).map((_, index) => {
+      const exif = exifList[index] ?? null
+      return {
+        index,
+        source,
+        capturedAt: exif?.capturedAt ?? null,
+        latitude: exif?.latitude ?? null,
+        longitude: exif?.longitude ?? null,
+      }
+    })
+  }
+
+  function buildNamedPhotoExifContexts(
+    entries: Array<{ type: NamedPhotoExifEntry["type"]; exif: PhotoExifContext | null }>,
+    source: "zone" | "material",
+  ): NamedPhotoExifEntry[] {
+    return entries.map((entry, index) => ({
+      index,
+      source,
+      type: entry.type,
+      capturedAt: entry.exif?.capturedAt ?? null,
+      latitude: entry.exif?.latitude ?? null,
+      longitude: entry.exif?.longitude ?? null,
+    }))
+  }
+
   function getStepSessionId(stepKey: ZoneStepKey): string {
     return stepSessionIds[stepKey] ?? createCaptureSessionId()
   }
@@ -821,6 +861,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
             step_key: stepKey,
             step_label: stepTemplates.find((step) => step.key === stepKey)?.label ?? stepKey,
             photo_reviews: buildPhotoReviews(stepPhotos, zonePhotoSignals, "zone"),
+            photo_exif_contexts: buildPhotoExifContexts(stepPhotos, zonePhotoExif, "zone"),
             photos: stepPhotos,
           },
         }),
@@ -887,6 +928,14 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
           compaction_method: compactionMethod || undefined,
           capture_session_id: rollPlacementSessionId,
           capture_status: isCompleteCapture ? "complete" : "incomplete",
+          photo_exif_contexts: buildNamedPhotoExifContexts(
+            [
+              { type: "compacting", exif: zonePhotoExif[0] ?? null },
+              { type: "in_progress", exif: zonePhotoExif[1] ?? null },
+              { type: "completed", exif: zonePhotoExif[2] ?? null },
+            ],
+            "zone",
+          ),
           photos: {
             compacting: compactingPhoto ?? undefined,
             in_progress: inProgressPhoto ?? undefined,
@@ -945,6 +994,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
             step_label: stepTemplates.find((step) => step.key === stepKey)?.label ?? stepKey,
             total_seams: parsedSeams,
             photo_reviews: buildPhotoReviews(stepPhotos, zonePhotoSignals, "zone"),
+            photo_exif_contexts: buildPhotoExifContexts(stepPhotos, zonePhotoExif, "zone"),
             photos: stepPhotos,
           },
         }),
@@ -1008,6 +1058,14 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
             capture_session_id: adhesiveSessionId,
             capture_status: "complete",
             photo_reviews: buildPhotoReviews(zonePhotos.slice(0, 3), zonePhotoSignals, "zone"),
+            photo_exif_contexts: buildNamedPhotoExifContexts(
+              [
+                { type: "prep", exif: zonePhotoExif[0] ?? null },
+                { type: "antes", exif: zonePhotoExif[1] ?? null },
+                { type: "despues", exif: zonePhotoExif[2] ?? null },
+              ],
+              "zone",
+            ),
             evidencePhotos: {
               prep: prep ?? undefined,
               antes: antes ?? undefined,
@@ -1065,6 +1123,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
           observaciones: materialObservaciones,
           fotos: materialPhotos.slice(0, MAX_CAPTURE_PHOTOS),
           photoReviews: buildPhotoReviews(materialPhotos, materialPhotoSignals, "material"),
+          photoExifContexts: buildPhotoExifContexts(materialPhotos, materialPhotoExif, "material"),
         }),
       })
       const data = (await response.json()) as { error?: string; summary?: MaterialSummary | null }
@@ -1216,6 +1275,13 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
           index: item.index + zonePhotos.length,
         })),
       ].slice(0, MAX_CAPTURE_PHOTOS)
+      const photoExifContexts = [
+        ...buildPhotoExifContexts(zonePhotos, zonePhotoExif, "zone"),
+        ...buildPhotoExifContexts(materialPhotos, materialPhotoExif, "material").map((item) => ({
+          ...item,
+          index: item.index + zonePhotos.length,
+        })),
+      ].slice(0, MAX_CAPTURE_PHOTOS)
       const skippedPhotos = Math.max(0, combinedPhotos.length - photos.length)
       const selectedFieldUnit = fieldUnits.find((unit) => unit.id === selectedFieldUnitId) ?? null
       const flowPayload: Record<string, unknown> = {
@@ -1232,7 +1298,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
         photos,
         flowMetadata: {
           photo_reviews: photoReviews,
-          visionLabel: flowVisionLabel,
+          photo_exif_contexts: photoExifContexts,
           rollPlacement: {
             totalRollsUsed: totalRollsUsed.trim() || null,
             rollLengthFit: rollLengthFit || null,
@@ -1264,9 +1330,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
       const data = await postFlowSession(flowPayload)
 
       const savedPhases = data.phases_completed ?? phasesCompleted
-      setFlowMessage(
-        `Flujo guardado: ${savedPhases.join(" -> ")} · etiqueta: ${flowVisionLabel.toUpperCase()} · fotos: ${photos.length}${skippedPhotos > 0 ? ` · ${skippedPhotos} omitidas (límite 3)` : ""}`,
-      )
+      setFlowMessage(`Flujo guardado: ${savedPhases.join(" -> ")} · fotos: ${photos.length}${skippedPhotos > 0 ? ` · ${skippedPhotos} omitidas (límite 6)` : ""}`)
       if (captureContext.location && captureContext.weather) {
         setFlowContextMessage(
           captureContext.source === "manual_input"
@@ -1302,6 +1366,13 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
             index: item.index + zonePhotos.length,
           })),
         ].slice(0, MAX_CAPTURE_PHOTOS)
+        const photoExifContexts = [
+          ...buildPhotoExifContexts(zonePhotos, zonePhotoExif, "zone"),
+          ...buildPhotoExifContexts(materialPhotos, materialPhotoExif, "material").map((item) => ({
+            ...item,
+            index: item.index + zonePhotos.length,
+          })),
+        ].slice(0, MAX_CAPTURE_PHOTOS)
         const fallbackPayload: Record<string, unknown> = {
           projectId,
           fieldType: zone.fieldType,
@@ -1316,7 +1387,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
           photos: combinedPhotos,
           flowMetadata: {
             photo_reviews: photoReviews,
-            visionLabel: flowVisionLabel,
+            photo_exif_contexts: photoExifContexts,
             rollPlacement: {
               totalRollsUsed: totalRollsUsed.trim() || null,
               rollLengthFit: rollLengthFit || null,
@@ -2257,21 +2328,6 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                 {isSyncingPendingFlow ? "Sincronizando..." : "Sincronizar pendientes"}
               </button>
             </div>
-            <label className="block space-y-1">
-              <span className="text-xs text-neutral-400">Etiqueta de calidad (dataset visión)</span>
-              <select
-                value={flowVisionLabel}
-                onChange={(event) => {
-                  const next = event.target.value
-                  if (next === "ok" || next === "check" || next === "rework") setFlowVisionLabel(next)
-                }}
-                className="w-full rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
-              >
-                <option value="ok">OK</option>
-                <option value="check">CHECK</option>
-                <option value="rework">REWORK</option>
-              </select>
-            </label>
             <button
               type="button"
               onClick={() => void submitFlowSession()}
