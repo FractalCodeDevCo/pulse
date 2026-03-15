@@ -447,7 +447,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
     fetch("/api/projects", { cache: "no-store" })
       .then(async (response) => {
         const payload = (await response.json()) as { projects?: ProjectSetupApi[]; error?: string }
-        if (!response.ok) throw new Error(payload.error ?? "No se pudo cargar setup del proyecto.")
+        if (!response.ok) throw new Error(payload.error ?? "Could not load the project configuration.")
         const projects = Array.isArray(payload.projects) ? payload.projects : []
         const found = projects.find((item) => (item as { id?: string }).id === projectId)
         const urls = Array.isArray(found?.setup?.planFiles)
@@ -588,7 +588,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
     })
     const data = (await response.json()) as { error?: string; phases_completed?: string[] }
     if (!response.ok) {
-      const error = new Error(data.error ?? "No se pudo guardar flujo.")
+      const error = new Error(data.error ?? "Could not save flow.")
       ;(error as Error & { status?: number }).status = response.status
       throw error
     }
@@ -651,7 +651,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
 
   function openPlanViewer() {
     if (projectPlanUrls.length === 0) {
-      setPlanViewerError("No hay planos cargados en Setup Base para este proyecto.")
+      setPlanViewerError("No hay planos cargados en la configuracion base de este proyecto.")
       return
     }
     if (!activePlanUrl) setActivePlanUrl(projectPlanUrls[0])
@@ -688,13 +688,13 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
         }),
       })
       const payload = (await response.json()) as { error?: string; analysis?: PlanAnalysisResult }
-      if (!response.ok) throw new Error(payload.error ?? "No se pudo guardar la marca.")
+      if (!response.ok) throw new Error(payload.error ?? "Could not save the marker.")
       if (payload.analysis) savePlanAnalysisCache(projectId, payload.analysis)
       setPlanCacheVersion((current) => current + 1)
       setPlanViewerMessage(`Página ${page} marcada como Roll Layout.`)
       setPlanViewerError("")
     } catch (error) {
-      setPlanViewerError(error instanceof Error ? error.message : "No se pudo guardar la marca.")
+      setPlanViewerError(error instanceof Error ? error.message : "Could not save the marker.")
     }
   }
 
@@ -757,7 +757,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   async function submitSimpleStep(stepKey: ZoneStepKey) {
     if (!projectId || !zone) return
 
-    const moduleForStep = stepKey === "COMPACT" ? "compactacion" : "rollos"
+    const moduleForStep = stepKey === "COMPACT" ? "compactacion" : "rolls"
     const sessionId = getStepSessionId(stepKey)
     const note = (quickNotes[stepKey] ?? "").trim()
     const stepPhotos = zonePhotos.slice(0, 3)
@@ -791,7 +791,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
       })
 
       const data = (await response.json()) as { error?: string }
-      if (!response.ok) throw new Error(data.error ?? "No se pudo guardar captura del paso.")
+      if (!response.ok) throw new Error(data.error ?? "Could not save the step capture.")
 
       setStepSaveMessages((prev) => ({ ...prev, [stepKey]: "Captura guardada en nube." }))
       setStepSessionIds((prev) => ({ ...prev, [stepKey]: createCaptureSessionId() }))
@@ -859,7 +859,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
         }),
       })
       const data = (await response.json()) as { error?: string; summary?: RollPlacementSummary | null }
-      if (!response.ok) throw new Error(data?.error ?? "No se pudo guardar Roll Placement")
+      if (!response.ok) throw new Error(data?.error ?? "Could not save roll placement.")
 
       setRollPlacementMessage(isCompleteCapture ? "Roll Placement guardado." : "Roll Placement parcial guardado.")
       setRollPlacementSummary(data.summary ?? null)
@@ -895,7 +895,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          module: "rollos",
+          module: "rolls",
           projectId,
           fieldType: zone.fieldType,
           payload: {
@@ -915,7 +915,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
         }),
       })
       const data = (await response.json()) as { error?: string }
-      if (!response.ok) throw new Error(data.error ?? "No se pudo guardar Sewing.")
+      if (!response.ok) throw new Error(data.error ?? "Could not save sewing.")
 
       setStepSaveMessages((prev) => ({ ...prev, [stepKey]: "Sewing guardado en nube." }))
       setStepSessionIds((prev) => ({ ...prev, [stepKey]: createCaptureSessionId() }))
@@ -933,7 +933,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
 
   async function submitAdhesiveInline() {
     if (!projectId || !zone) return
-    if (!adhesiveBotes || Number(adhesiveBotes) <= 0) return setAdhesiveError("Botes usados debe ser mayor a 0.")
+    if (!adhesiveBotes || Number(adhesiveBotes) <= 0) return setAdhesiveError("Buckets used must be greater than 0.")
     if (!adhesiveCondicion) return setAdhesiveError("Condición es requerida.")
     if (!disableAdhesiveFtSlider && (!adhesiveFt || Number(adhesiveFt) <= 0)) {
       return setAdhesiveError("Ft Totales debe ser mayor a 0.")
@@ -981,9 +981,9 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
         }),
       })
       const data = (await response.json()) as { error?: string; summary?: AdhesiveSummary | null }
-      if (!response.ok) throw new Error(data?.error ?? "No se pudo guardar Adhesive")
+      if (!response.ok) throw new Error(data?.error ?? "Could not save adhesive.")
 
-      setAdhesiveMessage("Adhesive (Pegada) guardado.")
+      setAdhesiveMessage("Adhesive saved.")
       setAdhesiveSummary(data.summary ?? null)
       setAdhesiveSessionId(createCaptureSessionId())
       setZonePhotos([])
@@ -1031,7 +1031,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
         }),
       })
       const data = (await response.json()) as { error?: string; summary?: MaterialSummary | null }
-      if (!response.ok) throw new Error(data.error ?? "No se pudo guardar Material")
+      if (!response.ok) throw new Error(data.error ?? "Could not save material.")
 
       setMaterialMessage("Material guardado.")
       setMaterialSummary(data.summary ?? null)
@@ -1155,7 +1155,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
       return
     }
     if (fieldUnits.length > 1 && !selectedFieldUnitId) {
-      setFlowError("Selecciona el campo activo antes de guardar flujo.")
+      setFlowError("Select el campo activo antes de guardar flujo.")
       setFlowMessage("")
       return
     }
@@ -1310,7 +1310,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
       <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-neutral-950 px-4 text-white">
         <p className="text-center text-neutral-300">Zona no encontrada para este proyecto.</p>
         <Link href={`/pulse?project=${encodeURIComponent(projectId ?? "")}`} className="rounded-xl bg-blue-600 px-4 py-3 font-semibold">
-          Volver a zonas
+          Back to zones
         </Link>
       </main>
     )
@@ -1330,9 +1330,9 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
       <section className="mx-auto w-full max-w-4xl space-y-6">
         <ContextHeader
           title={zone.microZone}
-          subtitle="Flujo por zona: fotos primero, luego procesos."
+          subtitle="Zone workflow: photos first, then process data."
           backHref={`/pulse?project=${encodeURIComponent(project.id)}`}
-          backLabel="Zonas"
+          backLabel="Zones"
           breadcrumbs={[
             { label: "Pulse", href: "/" },
             { label: project.name, href: `/pulse?project=${encodeURIComponent(project.id)}` },
@@ -1361,7 +1361,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
               ? `Guardado en nube${lastCloudSavedAt ? ` · ${new Date(lastCloudSavedAt).toLocaleString("es-MX")}` : ""}`
               : saveState === "saving"
                 ? "Guardando en nube..."
-                : "Solo local (falta Guardar flujo)"}
+                : "Solo local (falta Save flow)"}
           </p>
           <input
             type="file"
@@ -1456,7 +1456,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
               : "Compaction → Roll Placement → Sewing → Cut → Adhesive."}
           </p>
           <p className="rounded-lg border border-neutral-700 px-3 py-2 text-xs text-neutral-300">
-            Guardar flujo usa máximo 3 fotos por envío para mantener señal limpia.
+            Save flow usa máximo 3 fotos por envío para mantener señal limpia.
           </p>
 
           <div className={canOpenProcesses ? "space-y-2" : "pointer-events-none space-y-2 opacity-50"}>
@@ -1483,7 +1483,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                         onClick={() => setOpenStep((prev) => (prev === step.key ? null : step.key))}
                         className="rounded-lg border border-neutral-600 px-3 py-2 text-xs font-semibold hover:bg-neutral-800"
                       >
-                        {expanded ? "Cerrar menú" : "Abrir menú"}
+                        {expanded ? "Close" : "Open"}
                       </button>
                       <button
                         type="button"
@@ -1514,10 +1514,10 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                               Abrir plano (fullscreen)
                             </button>
                             <p className="rounded-xl border border-neutral-700 px-3 py-3 text-center text-xs text-neutral-400">
-                              Consulta plano y captura rollos sin salir de Pulse.
+                              Review the plan and capture rolls without leaving Pulse.
                             </p>
                           </div>
-                          {isLoadingPlanUrls ? <p className="text-xs text-neutral-400">Cargando planos del proyecto...</p> : null}
+                          {isLoadingPlanUrls ? <p className="text-xs text-neutral-400">Loading project plans.....</p> : null}
                           {planViewerError ? (
                             <p className="rounded-xl border border-amber-500/70 bg-amber-500/10 p-3 text-sm text-amber-300">{planViewerError}</p>
                           ) : null}
@@ -1530,7 +1530,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                                 onChange={(event) => setRollLengthFit(event.target.value as "green" | "yellow" | "red" | "")}
                                 className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
                               >
-                                <option value="">Selecciona</option>
+                                <option value="">Select</option>
                                 <option value="green">Green - Normal</option>
                                 <option value="yellow">Yellow - Justo</option>
                                 <option value="red">Red - Falta/Sobra demasiado</option>
@@ -1665,7 +1665,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
 
                             <div className="space-y-1">
                               <p className="text-xs text-neutral-400">
-                                Capturados: {rollColorLabels.length} rollos · Costuras sugeridas para Sewing: {Math.max(rollColorLabels.length - 1, 0)}
+                                Captured: {rollColorLabels.length} rolls · Suggested seams para Sewing: {Math.max(rollColorLabels.length - 1, 0)}
                               </p>
                               {rollLabelProgress !== null ? (
                                 <>
@@ -1698,7 +1698,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
 
                           <div className="grid gap-2 sm:grid-cols-1">
                             <div className="rounded-xl border border-neutral-700 px-3 py-3 text-center text-xs text-neutral-400">
-                              Roll Placement se guarda con Guardar flujo
+                              Roll Placement se guarda con Save flow
                             </div>
                           </div>
 
@@ -1737,7 +1737,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
 
                       {step.key === "ADHESIVE" ? (
                         <>
-                          <p className="text-sm text-neutral-300">Metadata de Adhesive (Pegada) inline.</p>
+                          <p className="text-sm text-neutral-300">Inline adhesive metadata.</p>
 
                           {adhesiveCriticalOptions.length > 0 ? (
                             <fieldset className="space-y-2">
@@ -1780,7 +1780,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                               />
                             </label>
                             <label className="block space-y-2">
-                              <span className="text-sm text-neutral-300">Botes usados</span>
+                              <span className="text-sm text-neutral-300">Buckets used</span>
                               <input
                                 type="number"
                                 min={0}
@@ -1799,7 +1799,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                               onChange={(event) => setAdhesiveCondicion(event.target.value)}
                               className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
                             >
-                              <option value="">Selecciona condición</option>
+                              <option value="">Select condición</option>
                               {CONDITION_OPTIONS.map((option) => (
                                 <option key={option} value={option}>
                                   {option}
@@ -1835,14 +1835,14 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                           </label>
 
                           <p className="rounded-xl border border-neutral-700 px-3 py-3 text-center text-xs text-neutral-400">
-                            Adhesive se guarda con Guardar flujo
+                            Adhesive se guarda con Save flow
                           </p>
 
                           <Link
                             href={`/capture/pegada?${query}&prefill=1`}
                             className="block rounded-xl border border-neutral-600 py-3 text-center text-sm font-semibold hover:bg-neutral-800"
                           >
-                            Abrir pantalla completa de Pegada
+                            Open full adhesive capture
                           </Link>
 
                           {adhesiveError ? (
@@ -1929,7 +1929,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                                   onChange={(event) => setMaterialTipo(event.target.value as "Arena" | "Goma" | "")}
                                   className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
                                 >
-                                  <option value="">Selecciona</option>
+                                  <option value="">Select</option>
                                   <option value="Arena">Arena</option>
                                   <option value="Goma">Goma</option>
                                 </select>
@@ -1941,7 +1941,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                                   onChange={(event) => setMaterialPasada(event.target.value as "Sencilla" | "Doble" | "")}
                                   className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
                                 >
-                                  <option value="">Selecciona</option>
+                                  <option value="">Select</option>
                                   <option value="Sencilla">Sencilla</option>
                                   <option value="Doble">Doble</option>
                                 </select>
@@ -1957,7 +1957,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                                   onChange={(event) => setMaterialValvula(Number(event.target.value))}
                                   className="w-full"
                                 />
-                                <p className="text-xs text-neutral-400">Seleccionado: {materialValvula}</p>
+                                <p className="text-xs text-neutral-400">Selectdo: {materialValvula}</p>
                               </label>
                               <div className="grid gap-3 sm:grid-cols-2">
                                 <label className="block space-y-2">
@@ -1996,10 +1996,10 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                                   onClick={() => setMaterialStep(1)}
                                   className="w-full rounded-xl border border-neutral-600 py-3 font-semibold hover:bg-neutral-800"
                                 >
-                                  Volver a fotos
+                                  Back to photos
                                 </button>
                                 <div className="w-full rounded-xl border border-neutral-700 px-3 py-3 text-center text-xs text-neutral-400">
-                                  Material se guarda con Guardar flujo
+                                  Material se guarda con Save flow
                                 </div>
                               </div>
                             </div>
@@ -2026,9 +2026,9 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
 
                       {step.key === "SEWING" ? (
                         <>
-                          <p className="text-sm text-neutral-300">Cuestionario de Sewing (inline).</p>
+                          <p className="text-sm text-neutral-300">Inline sewing questionnaire.</p>
                           <label className="block space-y-2">
-                            <span className="text-sm text-neutral-300">Total Seams</span>
+                            <span className="text-sm text-neutral-300">Total seams</span>
                             <input
                               type="number"
                               min={0}
@@ -2039,7 +2039,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                           </label>
 
                           <p className="rounded-xl border border-neutral-700 px-3 py-3 text-center text-xs text-neutral-400">
-                            Sewing se guarda con Guardar flujo
+                            Sewing se guarda con Save flow
                           </p>
 
                           {stepSaveErrors[step.key] ? (
@@ -2058,13 +2058,13 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                       {step.key === "COMPACT" ? (
                         <>
                           <label className="block space-y-2">
-                            <span className="text-sm text-neutral-300">Tipo de compactación</span>
+                            <span className="text-sm text-neutral-300">Compaction method</span>
                             <select
                               value={compactionMethod}
                               onChange={(event) => setCompactionMethod(event.target.value as "Plate" | "Roller" | "Manual" | "")}
                               className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-3"
                             >
-                              <option value="">Selecciona</option>
+                              <option value="">Select</option>
                               <option value="Plate">Plate</option>
                               <option value="Roller">Roller</option>
                               <option value="Manual">Manual</option>
@@ -2078,7 +2078,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                             Marcar paso {step.label}
                           </button>
                           <p className="rounded-xl border border-neutral-700 px-3 py-3 text-center text-xs text-neutral-400">
-                            Este paso se guarda con Guardar flujo
+                            Este paso se guarda con Save flow
                           </p>
                           {stepSaveErrors[step.key] ? (
                             <p className="rounded-xl border border-red-500/70 bg-red-500/10 p-3 text-sm text-red-300">
@@ -2107,7 +2107,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                             Marcar paso {step.label}
                           </button>
                           <p className="rounded-xl border border-neutral-700 px-3 py-3 text-center text-xs text-neutral-400">
-                            Este paso se guarda con Guardar flujo
+                            Este paso se guarda con Save flow
                           </p>
                           {stepSaveErrors[step.key] ? (
                             <p className="rounded-xl border border-red-500/70 bg-red-500/10 p-3 text-sm text-red-300">
@@ -2150,7 +2150,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
             </p>
             <div className="flex flex-wrap items-center gap-2">
               <p className="rounded-lg border border-neutral-700 px-2 py-1 text-xs text-neutral-300">
-                Pendientes nube: {pendingFlowCount}
+                Cloud pending: {pendingFlowCount}
               </p>
               <button
                 type="button"
@@ -2158,11 +2158,11 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                 disabled={pendingFlowCount === 0 || isSyncingPendingFlow}
                 className="rounded-lg border border-neutral-600 px-3 py-1 text-xs font-semibold hover:bg-neutral-800 disabled:opacity-50"
               >
-                {isSyncingPendingFlow ? "Sincronizando..." : "Sincronizar pendientes"}
+                {isSyncingPendingFlow ? "Sincronizando..." : "Sync pending"}
               </button>
             </div>
             <label className="block space-y-1">
-              <span className="text-xs text-neutral-400">Etiqueta de calidad (dataset visión)</span>
+              <span className="text-xs text-neutral-400">Quality label (vision dataset)</span>
               <select
                 value={flowVisionLabel}
                 onChange={(event) => {
@@ -2182,7 +2182,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
               disabled={!canOpenProcesses || isSavingFlow}
               className="w-full rounded-xl bg-cyan-600 py-3 font-semibold hover:bg-cyan-700 disabled:opacity-50"
             >
-              {isSavingFlow ? "Guardando flujo..." : "Guardar flujo"}
+              {isSavingFlow ? "Guardando flujo..." : "Save flow"}
             </button>
             {flowError ? (
               <p className="rounded-xl border border-red-500/70 bg-red-500/10 p-3 text-sm text-red-300">{flowError}</p>
@@ -2197,18 +2197,18 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
         </section>
 
         <section className="space-y-3 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
-          <h2 className="text-xl font-semibold">Registro adicional</h2>
+          <h2 className="text-xl font-semibold">Extra actions</h2>
           <Link
             href={`/pulse/history?project=${encodeURIComponent(project.id)}&macroZone=${encodeURIComponent(zone.macroZone)}&microZone=${encodeURIComponent(zone.microZone)}`}
             className="block rounded-xl border border-amber-500 py-3 text-center font-semibold text-amber-300 hover:bg-amber-500/10"
           >
-            Ver historial de esta zona
+            View this zone history
           </Link>
           <Link
             href={`/capture/incidencias?${query}`}
             className="block rounded-xl border border-red-500 py-3 text-center font-semibold text-red-300 hover:bg-red-500/10"
           >
-            Incidencias
+            Incidents
           </Link>
         </section>
 
@@ -2216,16 +2216,16 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
           href={`/pulse?project=${encodeURIComponent(project.id)}`}
           className="block rounded-xl border border-neutral-600 px-4 py-3 text-center font-semibold hover:bg-neutral-800"
         >
-          Volver a zonas
+          Back to zones
         </Link>
 
-        {isReadingPhotos ? <p className="text-sm text-neutral-400">Procesando fotos...</p> : null}
+        {isReadingPhotos ? <p className="text-sm text-neutral-400">Processing photos.....</p> : null}
       </section>
       {isPlanViewerOpen ? (
         <div className="fixed inset-0 z-50 bg-neutral-950/95">
           <div className="flex h-full flex-col">
             <div className="flex flex-wrap items-center gap-2 border-b border-neutral-800 bg-neutral-950 p-3">
-              <p className="text-sm font-semibold text-cyan-200">Plano del proyecto</p>
+              <p className="text-sm font-semibold text-cyan-200">Project plan</p>
               <select
                 value={activePlanUrl}
                 onChange={(event) => {
@@ -2258,7 +2258,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                   rel="noreferrer"
                   className="rounded-lg border border-neutral-600 px-3 py-2 text-xs font-semibold hover:bg-neutral-800"
                 >
-                  Abrir nativo
+                  Open native
                 </a>
               ) : null}
               <button
@@ -2266,14 +2266,14 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                 onClick={() => void markCurrentPageAsRollLayout()}
                 className="rounded-lg border border-cyan-500/70 px-3 py-2 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/10"
               >
-                Marcar esta página como Roll Layout
+                Mark this page as Roll Layout
               </button>
               <button
                 type="button"
                 onClick={() => setIsPlanViewerOpen(false)}
                 className="rounded-lg border border-red-500/70 px-3 py-2 text-xs font-semibold text-red-300 hover:bg-red-500/10"
               >
-                Cerrar ✕
+                Close
               </button>
             </div>
             {planViewerMessage ? (
@@ -2291,7 +2291,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
                   className="h-full w-full"
                 />
               ) : (
-                <div className="flex h-full items-center justify-center text-sm text-neutral-300">Sin plano disponible.</div>
+                <div className="flex h-full items-center justify-center text-sm text-neutral-300">No plan available.</div>
               )}
             </div>
           </div>
@@ -2300,3 +2300,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
     </main>
   )
 }
+
+
+
+

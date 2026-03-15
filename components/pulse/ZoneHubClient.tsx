@@ -29,10 +29,10 @@ export default function ZoneHubClient({ projectId }: ZoneHubClientProps) {
   if (!projectId || !project) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-6 bg-neutral-950 px-4 text-white">
-        <h1 className="text-2xl font-bold">Falta seleccionar proyecto</h1>
-        <p className="text-center text-neutral-400">Primero elige un proyecto para abrir zonas de captura.</p>
+        <h1 className="text-2xl font-bold">Select a project first</h1>
+        <p className="text-center text-neutral-400">Choose a project before opening capture zones.</p>
         <Link href="/projects?flow=load" className="rounded-xl bg-blue-600 px-4 py-3 font-semibold hover:bg-blue-700">
-          Ir a proyectos
+          Go to projects
         </Link>
       </main>
     )
@@ -43,7 +43,7 @@ export default function ZoneHubClient({ projectId }: ZoneHubClientProps) {
       <section className="mx-auto w-full max-w-5xl space-y-6">
         <ContextHeader
           title={project.name}
-          subtitle="Zonas del proyecto por deporte. Entra a una zona para capturar procesos."
+          subtitle="Open a zone to capture photos, workflow data, and project metadata."
           backHref="/"
           backLabel="Inicio"
           breadcrumbs={[
@@ -51,7 +51,7 @@ export default function ZoneHubClient({ projectId }: ZoneHubClientProps) {
             { label: project.name },
           ]}
           projectLabel={project.id}
-          statusLabel="En captura"
+          statusLabel="Capturing"
           dateLabel={new Date().toLocaleDateString("es-MX")}
         />
 
@@ -75,8 +75,8 @@ export default function ZoneHubClient({ projectId }: ZoneHubClientProps) {
                     className={`rounded-xl border p-4 transition hover:border-blue-500 ${statusCls}`}
                   >
                     <p className="font-semibold">{zone.microZone}</p>
-                    <p className="mt-1 text-xs text-neutral-400">Tipo: {zone.zoneType}</p>
-                    <p className="mt-3 text-sm text-neutral-300">Progreso: {progress}%</p>
+                    <p className="mt-1 text-xs text-neutral-400">Type: {zone.zoneType}</p>
+                    <p className="mt-3 text-sm text-neutral-300">Progress: {progress}%</p>
                   </Link>
                 )
               })}
@@ -88,35 +88,27 @@ export default function ZoneHubClient({ projectId }: ZoneHubClientProps) {
           <Link
             href={`/projects/admin?edit=${encodeURIComponent(project.id)}`}
             className="w-full rounded-xl border border-cyan-500 px-4 py-3 text-center font-semibold text-cyan-300 hover:bg-cyan-500/10"
-          >
-            Editar setup base
-          </Link>
+          >Base configuration</Link>
           <Link
             href="/projects?flow=load"
             className="w-full rounded-xl border border-neutral-600 px-4 py-3 text-center font-semibold hover:bg-neutral-800"
           >
-            Cambiar proyecto
+            Switch project
           </Link>
           <Link
             href={`/pulse/overview?project=${encodeURIComponent(project.id)}`}
             className="w-full rounded-xl border border-cyan-500 px-4 py-3 text-center font-semibold text-cyan-300 hover:bg-cyan-500/10"
-          >
-            Project Overview
-          </Link>
+          >Project overview</Link>
           <Link
             href={`/pulse/history?project=${encodeURIComponent(project.id)}`}
             className="w-full rounded-xl border border-amber-500 px-4 py-3 text-center font-semibold text-amber-300 hover:bg-amber-500/10"
           >
-            Ver historial
-          </Link>
-          <Link
-            href={`/capture?project=${encodeURIComponent(project.id)}`}
-            className="w-full rounded-xl border border-neutral-600 px-4 py-3 text-center font-semibold hover:bg-neutral-800"
-          >
-            Abrir módulos legacy
+            View history
           </Link>
         </div>
       </section>
     </main>
   )
 }
+
+

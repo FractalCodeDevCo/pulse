@@ -63,12 +63,12 @@ export default function DataSciencePanel({ projectId }: DataSciencePanelProps) {
         zones?: number
       }
 
-      if (!response.ok) throw new Error(data.error ?? "No se pudo generar snapshot.")
+      if (!response.ok) throw new Error(data.error ?? "Could not generate snapshot.")
       setMessage(
-        `Snapshot diario generado. Filas: ${data.snapshotRows ?? 0} Â· Zonas: ${data.zones ?? 0}`,
+        `Daily snapshot generated. Rows: ${data.snapshotRows ?? 0}  · Zones: ${data.zones ?? 0}`,
       )
     } catch (buildError) {
-      setError(buildError instanceof Error ? buildError.message : "No se pudo generar snapshot.")
+      setError(buildError instanceof Error ? buildError.message : "Could not generate snapshot.")
     } finally {
       setIsGenerating(false)
     }
@@ -78,12 +78,12 @@ export default function DataSciencePanel({ projectId }: DataSciencePanelProps) {
     <section className="space-y-4 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
       <h2 className="text-xl font-semibold">Data Science Export</h2>
       <p className="text-sm text-neutral-400">
-        Exporta CSV estable y genera snapshots diarios acumulados por zona.
+        Export stable CSV output and generate daily snapshots by zone.
       </p>
 
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="space-y-2">
-          <span className="text-sm text-neutral-300">Desde</span>
+          <span className="text-sm text-neutral-300">From</span>
           <input
             type="date"
             value={fromDate}
@@ -92,7 +92,7 @@ export default function DataSciencePanel({ projectId }: DataSciencePanelProps) {
           />
         </label>
         <label className="space-y-2">
-          <span className="text-sm text-neutral-300">Hasta</span>
+          <span className="text-sm text-neutral-300">To</span>
           <input
             type="date"
             value={toDate}
@@ -107,7 +107,7 @@ export default function DataSciencePanel({ projectId }: DataSciencePanelProps) {
           href={captureCsvUrl}
           className="rounded-xl border border-cyan-500 px-3 py-3 text-center text-sm font-semibold text-cyan-300 hover:bg-cyan-500/10"
         >
-          Descargar CSV Capturas
+          Download capture CSV
         </a>
         <button
           type="button"
@@ -115,13 +115,13 @@ export default function DataSciencePanel({ projectId }: DataSciencePanelProps) {
           disabled={isGenerating}
           className="rounded-xl bg-blue-600 px-3 py-3 text-sm font-semibold hover:bg-blue-700 disabled:opacity-50"
         >
-          {isGenerating ? "Generando..." : "Generar Snapshot Diario"}
+          {isGenerating ? "Generating..." : "Generate daily snapshot"}
         </button>
         <a
           href={snapshotCsvUrl}
           className="rounded-xl border border-amber-500 px-3 py-3 text-center text-sm font-semibold text-amber-300 hover:bg-amber-500/10"
         >
-          Descargar Snapshot CSV
+          Download snapshot CSV
         </a>
       </div>
 
@@ -138,3 +138,4 @@ export default function DataSciencePanel({ projectId }: DataSciencePanelProps) {
     </section>
   )
 }
+

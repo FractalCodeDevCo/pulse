@@ -39,19 +39,14 @@ export type AppProject = {
 }
 
 export const PROJECTS_STORAGE_KEY = "pulse_projects_v2"
-export const LEGACY_PROJECTS_STORAGE_KEY = "pulse_projects"
 export const PROJECT_ZONES_STORAGE_KEY = "pulse_project_zones_v2"
 export const LAST_PROJECT_STORAGE_KEY = "pulse_last_project"
 
-export const MOCK_PROJECTS: AppProject[] = [
-  { id: "obra-norte", name: "Obra Norte", fieldType: "beisbol", createdAt: new Date().toISOString() },
-  { id: "obra-sur", name: "Obra Sur", fieldType: "soccer", createdAt: new Date().toISOString() },
-  { id: "stadium-east", name: "Stadium East", fieldType: "football", createdAt: new Date().toISOString() },
-]
+export const MOCK_PROJECTS: AppProject[] = []
 
 const STEP_TEMPLATES_BY_ZONE_TYPE: Record<ZoneType, ZoneStepTemplate[]> = {
   GLOBAL: [
-    { key: "COMPACT", label: "Compactación general" },
+    { key: "COMPACT", label: "General compaction" },
     { key: "LAYOUT", label: "Layout" },
     { key: "MATERIAL", label: "Material" },
   ],
@@ -111,16 +106,6 @@ function readRawProjects(): unknown[] {
     const v2 = localStorage.getItem(PROJECTS_STORAGE_KEY)
     if (v2) {
       const parsed = JSON.parse(v2) as unknown[]
-      if (Array.isArray(parsed)) return parsed
-    }
-  } catch {
-    // fallback
-  }
-
-  try {
-    const legacy = localStorage.getItem(LEGACY_PROJECTS_STORAGE_KEY)
-    if (legacy) {
-      const parsed = JSON.parse(legacy) as unknown[]
       if (Array.isArray(parsed)) return parsed
     }
   } catch {
@@ -285,7 +270,6 @@ export function ensureProjectZones(projectId: string, fieldType: FieldType): Pro
   const generated = generateProjectZones(projectId, fieldType)
 
   if (Array.isArray(existing) && existing.length > 0) {
-    // Keep legacy projects unchanged for backward compatibility.
     return existing.map((zone, index) => ({
       ...zone,
       type: zone.type ?? (zone.zoneType === "GLOBAL" ? "GLOBAL" : "MICRO"),
@@ -338,3 +322,5 @@ export function getZoneProgress(zone: ProjectZone): number {
   if (zone.stepKeys.length === 0) return 0
   return Math.round((zone.completedStepKeys.length / zone.stepKeys.length) * 100)
 }
+
+

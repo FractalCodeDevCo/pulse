@@ -15,7 +15,7 @@ import { FIELD_TYPE_LABELS, FieldType, saveProjectFieldType } from "../../../typ
 type ProjectSetupView = {
   totalSqft: number | null
   startDate: string | null
-  crewName: string
+  CrewName: string
   notes: string
   planFiles: string[]
   zoneTargets: ZoneTarget[]
@@ -143,7 +143,7 @@ export default function ProjectsAdminPage() {
 
   const [totalSqft, setTotalSqft] = useState("")
   const [startDate, setStartDate] = useState("")
-  const [crewName, setCrewName] = useState("")
+  const [CrewName, setCrewName] = useState("")
   const [notes, setNotes] = useState("")
   const [siteType, setSiteType] = useState<SiteType>("single")
   const [complexFieldCount, setComplexFieldCount] = useState(4)
@@ -241,7 +241,7 @@ export default function ProjectsAdminPage() {
     setFieldType(project.fieldType)
     setTotalSqft(setup?.totalSqft != null ? String(setup.totalSqft) : "")
     setStartDate(setup?.startDate ?? "")
-    setCrewName(setup?.crewName ?? "")
+    setCrewName(setup?.CrewName ?? "")
     setNotes(setup?.notes ?? "")
     setZoneTargets(toSetupTargets(project))
     setUploadedPlanUrls(setup?.planFiles ?? [])
@@ -257,8 +257,8 @@ export default function ProjectsAdminPage() {
   }, [editingProjectId, loadedProjectId, projects])
 
   const previewSetupCompleted = useMemo(() => {
-    return inferSetupCompleted(toNumberOrNull(totalSqft), startDate || null, crewName, zoneTargets)
-  }, [crewName, startDate, totalSqft, zoneTargets])
+    return inferSetupCompleted(toNumberOrNull(totalSqft), startDate || null, CrewName, zoneTargets)
+  }, [CrewName, startDate, totalSqft, zoneTargets])
 
   function resetFormForNewProject() {
     setEditingProjectId("")
@@ -427,7 +427,7 @@ export default function ProjectsAdminPage() {
   async function handleAnalyzeSavedPlans() {
     const projectId = editingProjectId || slugifyProjectName(code.trim() || name.trim())
     if (!projectId) {
-      setError("Primero define nombre/código del proyecto.")
+      setError("Primero define Name/código del proyecto.")
       return
     }
 
@@ -440,7 +440,7 @@ export default function ProjectsAdminPage() {
     setError("")
     const result = await analyzeAndApplyPlanData(projectId, refs, zoneTargets)
     if (!result.analysis) {
-      setMessage("No se pudo analizar el plano guardado. Revisa el archivo PDF o intenta de nuevo.")
+      setMessage("Could not analyze the saved plan. Check the PDF and try again.")
       return
     }
 
@@ -452,7 +452,7 @@ export default function ProjectsAdminPage() {
   async function handleAnalyzePlanExplicit() {
     const projectId = editingProjectId || slugifyProjectName(code.trim() || name.trim())
     if (!projectId) {
-      setError("Primero define nombre/código del proyecto.")
+      setError("Primero define Name/código del proyecto.")
       return
     }
 
@@ -485,7 +485,7 @@ export default function ProjectsAdminPage() {
       }
       const result = await analyzeAndApplyPlanData(projectId, refs, baseTargets)
       if (!result.analysis) {
-        setMessage("No se pudo analizar el plano. Revisa formato del PDF o intenta de nuevo.")
+        setMessage("Could not analyze the plan. Check the PDF format and try again.")
         return
       }
       applyPlanAnalysisToTargets(projectId, result.analysis, baseTargets, {
@@ -495,7 +495,7 @@ export default function ProjectsAdminPage() {
         `Analyze Plan (IA): ${result.analysis.stats.uniqueRollLabels} rollos, ${result.analysis.stats.rollSegments} segmentos, CHOP ${result.analysis.stats.choppedSegments}, SPLIT ${result.analysis.stats.splitSegments}. Autofill en #3 y Total Sqft en #2 cuando hay datos.`,
       )
     } catch (analysisError) {
-      const text = analysisError instanceof Error ? analysisError.message : "No se pudo analizar el plano."
+      const text = analysisError instanceof Error ? analysisError.message : "Could not analyze the plan."
       setError(text)
     } finally {
       setIsAnalyzingPlans(false)
@@ -512,7 +512,7 @@ export default function ProjectsAdminPage() {
 
     const projectName = name.trim() || existing?.name || ""
     if (!projectName) {
-      setError("Nombre del proyecto es requerido.")
+      setError("Name del proyecto es requerido.")
       return
     }
 
@@ -587,20 +587,20 @@ export default function ProjectsAdminPage() {
           id: hydratedProject.id,
           name: projectName,
           fieldType,
-          setup: {
+          Setup: {
             totalSqft: toNumberOrNull(totalSqft),
             startDate: startDate || null,
-            crewName,
+            CrewName,
             notes,
             zoneTargets: autoZoneTargets,
             planFiles: allPlanUrls,
-            setupCompleted: inferSetupCompleted(toNumberOrNull(totalSqft), startDate || null, crewName, autoZoneTargets),
+            setupCompleted: inferSetupCompleted(toNumberOrNull(totalSqft), startDate || null, CrewName, autoZoneTargets),
           },
         }),
       })
 
       const data = (await response.json()) as { error?: string; project?: LocalProject }
-      if (!response.ok) throw new Error(data.error ?? "No se pudo guardar en nube")
+      if (!response.ok) throw new Error(data.error ?? "Could not save to cloud")
 
       const savedProject = data.project
       if (savedProject) {
@@ -612,11 +612,11 @@ export default function ProjectsAdminPage() {
       setPlanFiles([])
       setMessage(
         `${isEditing
-          ? "Setup actualizado. Puedes editar targets/planos a mitad del proyecto cuando quieras."
-          : "Proyecto + setup base guardados. Ya aparece en Nuevo/Cargar proyecto."}${analysisSummary ? ` ${analysisSummary}` : ""}`,
+          ? "Setup updated. You can edit targets and plans any time."
+          : "Project and base setup saved. It now appears in projects."}${analysisSummary ? ` ${analysisSummary}` : ""}`,
       )
     } catch (submitError) {
-      const text = submitError instanceof Error ? submitError.message : "No se pudo guardar en nube"
+      const text = submitError instanceof Error ? submitError.message : "Could not save to cloud"
       setError(`Error nube: ${text}`)
       setMessage("Guardado local OK.")
     } finally {
@@ -628,14 +628,14 @@ export default function ProjectsAdminPage() {
     <main className="min-h-screen bg-neutral-950 px-4 py-8 text-white">
       <section className="mx-auto w-full max-w-5xl space-y-6">
         <ContextHeader
-          title="Setup Base de Proyecto"
-          subtitle="Lo llena PM/Admin. Instalador solo recibe proyecto y captura."
+          title="Project base setup"
+          subtitle="Filled by PM/Admin. Installers just receive the project and capture."
           backHref="/projects?flow=load"
-          backLabel="Proyectos"
+          backLabel="Projects"
           breadcrumbs={[
             { label: "Pulse", href: "/" },
-            { label: "Proyectos", href: "/projects?flow=load" },
-            { label: "Admin Setup" },
+            { label: "Projects", href: "/projects?flow=load" },
+            { label: "Setup" },
           ]}
           statusLabel="Administración"
           dateLabel={new Date().toLocaleDateString("es-MX")}
@@ -649,7 +649,7 @@ export default function ProjectsAdminPage() {
           </p>
           <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
             <label className="space-y-2">
-              <span className="text-xs text-cyan-100">Proyecto a editar (opcional)</span>
+              <span className="text-xs text-cyan-100">Project to edit (optional)</span>
               <select
                 value={editingProjectId}
                 onChange={(event) => {
@@ -665,7 +665,7 @@ export default function ProjectsAdminPage() {
                 }}
                 className="w-full rounded-xl border border-cyan-800/70 bg-neutral-950 px-3 py-3"
               >
-                <option value="">Crear nuevo proyecto</option>
+                <option value="">Create new project</option>
                 {projects.map((project) => (
                   <option key={project.id} value={project.id}>
                     {project.name} · {project.id}
@@ -678,21 +678,21 @@ export default function ProjectsAdminPage() {
               onClick={resetFormForNewProject}
               className="self-end rounded-xl border border-cyan-700/80 px-4 py-3 text-sm font-semibold text-cyan-100 hover:bg-cyan-600/10"
             >
-              Nuevo limpio
+              Start clean
             </button>
           </div>
         </section>
 
         <form onSubmit={handleSubmit} className="space-y-5 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
-          <h2 className="text-xl font-semibold">1) Proyecto</h2>
+          <h2 className="text-xl font-semibold">1) Project</h2>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="space-y-2">
-              <span className="text-sm text-neutral-300">Nombre</span>
+              <span className="text-sm text-neutral-300">Name</span>
               <input
                 type="text"
                 value={name}
                 onChange={(event) => setName(event.target.value)}
-                placeholder="Ej: Proyecto Navidad"
+                placeholder="Example: North Municipal Field"
                 className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3"
               />
             </label>
@@ -730,7 +730,7 @@ export default function ProjectsAdminPage() {
             </div>
           </div>
 
-          <h2 className="pt-2 text-xl font-semibold">2) Baseline mínimo (PM/Admin)</h2>
+          <h2 className="pt-2 text-xl font-semibold">2) Minimum baseline (PM/Admin)</h2>
           <div className="grid gap-3 sm:grid-cols-3">
             <label className="space-y-2">
               <span className="text-sm text-neutral-300">Total Sqft</span>
@@ -743,7 +743,7 @@ export default function ProjectsAdminPage() {
               />
             </label>
             <label className="space-y-2">
-              <span className="text-sm text-neutral-300">Fecha inicio</span>
+              <span className="text-sm text-neutral-300">Start date</span>
               <input
                 type="date"
                 value={startDate}
@@ -755,7 +755,7 @@ export default function ProjectsAdminPage() {
               <span className="text-sm text-neutral-300">Crew</span>
               <input
                 type="text"
-                value={crewName}
+                value={CrewName}
                 onChange={(event) => setCrewName(event.target.value)}
                 className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3"
               />
@@ -763,7 +763,7 @@ export default function ProjectsAdminPage() {
           </div>
 
           <label className="block space-y-2">
-            <span className="text-sm text-neutral-300">Notas setup (opcional)</span>
+            <span className="text-sm text-neutral-300">Setup notes (optional)</span>
             <textarea
               rows={3}
               value={notes}
@@ -772,11 +772,11 @@ export default function ProjectsAdminPage() {
             />
           </label>
 
-          <h2 className="pt-2 text-xl font-semibold">2.1) Configuración de Campos (Beta)</h2>
-          <p className="text-sm text-neutral-400">Prueba segura: define si el proyecto tiene un solo campo o complejo (varios campos).</p>
+          <h2 className="pt-2 text-xl font-semibold">2.1) Field configuration (beta)</h2>
+          <p className="text-sm text-neutral-400">Define whether the project is a single field or a multi-field complex.</p>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="space-y-2">
-              <span className="text-sm text-neutral-300">Tipo de sitio</span>
+              <span className="text-sm text-neutral-300">Site type</span>
               <select
                 value={siteType}
                 onChange={(event) => {
@@ -794,7 +794,7 @@ export default function ProjectsAdminPage() {
             </label>
             {siteType === "complex" ? (
               <label className="space-y-2">
-                <span className="text-sm text-neutral-300">Número de campos</span>
+                <span className="text-sm text-neutral-300">Field count</span>
                 <input
                   type="number"
                   min={2}
@@ -809,7 +809,7 @@ export default function ProjectsAdminPage() {
             ) : null}
           </div>
           <div className="space-y-2 rounded-xl border border-neutral-700 bg-neutral-950 p-3">
-            <p className="text-xs text-neutral-400">Campos que se usarán para selección en captura:</p>
+            <p className="text-xs text-neutral-400">Field units available during capture:</p>
             <div className="grid gap-2 sm:grid-cols-2">
               {fieldUnits.map((unit) => (
                 <label key={unit.id} className="space-y-1">
@@ -825,11 +825,11 @@ export default function ProjectsAdminPage() {
             </div>
           </div>
 
-          <h2 className="pt-2 text-xl font-semibold">3) Targets por zona</h2>
-          <p className="text-sm text-neutral-400">Sin estos targets no hay comparación real Plan vs Real.</p>
+          <h2 className="pt-2 text-xl font-semibold">3) Zone targets</h2>
+          <p className="text-sm text-neutral-400">Without these targets there is no real plan-versus-actual comparison.</p>
           {lastAutofill ? (
             <p className="rounded-lg border border-cyan-800/70 bg-cyan-950/20 px-3 py-2 text-xs text-cyan-100">
-              Último análisis: {new Date(lastAutofill.analyzedAt).toLocaleString("es-MX")} · Rollos detectados: {lastAutofill.uniqueRolls} · Segmentos: {lastAutofill.rollSegments} · Campos autollenados: {lastAutofill.updatedCells}
+              Último análisis: {new Date(lastAutofill.analyzedAt).toLocaleString("es-MX")} · Detected rolls: {lastAutofill.uniqueRolls} · Segments: {lastAutofill.rollSegments} · Auto-filled fields: {lastAutofill.updatedCells}
             </p>
           ) : null}
           {planAnalysis && lastAutofill && lastAutofill.updatedCells === 0 ? (
@@ -887,7 +887,7 @@ export default function ProjectsAdminPage() {
             ))}
           </div>
 
-          <h2 className="pt-2 text-xl font-semibold">4) Planos (PM/Admin)</h2>
+          <h2 className="pt-2 text-xl font-semibold">4) Plans (PM/Admin)</h2>
           <p className="text-sm text-neutral-400">
             Cárgalos aquí al inicio del proyecto. También puedes agregar o quitar planos después en modo edición.
           </p>
@@ -917,7 +917,7 @@ export default function ProjectsAdminPage() {
 
           {uploadedPlanUrls.length > 0 ? (
             <div className="space-y-2 rounded-xl border border-cyan-900/60 bg-cyan-950/20 p-3">
-              <p className="text-xs uppercase tracking-wide text-cyan-100">Planos ya guardados en el proyecto</p>
+              <p className="text-xs uppercase tracking-wide text-cyan-100">Plans already saved in the project</p>
               {uploadedPlanUrls.map((url, index) => (
                 <div key={`${url}-${index}`} className="flex items-center justify-between gap-2 text-sm">
                   <a href={url} target="_blank" rel="noreferrer" className="truncate text-cyan-200 underline">
@@ -966,8 +966,8 @@ export default function ProjectsAdminPage() {
             <div className="space-y-3 rounded-xl border border-cyan-900/60 bg-cyan-950/15 p-3">
               <p className="text-xs uppercase tracking-wide text-cyan-100">Plan Intelligence por proyecto</p>
               <div className="grid gap-2 text-xs text-cyan-100 sm:grid-cols-2 lg:grid-cols-4">
-                <p>Rollos detectados: {planAnalysis.stats.uniqueRollLabels}</p>
-                <p>Segmentos: {planAnalysis.stats.rollSegments}</p>
+                <p>Detected rolls: {planAnalysis.stats.uniqueRollLabels}</p>
+                <p>Segments: {planAnalysis.stats.rollSegments}</p>
                 <p>CHOP: {planAnalysis.stats.choppedSegments}</p>
                 <p>SPLIT: {planAnalysis.stats.splitSegments}</p>
                 <p>Ft lineales: {planAnalysis.stats.totalLinearFt ?? "-"}</p>
@@ -999,7 +999,7 @@ export default function ProjectsAdminPage() {
                 : "border-amber-500/70 bg-amber-500/10 text-amber-200"
             }`}
           >
-            Estado setup: {previewSetupCompleted ? "Completo" : "Incompleto"}
+            Setup status: {previewSetupCompleted ? "Completo" : "Incompleto"}
           </p>
 
           <button
@@ -1007,7 +1007,7 @@ export default function ProjectsAdminPage() {
             disabled={isSubmitting}
             className="w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold hover:bg-blue-700 disabled:opacity-50"
           >
-            {editingProject ? "Actualizar setup base" : "Guardar proyecto + setup base"}
+            {editingProject ? "Update base setup" : "Save project and base setup"}
           </button>
 
           {error ? <p className="text-sm text-red-300">{error}</p> : null}
@@ -1015,7 +1015,7 @@ export default function ProjectsAdminPage() {
         </form>
 
         <section className="space-y-3 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
-          <h2 className="text-xl font-semibold">Proyectos disponibles</h2>
+          <h2 className="text-xl font-semibold">Available projects</h2>
           <div className="space-y-2">
             {projects.map((project) => (
               <div key={project.id} className="rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-2">
@@ -1033,7 +1033,7 @@ export default function ProjectsAdminPage() {
                     href={`/projects/admin?edit=${encodeURIComponent(project.id)}`}
                     className="rounded-lg border border-cyan-700/80 px-3 py-2 text-xs font-semibold text-cyan-100 hover:bg-cyan-700/20"
                   >
-                    Editar setup
+                    Edit setup
                   </Link>
                 </div>
               </div>
@@ -1045,9 +1045,12 @@ export default function ProjectsAdminPage() {
           href="/projects?flow=new"
           className="block rounded-xl border border-neutral-600 px-4 py-3 text-center font-semibold hover:bg-neutral-800"
         >
-          Volver a proyectos
+          Back to projects
         </Link>
       </section>
     </main>
   )
 }
+
+
+

@@ -29,7 +29,7 @@ export default function ContextHeader({
   title,
   subtitle,
   backHref,
-  backLabel = "Volver",
+  backLabel = "Back",
   breadcrumbs = [],
   projectLabel,
   zoneLabel,
@@ -45,7 +45,7 @@ export default function ContextHeader({
               href={backHref}
               className="inline-flex items-center rounded-lg border border-neutral-700 px-3 py-2 text-sm font-semibold text-neutral-200 hover:bg-neutral-900"
             >
-              ← {backLabel}
+              {"<- "} {backLabel}
             </Link>
           ) : null}
         </div>
@@ -73,12 +73,13 @@ export default function ContextHeader({
         </div>
 
         <div className="flex flex-wrap gap-2">
-          {projectLabel ? <HeaderMetaChip label="Proyecto" value={projectLabel} /> : null}
-          {zoneLabel ? <HeaderMetaChip label="Zona" value={zoneLabel} /> : null}
-          {statusLabel ? <HeaderMetaChip label="Estado" value={statusLabel} /> : null}
-          {dateLabel ? <HeaderMetaChip label="Fecha" value={dateLabel} /> : null}
+          {projectLabel ? <HeaderMetaChip label="Project" value={projectLabel} /> : null}
+          {zoneLabel ? <HeaderMetaChip label="Zone" value={zoneLabel} /> : null}
+          {statusLabel ? <HeaderMetaChip label="Status" value={statusLabel} /> : null}
+          {dateLabel ? <HeaderMetaChip label="Date" value={dateLabel} /> : null}
         </div>
       </div>
     </header>
   )
 }
+

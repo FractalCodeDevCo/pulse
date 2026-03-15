@@ -45,7 +45,7 @@ function formatDate(value: string): string {
 
 export default function ProjectsPage() {
   return (
-    <Suspense fallback={<main className="flex min-h-screen items-center justify-center bg-neutral-950 text-white">Cargando proyectos...</main>}>
+    <Suspense fallback={<main className="flex min-h-screen items-center justify-center bg-neutral-950 text-white">Loading projects...</main>}>
       <ProjectsPageContent />
     </Suspense>
   )
@@ -150,24 +150,24 @@ function ProjectsPageContent() {
     <main className="min-h-screen bg-neutral-950 px-4 py-8 text-white">
       <section className="mx-auto w-full max-w-2xl space-y-6">
         <ContextHeader
-          title={flow === "new" ? "Nuevo proyecto" : "Cargar proyecto"}
-          subtitle="Configura proyecto y deporte para generar zonas automáticamente."
+          title={flow === "new" ? "New project" : "Open project"}
+          subtitle="Select a project or create a new one to enter zones and captures."
           backHref="/"
           backLabel="Inicio"
           breadcrumbs={[
             { label: "Pulse", href: "/" },
-            { label: "Proyectos" },
+            { label: "Projects" },
           ]}
-          statusLabel={flow === "new" ? "Alta" : "Carga"}
+          statusLabel={flow === "new" ? "New" : "Active"}
           dateLabel={new Date().toLocaleDateString("es-MX")}
         />
         <Link href="/projects/admin" className="inline-block text-sm font-semibold text-amber-300 hover:underline">
-          PM/Admin: crear/editar setup + cargar plano
+          PM/Admin: base setup, targets, and plans
         </Link>
 
         <section className="space-y-4 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
           <label className="block space-y-2">
-            <span className="text-sm text-neutral-300">Proyectos</span>
+            <span className="text-sm text-neutral-300">Projects</span>
             <select
               value={selectedProjectId}
               onChange={(event) => setSelectedProjectId(event.target.value)}
@@ -181,13 +181,13 @@ function ProjectsPageContent() {
             </select>
           </label>
           {selectedProject ? (
-            <p className="text-xs text-neutral-400">Fecha alta: {formatDate(selectedProject.createdAt)}</p>
+            <p className="text-xs text-neutral-400">Created: {formatDate(selectedProject.createdAt)}</p>
           ) : null}
 
           {flow === "new" ? (
             <>
               <label className="block space-y-2">
-                <span className="text-sm text-neutral-300">Nombre de nuevo proyecto</span>
+                <span className="text-sm text-neutral-300">Nombre de New project</span>
                 <input
                   type="text"
                   value={newProjectName}
@@ -198,7 +198,7 @@ function ProjectsPageContent() {
               </label>
 
               <div className="space-y-2">
-                <span className="text-sm text-neutral-300">Deporte</span>
+                <span className="text-sm text-neutral-300">Sport</span>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                   {(Object.keys(FIELD_TYPE_LABELS) as FieldType[]).map((item) => {
                     const active = newProjectSport === item
@@ -227,7 +227,7 @@ function ProjectsPageContent() {
               href="/"
               className="w-full rounded-xl border border-neutral-600 px-4 py-3 text-center font-semibold hover:bg-neutral-800"
             >
-              Volver
+              Back
             </Link>
 
             <button
@@ -238,7 +238,7 @@ function ProjectsPageContent() {
                 canContinue ? "bg-emerald-600 hover:bg-emerald-700" : "cursor-not-allowed bg-neutral-700 text-neutral-400"
               }`}
             >
-              Continuar a zonas
+              Continue to zones
             </button>
           </div>
         </section>
@@ -246,3 +246,5 @@ function ProjectsPageContent() {
     </main>
   )
 }
+
+

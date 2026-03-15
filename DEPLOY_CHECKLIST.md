@@ -30,10 +30,11 @@ Set for: `Production`, `Preview`, and `Development`.
 - Open `/` and confirm Home renders.
 - Open `/projects`.
 - Open `/capture?project=test`.
-- Open `/capture/rollos?project=test` and submit one record.
-- Open `/capture/compactacion?project=test` and submit one record.
+- Open `/pulse?project=test`, enter a zone, and save one roll capture.
+- From the same zone flow, save one compaction step and one unified flow session.
 
 ## 7) If 404 appears
 - Check deployed project is the correct repository.
 - Check custom domain is attached to this exact Vercel project.
 - Redeploy using "Use Project Settings".
+

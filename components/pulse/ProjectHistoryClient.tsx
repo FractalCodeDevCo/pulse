@@ -43,12 +43,11 @@ function formatDate(value: string): string {
 }
 
 function moduleLabel(module: string): string {
-  if (module === "pegada") return "Pegada"
+  if (module === "pegada") return "Adhesive"
   if (module === "roll_installation") return "Roll Installation"
   if (module === "material") return "Material"
-  if (module === "incidence") return "Incidencia"
-  if (module === "roll_verification" || module === "roll_verifications") return "Verificación de Rollo"
-  if (module === "rollos") return "Rollos"
+  if (module === "incidence") return "Incident"
+  if (module === "rollos") return "Roll capture"
   if (module === "compactacion") return "Compactación"
   return module
 }
@@ -316,7 +315,7 @@ function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata 
                 }}
                 className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-neutral-800"
               >
-                {editing ? "Cerrar detalle" : "Ver/editar datos"}
+                {editing ? "Close detail" : "View or edit data"}
               </button>
               {isFlowEditable ? (
                 <button
@@ -328,7 +327,7 @@ function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata 
                   }}
                   className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-neutral-800"
                 >
-                  {advancedMode ? "Modo simple" : "Modo JSON"}
+                  {advancedMode ? "Simple mode" : "JSON mode"}
                 </button>
               ) : null}
               <button
@@ -340,7 +339,7 @@ function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata 
                 disabled={deleting}
                 className="w-full rounded-lg px-3 py-2 text-left text-sm text-red-300 hover:bg-red-500/10 disabled:opacity-50"
               >
-                {deleting ? "Borrando..." : "Borrar captura"}
+                {deleting ? "Deleting..." : "Delete capture"}
               </button>
             </div>
           ) : null}
@@ -350,7 +349,7 @@ function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata 
       <div className="mt-3 space-y-3">
         {captureContext ? (
           <div className="rounded-xl border border-cyan-500/40 bg-cyan-500/5 p-3 text-xs text-cyan-100">
-            <p className="font-semibold">Contexto ambiental</p>
+            <p className="font-semibold">Environmental context</p>
             <p className="text-cyan-200/90">
               {captureContext.capturedAt ? `Captura: ${formatDate(captureContext.capturedAt)}` : "Captura: -"}
               {captureContext.temperatureC !== null ? ` · ${captureContext.temperatureC.toFixed(1)}°C` : ""}
@@ -382,7 +381,7 @@ function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata 
           />
         ) : (
           <div className="flex h-40 items-center justify-center rounded-xl border border-neutral-700 bg-neutral-950 text-sm text-neutral-400">
-            Sin fotos en este registro.
+            No photos in this record.
           </div>
         )}
 
@@ -393,7 +392,7 @@ function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata 
               onClick={() => setIndex((prev) => (prev - 1 + total) % total)}
               className="rounded-lg border border-neutral-600 px-3 py-2 text-sm font-semibold hover:bg-neutral-800"
             >
-              Anterior
+              Previous
             </button>
             <p className="text-xs text-neutral-400">
               Foto {index + 1} de {total}
@@ -403,7 +402,7 @@ function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata 
               onClick={() => setIndex((prev) => (prev + 1) % total)}
               className="rounded-lg border border-neutral-600 px-3 py-2 text-sm font-semibold hover:bg-neutral-800"
             >
-              Siguiente
+              Next
             </button>
           </div>
         ) : null}
@@ -508,7 +507,7 @@ function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata 
                     />
                   </label>
                   <label className="space-y-1">
-                    <span className="text-xs text-neutral-400">Adhesive Botes</span>
+                    <span className="text-xs text-neutral-400">Adhesive buckets</span>
                     <input
                       value={flowAdhesiveBotes}
                       onChange={(event) => setFlowAdhesiveBotes(event.target.value)}
@@ -568,7 +567,7 @@ function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata 
                 disabled={!capture.editable || saving}
                 className="rounded-lg bg-cyan-600 px-3 py-2 text-xs font-semibold hover:bg-cyan-700 disabled:opacity-50"
               >
-                {saving ? "Guardando..." : "Guardar cambios"}
+                {saving ? "Guardando..." : "Save changes"}
               </button>
               <button
                 type="button"
@@ -578,7 +577,7 @@ function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata 
                 }}
                 className="rounded-lg border border-neutral-600 px-3 py-2 text-xs font-semibold hover:bg-neutral-800"
               >
-                Revertir
+                Revert
               </button>
             </div>
           </div>
@@ -608,14 +607,14 @@ export default function ProjectHistoryClient({ projectId, initialZoneKey = null 
     fetch(`/api/project-captures?project=${encodeURIComponent(projectId)}`)
       .then(async (response) => {
         const data = (await response.json()) as ApiResponse & { error?: string }
-        if (!response.ok) throw new Error(data.error ?? "No se pudo cargar historial.")
+        if (!response.ok) throw new Error(data.error ?? "Could not load history.")
         if (cancelled) return
         setCaptures(data.captures ?? [])
         setZones(data.zones ?? [])
       })
       .catch((err) => {
         if (cancelled) return
-        setError(err instanceof Error ? err.message : "No se pudo cargar historial.")
+        setError(err instanceof Error ? err.message : "Could not load history.")
       })
       .finally(() => {
         if (cancelled) return
@@ -659,11 +658,11 @@ export default function ProjectHistoryClient({ projectId, initialZoneKey = null 
         }),
       })
       const data = (await response.json()) as { error?: string }
-      if (!response.ok) throw new Error(data.error ?? "No se pudo borrar captura.")
+      if (!response.ok) throw new Error(data.error ?? "Could not delete capture.")
 
       setCaptures((current) => current.filter((item) => !(item.id === capture.id && item.module === capture.module)))
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo borrar captura.")
+      setError(err instanceof Error ? err.message : "Could not delete capture.")
     } finally {
       setDeletingCaptureId(null)
     }
@@ -686,7 +685,7 @@ export default function ProjectHistoryClient({ projectId, initialZoneKey = null 
         }),
       })
       const data = (await response.json()) as { error?: string; metadata?: Record<string, unknown> }
-      if (!response.ok) throw new Error(data.error ?? "No se pudo guardar cambios.")
+      if (!response.ok) throw new Error(data.error ?? "Could not save changes.")
 
       setCaptures((current) =>
         current.map((item) =>
@@ -699,7 +698,7 @@ export default function ProjectHistoryClient({ projectId, initialZoneKey = null 
         ),
       )
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo guardar cambios.")
+      setError(err instanceof Error ? err.message : "Could not save changes.")
     } finally {
       setSavingCaptureId(null)
     }
@@ -708,9 +707,9 @@ export default function ProjectHistoryClient({ projectId, initialZoneKey = null 
   if (!projectId) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-neutral-950 px-4 text-white">
-        <p className="text-center text-neutral-300">Selecciona un proyecto para ver historial.</p>
+        <p className="text-center text-neutral-300">Select a project to view capture history.</p>
         <Link href="/projects?flow=load" className="rounded-xl bg-blue-600 px-4 py-3 font-semibold hover:bg-blue-700">
-          Ir a proyectos
+          Go to projects
         </Link>
       </main>
     )
@@ -720,29 +719,29 @@ export default function ProjectHistoryClient({ projectId, initialZoneKey = null 
     <main className="min-h-screen bg-neutral-950 px-4 py-8 text-white">
       <section className="mx-auto w-full max-w-5xl space-y-6">
         <ContextHeader
-          title="Historial de Capturas"
-          subtitle="Carrusel de fotos y registros guardados por proyecto y zona."
+          title="Capture History"
+          subtitle="Photo timeline and saved records by project and zone."
           backHref={`/pulse?project=${encodeURIComponent(projectId)}`}
-          backLabel="Zonas"
+          backLabel="Zones"
           breadcrumbs={[
             { label: "Pulse", href: "/" },
             { label: projectId, href: `/pulse?project=${encodeURIComponent(projectId)}` },
             { label: "Historial" },
           ]}
           projectLabel={projectId}
-          statusLabel="Consulta"
+          statusLabel="Review"
           dateLabel={new Date().toLocaleDateString("es-MX")}
         />
 
         <section className="grid gap-3 rounded-2xl border border-neutral-800 bg-neutral-900 p-4 sm:grid-cols-2">
           <label className="space-y-2">
-            <span className="text-sm text-neutral-300">Filtrar por zona</span>
+            <span className="text-sm text-neutral-300">Filter by zone</span>
             <select
               value={zoneFilter}
               onChange={(event) => setZoneFilter(event.target.value)}
               className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3"
             >
-              <option value="all">Todas las zonas</option>
+              <option value="all">All zones</option>
               {zones.map((zone) => (
                 <option key={zone.key} value={zone.key}>
                   {zone.macroZone} · {zone.microZone}
@@ -752,13 +751,13 @@ export default function ProjectHistoryClient({ projectId, initialZoneKey = null 
           </label>
 
           <label className="space-y-2">
-            <span className="text-sm text-neutral-300">Filtrar por módulo</span>
+            <span className="text-sm text-neutral-300">Filter by module</span>
             <select
               value={moduleFilter}
               onChange={(event) => setModuleFilter(event.target.value)}
               className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3"
             >
-              <option value="all">Todos los módulos</option>
+              <option value="all">All modules</option>
               {moduleOptions.map((module) => (
                 <option key={module} value={module}>
                   {moduleLabel(module)}
@@ -769,12 +768,12 @@ export default function ProjectHistoryClient({ projectId, initialZoneKey = null 
         </section>
 
         <section className="space-y-3">
-          {loading ? <p className="text-sm text-neutral-400">Cargando historial...</p> : null}
+          {loading ? <p className="text-sm text-neutral-400">Loading history...</p> : null}
           {error ? <p className="rounded-xl border border-red-500/70 bg-red-500/10 p-3 text-red-300">{error}</p> : null}
 
           {!loading && filtered.length === 0 ? (
             <p className="rounded-xl border border-neutral-700 bg-neutral-900 p-4 text-neutral-300">
-              Aún no hay capturas para estos filtros.
+              No captures match these filters yet.
             </p>
           ) : null}
 
@@ -796,9 +795,14 @@ export default function ProjectHistoryClient({ projectId, initialZoneKey = null 
           href={`/pulse?project=${encodeURIComponent(projectId)}`}
           className="block rounded-xl border border-neutral-600 px-4 py-3 text-center font-semibold hover:bg-neutral-800"
         >
-          Volver a zonas
+          Back to zones
         </Link>
       </section>
     </main>
   )
 }
+
+
+
+
+

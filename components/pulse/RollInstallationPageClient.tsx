@@ -212,7 +212,7 @@ export default function RollInstallationPageClient({
       const dataUrl = await processImageFile(file)
       setPhotos((prev) => ({ ...prev, [type]: dataUrl }))
     } catch {
-      setError("No se pudo cargar la foto.")
+      setError("Could not load the photo.")
     } finally {
       setIsReadingPhoto(false)
     }
@@ -283,12 +283,12 @@ export default function RollInstallationPageClient({
       <section className="mx-auto w-full max-w-3xl space-y-6">
         <ContextHeader
           title="Roll Installation"
-          subtitle="Captura rápida de instalación de rollo."
+          subtitle="Fast roll installation capture."
           backHref={backToZoneOrHub}
-          backLabel={projectZoneId ? "Zona" : "Proyecto"}
+          backLabel={projectZoneId ? "Zone" : "Project"}
           breadcrumbs={[
             { label: "Pulse", href: "/" },
-            projectId ? { label: projectId, href: `/pulse?project=${encodeURIComponent(projectId)}` } : { label: "Proyecto" },
+            projectId ? { label: projectId, href: `/pulse?project=${encodeURIComponent(projectId)}` } : { label: "Project" },
             { label: "Roll Installation" },
           ]}
           projectLabel={projectId}
@@ -502,3 +502,4 @@ export default function RollInstallationPageClient({
     </main>
   )
 }
+

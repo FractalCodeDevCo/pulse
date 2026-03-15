@@ -7,11 +7,11 @@
 ## 2) Get the backend key
 Supabase has 2 possible key systems:
 
-- Legacy projects: use `service_role` key.
+- Use the `service_role` key for admin scripts and protected writes.
 - New projects: use `sb_secret_...` key.
 
 Use **only one** in Vercel:
-- `SUPABASE_SERVICE_ROLE_KEY` (legacy), or
+- `SUPABASE_SERVICE_ROLE_KEY`, or
 - `SUPABASE_SECRET_KEY` (new)
 
 Also copy:
