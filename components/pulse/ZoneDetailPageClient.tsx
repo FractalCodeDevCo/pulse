@@ -176,7 +176,6 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   const project = useMemo(() => (projectId ? getProjectById(projectId) : null), [projectId])
   const [zone, setZone] = useState(() => (projectId ? getProjectZoneById(projectId, projectZoneId) : null))
   const [openStep, setOpenStep] = useState<ZoneStepKey | null>(null)
-  const [quickNotes, setQuickNotes] = useState<Record<string, string>>({})
   const [zonePhotos, setZonePhotos] = useState<string[]>([])
   const [zonePhotoExif, setZonePhotoExif] = useState<Array<PhotoExifContext | null>>([])
   const [isReadingPhotos, setIsReadingPhotos] = useState(false)
@@ -281,7 +280,6 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
       zoneId: zone.id,
       phasesCompleted,
       photos,
-      quickNotes,
       rollPlacement: {
         totalRollsUsed,
         rollLengthFit,
@@ -308,7 +306,6 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
     phasesCompleted,
     zonePhotos,
     materialPhotos,
-    quickNotes,
     totalRollsUsed,
     rollLengthFit,
     rollColorLabels.length,
@@ -494,7 +491,6 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   useEffect(() => {
     if (!zone) return
     setOpenStep(null)
-    setQuickNotes({})
     setZonePhotos([])
     setZonePhotoExif([])
     setRollLengthFit("")
@@ -759,7 +755,6 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
 
     const moduleForStep = stepKey === "COMPACT" ? "compactacion" : "rollos"
     const sessionId = getStepSessionId(stepKey)
-    const note = (quickNotes[stepKey] ?? "").trim()
     const stepPhotos = zonePhotos.slice(0, 3)
 
     setStepSaveErrors((prev) => ({ ...prev, [stepKey]: "" }))
@@ -784,7 +779,6 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
             capture_status: "complete",
             step_key: stepKey,
             step_label: stepTemplates.find((step) => step.key === stepKey)?.label ?? stepKey,
-            note,
             photos: stepPhotos,
           },
         }),
@@ -883,7 +877,6 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
 
     const stepKey: ZoneStepKey = "SEWING"
     const sessionId = getStepSessionId(stepKey)
-    const note = (quickNotes[stepKey] ?? "").trim()
     const stepPhotos = zonePhotos.slice(0, 3)
 
     setStepSaveErrors((prev) => ({ ...prev, [stepKey]: "" }))
@@ -909,7 +902,6 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
             step_key: stepKey,
             step_label: stepTemplates.find((step) => step.key === stepKey)?.label ?? stepKey,
             total_seams: parsedSeams,
-            note,
             photos: stepPhotos,
           },
         }),
@@ -1187,7 +1179,6 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
         phaseSessionIds: stepSessionIds,
         photos,
         flowMetadata: {
-          quickNotes,
           visionLabel: flowVisionLabel,
           rollPlacement: {
             totalRollsUsed: totalRollsUsed.trim() || null,
@@ -1264,7 +1255,6 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
           phaseSessionIds: stepSessionIds,
           photos: combinedPhotos,
           flowMetadata: {
-            quickNotes,
             visionLabel: flowVisionLabel,
             rollPlacement: {
               totalRollsUsed: totalRollsUsed.trim() || null,

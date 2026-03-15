@@ -84,36 +84,30 @@ export default function ZoneHubClient({ projectId }: ZoneHubClientProps) {
           </section>
         ))}
 
-        <div className="flex flex-col gap-3 sm:flex-row">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Link
             href={`/projects/admin?edit=${encodeURIComponent(project.id)}`}
-            className="w-full rounded-xl border border-cyan-500 px-4 py-3 text-center font-semibold text-cyan-300 hover:bg-cyan-500/10"
+            className="rounded-xl border border-cyan-500 px-4 py-3 text-center font-semibold text-cyan-300 hover:bg-cyan-500/10"
           >
             Editar setup base
           </Link>
           <Link
             href="/projects?flow=load"
-            className="w-full rounded-xl border border-neutral-600 px-4 py-3 text-center font-semibold hover:bg-neutral-800"
+            className="rounded-xl border border-neutral-600 px-4 py-3 text-center font-semibold hover:bg-neutral-800"
           >
             Cambiar proyecto
           </Link>
           <Link
             href={`/pulse/overview?project=${encodeURIComponent(project.id)}`}
-            className="w-full rounded-xl border border-cyan-500 px-4 py-3 text-center font-semibold text-cyan-300 hover:bg-cyan-500/10"
+            className="rounded-xl border border-cyan-500 px-4 py-3 text-center font-semibold text-cyan-300 hover:bg-cyan-500/10"
           >
             Project Overview
           </Link>
           <Link
             href={`/pulse/history?project=${encodeURIComponent(project.id)}`}
-            className="w-full rounded-xl border border-amber-500 px-4 py-3 text-center font-semibold text-amber-300 hover:bg-amber-500/10"
+            className="rounded-xl border border-amber-500 px-4 py-3 text-center font-semibold text-amber-300 hover:bg-amber-500/10"
           >
             Ver historial
-          </Link>
-          <Link
-            href={`/capture?project=${encodeURIComponent(project.id)}`}
-            className="w-full rounded-xl border border-neutral-600 px-4 py-3 text-center font-semibold hover:bg-neutral-800"
-          >
-            Abrir módulos legacy
           </Link>
         </div>
       </section>
