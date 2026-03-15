@@ -2,9 +2,10 @@
 
 import Image from "next/image"
 import Link from "next/link"
-import { ChangeEvent, useEffect, useMemo, useState } from "react"
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react"
 
 import { createCaptureSessionId } from "../../lib/captureSession"
+import { clearCaptureDraft, readCaptureDraft, saveCaptureDraft } from "../../lib/captureDraft"
 import { IMAGE_INPUT_ACCEPT, processImageFiles } from "../../lib/clientImage"
 import { defaultFieldUnitsConfig, readFieldUnitsConfig } from "../../lib/fieldUnits"
 import { countOfflineFlowForZone, enqueueOfflineFlow, readOfflineFlowQueue, replaceOfflineFlowQueue } from "../../lib/offlineFlowQueue"
@@ -12,7 +13,6 @@ import { PhotoExifContext, readPhotoExifBatch } from "../../lib/photoExif"
 import { readPlanAnalysisCache, savePlanAnalysisCache } from "../../lib/planIntelligence/cache"
 import { PlanAnalysisResult } from "../../lib/planIntelligence/types"
 import { suggestNextRollsByZone } from "../../lib/planIntelligence/suggest"
-import { saveZonePhotosCache } from "../../lib/zonePhotoCache"
 import ContextHeader from "./ContextHeader"
 import {
   getProjectById,
@@ -186,8 +186,21 @@ type CaptureContext = {
 
 type PhotoReviewSignal = "green" | "yellow" | "red"
 
+type ZoneCaptureDraft = {
+  zonePhotos: string[]
+  zonePhotoExif: Array<PhotoExifContext | null>
+  zonePhotoSignals: PhotoReviewSignal[]
+  materialPhotos: string[]
+  materialPhotoExif: Array<PhotoExifContext | null>
+  materialPhotoSignals: PhotoReviewSignal[]
+}
+
 const MAX_CAPTURE_PHOTOS = 6
 const PHOTO_SIGNAL_OPTIONS: PhotoReviewSignal[] = ["green", "yellow", "red"]
+
+function buildZoneCaptureDraftKey(projectId: string, projectZoneId: string): string {
+  return `pulse-zone-capture-draft:${projectId}:${projectZoneId}`
+}
 
 export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneDetailPageClientProps) {
   const project = useMemo(() => (projectId ? getProjectById(projectId) : null), [projectId])
@@ -269,6 +282,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
   const [useSerpentineSuggestions, setUseSerpentineSuggestions] = useState(false)
   const [fieldUnits, setFieldUnits] = useState(() => defaultFieldUnitsConfig().units)
   const [selectedFieldUnitId, setSelectedFieldUnitId] = useState("")
+  const previousZoneIdRef = useRef<string | null>(null)
 
   const stepTemplates = useMemo(() => (zone ? getZoneStepTemplates(zone.zoneType) : []), [zone])
   const phasesCompleted = useMemo(
@@ -486,8 +500,36 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
 
   useEffect(() => {
     if (!projectId || !zone) return
-    saveZonePhotosCache(projectId, zone.id, zonePhotos)
-  }, [projectId, zone, zonePhotos])
+    const draftKey = buildZoneCaptureDraftKey(projectId, zone.id)
+    const draft = readCaptureDraft<ZoneCaptureDraft>(draftKey)
+    if (!draft) return
+
+    setZonePhotos(Array.isArray(draft.zonePhotos) ? draft.zonePhotos.slice(0, MAX_CAPTURE_PHOTOS) : [])
+    setZonePhotoExif(Array.isArray(draft.zonePhotoExif) ? draft.zonePhotoExif.slice(0, MAX_CAPTURE_PHOTOS) : [])
+    setZonePhotoSignals(Array.isArray(draft.zonePhotoSignals) ? draft.zonePhotoSignals.slice(0, MAX_CAPTURE_PHOTOS) : [])
+    setMaterialPhotos(Array.isArray(draft.materialPhotos) ? draft.materialPhotos.slice(0, MAX_CAPTURE_PHOTOS) : [])
+    setMaterialPhotoExif(Array.isArray(draft.materialPhotoExif) ? draft.materialPhotoExif.slice(0, MAX_CAPTURE_PHOTOS) : [])
+    setMaterialPhotoSignals(Array.isArray(draft.materialPhotoSignals) ? draft.materialPhotoSignals.slice(0, MAX_CAPTURE_PHOTOS) : [])
+  }, [projectId, zone?.id])
+
+  useEffect(() => {
+    if (!projectId || !zone) return
+    const draftKey = buildZoneCaptureDraftKey(projectId, zone.id)
+    const hasAnyPhotos = zonePhotos.length > 0 || materialPhotos.length > 0
+    if (!hasAnyPhotos) {
+      clearCaptureDraft(draftKey)
+      return
+    }
+
+    saveCaptureDraft<ZoneCaptureDraft>(draftKey, {
+      zonePhotos: zonePhotos.slice(0, MAX_CAPTURE_PHOTOS),
+      zonePhotoExif: zonePhotoExif.slice(0, MAX_CAPTURE_PHOTOS),
+      zonePhotoSignals: zonePhotoSignals.slice(0, MAX_CAPTURE_PHOTOS),
+      materialPhotos: materialPhotos.slice(0, MAX_CAPTURE_PHOTOS),
+      materialPhotoExif: materialPhotoExif.slice(0, MAX_CAPTURE_PHOTOS),
+      materialPhotoSignals: materialPhotoSignals.slice(0, MAX_CAPTURE_PHOTOS),
+    })
+  }, [projectId, zone?.id, zonePhotos, zonePhotoExif, zonePhotoSignals, materialPhotos, materialPhotoExif, materialPhotoSignals])
 
   useEffect(() => {
     refreshPendingFlowCount()
@@ -506,6 +548,13 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
 
   useEffect(() => {
     if (!zone) return
+    if (previousZoneIdRef.current === null) {
+      previousZoneIdRef.current = zone.id
+      return
+    }
+    if (previousZoneIdRef.current === zone.id) return
+    previousZoneIdRef.current = zone.id
+
     setOpenStep(null)
     setZonePhotos([])
     setZonePhotoExif([])
@@ -1349,6 +1398,7 @@ export default function ZoneDetailPageClient({ projectId, projectZoneId }: ZoneD
       setLastCloudSavedAt(new Date().toISOString())
       setLastCloudFingerprint(flowFingerprint)
       setFlowSessionId(createCaptureSessionId())
+      if (projectId && zone) clearCaptureDraft(buildZoneCaptureDraftKey(projectId, zone.id))
       refreshPendingFlowCount()
     } catch (err) {
       if (projectId && zone && isRetriableFlowError(err)) {
