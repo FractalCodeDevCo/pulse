@@ -25,28 +25,19 @@ type ProjectRow = {
   zone_targets?: unknown
 }
 
-type PegadaRow = {
-  capture_session_id: string | null
-  module: string | null
+type CaptureRow = {
+  phase: string | null
   project_zone_id: string | null
+  capture_status: string | null
   macro_zone: string | null
   micro_zone: string | null
-  payload: unknown
-}
-
-type RollInstallationRow = {
-  capture_session_id: string | null
-  project_zone_id: string | null
-  macro_zone: string | null
   zone: string | null
+  feet_installed: number | null
+  glue_buckets: number | null
   total_rolls_used: number | null
-  total_seams: number | null
-}
-
-type MaterialRow = {
-  project_zone_id: string | null
-  bolsas_esperadas: number | null
-  bolsas_utilizadas: number | null
+  rolls_used: number | null
+  seams: number | null
+  metadata: unknown
 }
 
 type ZoneOverview = {
@@ -59,11 +50,6 @@ type ZoneOverview = {
   realAdhesive: number
   realRolls: number
   realSeams: number
-}
-
-type TableResponse<T> = {
-  data: T[]
-  relationMissing: boolean
 }
 
 type EtaResult = {
@@ -112,21 +98,6 @@ function readFirstText(source: Record<string, unknown>, keys: string[]): string 
   return null
 }
 
-function readNestedObject(source: Record<string, unknown>, key: string): Record<string, unknown> | null {
-  const value = source[key]
-  return isObject(value) ? value : null
-}
-
-function readFlowPhaseSessionIds(metadata: Record<string, unknown>, fallbackCaptureSessionId: string | null): string[] {
-  const phaseIds = readNestedObject(metadata, "phase_session_ids")
-  const values = phaseIds
-    ? Object.values(phaseIds).filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-    : []
-  if (values.length > 0) return values
-  if (fallbackCaptureSessionId && fallbackCaptureSessionId.trim().length > 0) return [fallbackCaptureSessionId]
-  return []
-}
-
 function formatNumber(value: number | null, decimals = 1): string {
   if (value === null || Number.isNaN(value)) return "N/A"
   return value.toFixed(decimals)
@@ -170,30 +141,6 @@ function getEta(startDate: string | null, progress: number | null): EtaResult {
   return {
     label: remainingDays === 0 ? "Cierre hoy" : `${remainingDays} días restantes`,
     date: etaDate.toISOString(),
-  }
-}
-
-async function selectTableRows<T>(params: {
-  table: string
-  columns: string
-  projectId: string
-  module?: string
-}): Promise<TableResponse<T>> {
-  const supabase = getSupabaseAdminClient()
-  let query = supabase.from(params.table).select(params.columns).eq("project_id", params.projectId)
-  if (params.module) query = query.eq("module", params.module)
-
-  const { data, error } = await query.limit(2000)
-  if (error) {
-    if (isMissingRelationError(error)) {
-      return { data: [], relationMissing: true }
-    }
-    throw new Error(error.message ?? `No se pudo leer ${params.table}`)
-  }
-
-  return {
-    data: (data ?? []) as T[],
-    relationMissing: false,
   }
 }
 
@@ -243,13 +190,6 @@ export default async function ProjectOverviewPage({ searchParams }: OverviewPage
   const zoneMetricsMap = new Map<string, ZoneOverview>()
   let materialExpected = 0
   let materialUsed = 0
-  let legacyCaptureCount = 0
-  let legacyFt = 0
-  let legacyAdhesive = 0
-  let legacyRolls = 0
-  let legacySeams = 0
-  let legacyMaterialExpected = 0
-  let legacyMaterialUsed = 0
 
   try {
     const supabase = getSupabaseAdminClient()
@@ -292,121 +232,38 @@ export default async function ProjectOverviewPage({ searchParams }: OverviewPage
       })
     }
 
-    const [pegadaRes, rollRes, materialRes] = await Promise.all([
-      selectTableRows<PegadaRow>({
-        table: "field_records",
-        columns: "capture_session_id, module, project_zone_id, macro_zone, micro_zone, payload",
-        projectId,
-      }),
-      selectTableRows<RollInstallationRow>({
-        table: "roll_installation",
-        columns: "capture_session_id, project_zone_id, macro_zone, zone, total_rolls_used, total_seams",
-        projectId,
-      }),
-      selectTableRows<MaterialRow>({
-        table: "material_records",
-        columns: "project_zone_id, bolsas_esperadas, bolsas_utilizadas",
-        projectId,
-      }),
-    ])
+    const { data: captureRows, error: capturesError } = await supabase
+      .from("captures")
+      .select("phase, project_zone_id, capture_status, macro_zone, micro_zone, zone, feet_installed, glue_buckets, rolls_used, seams, metadata")
+      .eq("project_id", projectId)
+      .limit(5000)
 
-    if (pegadaRes.relationMissing) relationWarnings.push("tabla field_records no encontrada")
-    if (rollRes.relationMissing) relationWarnings.push("tabla roll_installation no encontrada")
-    if (materialRes.relationMissing) relationWarnings.push("tabla material_records no encontrada")
+    if (capturesError) {
+      if (!isMissingRelationError(capturesError)) {
+        throw new Error(capturesError.message ?? "No se pudo leer captures.")
+      }
+      relationWarnings.push("tabla captures no encontrada")
+    }
 
-    const adhesiveSessionIds = new Set<string>()
-    const rollSessionIds = new Set<string>()
-    const flowFallbackRows: Array<{
-      zone: string
-      phaseSessionIds: string[]
-      adhesive: number
-      rolls: number
-      seams: number
-    }> = []
-
-    for (const row of pegadaRes.data) {
-      const payload = isObject(row.payload) ? row.payload : {}
-      const metadata = isObject(payload.metadata) ? payload.metadata : payload
+    for (const row of ((captureRows ?? []) as CaptureRow[])) {
+      const metadata = isObject(row.metadata) ? row.metadata : {}
       const zone =
+        row.zone ??
         row.macro_zone ??
         readFirstText(metadata, ["macro_zone", "macroZone", "zone"]) ??
         row.micro_zone ??
         readFirstText(metadata, ["micro_zone", "microZone"]) ??
         "Sin zona"
 
-      if (row.module === "pegada") {
-        const ft = readFirstNumber(metadata, ["ftTotales", "ft_totales", "ft", "feet"])
-        const adhesive = readFirstNumber(metadata, ["botesUsados", "botes_usados", "botes"])
+      const metric = ensureZoneMetrics(zoneMetricsMap, zone)
+      metric.realFt += Math.max(0, toNumber(row.feet_installed) ?? readFirstNumber(metadata, ["ftTotales", "ft_totales", "ft", "feet"]))
+      metric.realAdhesive += Math.max(0, toNumber(row.glue_buckets) ?? readFirstNumber(metadata, ["botesUsados", "botes_usados", "botes"]))
+      metric.realRolls += Math.max(0, toNumber(row.rolls_used) ?? toNumber(row.total_rolls_used) ?? readFirstNumber(metadata, ["totalRollsUsed", "total_rolls_used", "totalRolls"]))
+      metric.realSeams += Math.max(0, toNumber(row.seams) ?? readFirstNumber(metadata, ["totalSeams", "total_seams", "seams"]))
 
-        if (row.capture_session_id) adhesiveSessionIds.add(row.capture_session_id)
-
-        if (row.project_zone_id) {
-          const metric = ensureZoneMetrics(zoneMetricsMap, zone)
-          metric.realFt += ft
-          metric.realAdhesive += adhesive
-        } else {
-          legacyCaptureCount += 1
-          legacyFt += ft
-          legacyAdhesive += adhesive
-        }
-        continue
-      }
-
-      if (row.module === "flow") {
-        const details = readNestedObject(metadata, "details") ?? {}
-        const rollPlacement = readNestedObject(details, "rollPlacement") ?? {}
-        const sewing = readNestedObject(details, "sewing") ?? {}
-        const adhesiveFlow = readNestedObject(details, "adhesive") ?? {}
-        const phaseSessionIds = readFlowPhaseSessionIds(metadata, row.capture_session_id)
-        flowFallbackRows.push({
-          zone,
-          phaseSessionIds,
-          adhesive: readFirstNumber(adhesiveFlow, ["botesUsados", "botes_usados", "botes"]),
-          rolls: readFirstNumber(rollPlacement, ["totalRollsUsed", "total_rolls_used", "totalRolls"]),
-          seams: readFirstNumber(sewing, ["totalSeams", "total_seams"]),
-        })
-      }
-    }
-
-    for (const row of rollRes.data) {
-      const rolls = Math.max(0, toNumber(row.total_rolls_used) ?? 0)
-      const seams = Math.max(0, toNumber(row.total_seams) ?? 0)
-      if (row.capture_session_id) rollSessionIds.add(row.capture_session_id)
-      if (row.project_zone_id) {
-        const zone = row.macro_zone ?? row.zone ?? "Sin zona"
-        const metric = ensureZoneMetrics(zoneMetricsMap, zone)
-        metric.realRolls += rolls
-        metric.realSeams += seams
-      } else {
-        legacyCaptureCount += 1
-        legacyRolls += rolls
-        legacySeams += seams
-      }
-    }
-
-    for (const flowRow of flowFallbackRows) {
-      const hasAdhesiveDetail = flowRow.phaseSessionIds.some((id) => adhesiveSessionIds.has(id))
-      const hasRollDetail = flowRow.phaseSessionIds.some((id) => rollSessionIds.has(id))
-      const metric = ensureZoneMetrics(zoneMetricsMap, flowRow.zone)
-      if (!hasAdhesiveDetail) {
-        metric.realAdhesive += Math.max(0, flowRow.adhesive)
-      }
-      if (!hasRollDetail) {
-        metric.realRolls += Math.max(0, flowRow.rolls)
-        metric.realSeams += Math.max(0, flowRow.seams)
-      }
-    }
-
-    for (const row of materialRes.data) {
-      const expected = Math.max(0, toNumber(row.bolsas_esperadas) ?? 0)
-      const used = Math.max(0, toNumber(row.bolsas_utilizadas) ?? 0)
-      if (row.project_zone_id) {
-        materialExpected += expected
-        materialUsed += used
-      } else {
-        legacyCaptureCount += 1
-        legacyMaterialExpected += expected
-        legacyMaterialUsed += used
+      if ((row.phase ?? "") === "material") {
+        materialExpected += Math.max(0, readFirstNumber(metadata, ["bolsasEsperadas", "bolsas_esperadas"]))
+        materialUsed += Math.max(0, readFirstNumber(metadata, ["bolsasUtilizadas", "bolsas_utilizadas"]))
       }
     }
   } catch (error) {
@@ -433,8 +290,6 @@ export default async function ProjectOverviewPage({ searchParams }: OverviewPage
     plannedAdhesiveTotal > 0 ? ((realAdhesiveTotal - plannedAdhesiveTotal) / plannedAdhesiveTotal) * 100 : null
 
   const materialDeviation = materialExpected > 0 ? ((materialUsed - materialExpected) / materialExpected) * 100 : null
-  const legacyMaterialDeviation =
-    legacyMaterialExpected > 0 ? ((legacyMaterialUsed - legacyMaterialExpected) / legacyMaterialExpected) * 100 : null
   const eta = getEta(startDate, progressTotal)
   const plannedSeamTotal = zoneMetrics.reduce((sum, item) => sum + (item.plannedSeamFt ?? 0), 0)
   const realSeamTotal = zoneMetrics.reduce((sum, item) => sum + item.realSeams, 0)
@@ -475,7 +330,7 @@ export default async function ProjectOverviewPage({ searchParams }: OverviewPage
 
         {relationWarnings.length > 0 ? (
           <section className="rounded-2xl border border-amber-500/70 bg-amber-500/10 p-4 text-amber-200">
-            Algunas tablas aún no existen en Supabase: {relationWarnings.join(", ")}.
+            Faltan piezas de esquema en Supabase: {relationWarnings.join(", ")}.
           </section>
         ) : null}
 
@@ -523,13 +378,6 @@ export default async function ProjectOverviewPage({ searchParams }: OverviewPage
             <p className="mt-2 text-3xl font-bold text-neutral-100">{zoneMetrics.length} zonas</p>
             <p className="text-xs text-neutral-400">Total sqft setup: {formatNumber(totalSqft, 1)}</p>
           </article>
-          <article className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4">
-            <p className="text-sm text-neutral-400">Legacy (sin zonas)</p>
-            <p className="mt-2 text-2xl font-bold text-neutral-100">{legacyCaptureCount} capturas</p>
-            <p className="text-xs text-neutral-400">
-              Ft {formatNumber(legacyFt, 1)} · Botes {formatNumber(legacyAdhesive, 1)} · Rollos {formatNumber(legacyRolls, 0)}
-            </p>
-          </article>
         </section>
 
         <section className="space-y-4 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
@@ -542,13 +390,6 @@ export default async function ProjectOverviewPage({ searchParams }: OverviewPage
               {objectivesDone}/4 objetivos en rango
             </p>
           </div>
-
-          {legacyCaptureCount > 0 ? (
-            <div className="rounded-xl border border-neutral-700 bg-neutral-950 p-3 text-xs text-neutral-300">
-              Legacy separado de zonas: Material dev {formatPercent(legacyMaterialDeviation)} ·
-              Material {formatNumber(legacyMaterialUsed, 1)} / {formatNumber(legacyMaterialExpected > 0 ? legacyMaterialExpected : null, 1)}
-            </div>
-          ) : null}
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <article className={`rounded-xl border p-3 ${objectiveFtDone ? "border-emerald-500/60 bg-emerald-500/10" : "border-amber-500/60 bg-amber-500/10"}`}>

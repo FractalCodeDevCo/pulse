@@ -145,49 +145,6 @@ async function buildZoneSummaryFromCaptures(projectId: string): Promise<ZoneSumm
   return [...zoneMap.values()].sort((a, b) => a.zone.localeCompare(b.zone))
 }
 
-async function buildZoneSummaryFromLegacy(projectId: string): Promise<ZoneSummary[]> {
-  const supabase = getSupabaseAdminClient()
-  const [fieldRes, rollRes] = await Promise.all([
-    supabase.from("field_records").select("macro_zone,micro_zone,payload,created_at").eq("project_id", projectId).eq("module", "pegada").limit(5000),
-    supabase.from("roll_installation").select("macro_zone,micro_zone,zone,total_rolls_used,total_seams,created_at").eq("project_id", projectId).limit(5000),
-  ])
-
-  if (fieldRes.error && !isMissingRelation(fieldRes.error)) throw new Error(fieldRes.error.message)
-  if (rollRes.error && !isMissingRelation(rollRes.error)) throw new Error(rollRes.error.message)
-
-  const zoneMap = new Map<string, ZoneSummary>()
-
-  for (const row of (fieldRes.data ?? []) as Record<string, unknown>[]) {
-    const payload = isObject(row.payload) ? row.payload : {}
-    const metadata = isObject(payload.metadata) ? payload.metadata : payload
-    const zone = resolveZone(row, metadata)
-    const summary = zoneMap.get(zone) ?? createZoneSummary(zone)
-    addToZoneSummary(summary, {
-      feetInstalled: pickMetric(metadata, ["ftTotales", "ft_totales", "ft"]),
-      rollsUsed: 0,
-      glueBuckets: pickMetric(metadata, ["botesUsados", "botes_usados", "botes"]),
-      seams: 0,
-      timestamp: toText(row.created_at) || null,
-    })
-    zoneMap.set(zone, summary)
-  }
-
-  for (const row of (rollRes.data ?? []) as Record<string, unknown>[]) {
-    const zone = resolveZone(row, {})
-    const summary = zoneMap.get(zone) ?? createZoneSummary(zone)
-    addToZoneSummary(summary, {
-      feetInstalled: 0,
-      rollsUsed: pickMetric(row, ["total_rolls_used"]),
-      glueBuckets: 0,
-      seams: pickMetric(row, ["total_seams"]),
-      timestamp: toText(row.created_at) || null,
-    })
-    zoneMap.set(zone, summary)
-  }
-
-  return [...zoneMap.values()].sort((a, b) => a.zone.localeCompare(b.zone))
-}
-
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
@@ -209,11 +166,8 @@ export async function GET(request: Request) {
     }
 
     const project = (projectRes.data ?? null) as ProjectRow | null
-    let zones = await buildZoneSummaryFromCaptures(projectId)
-    const source = zones.length > 0 ? "captures" : "legacy"
-    if (zones.length === 0) {
-      zones = await buildZoneSummaryFromLegacy(projectId)
-    }
+    const zones = await buildZoneSummaryFromCaptures(projectId)
+    const source = "captures"
 
     const totals = zones.reduce(
       (acc, zone) => ({

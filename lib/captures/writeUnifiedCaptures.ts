@@ -8,8 +8,26 @@ export type UnifiedCaptureInsert = {
   imageUrl: string
   timestamp?: string | null
   crew?: string | null
+  projectZoneId?: string | null
+  captureSessionId?: string | null
+  captureStatus?: string | null
+  fieldType?: string | null
+  macroZone?: string | null
+  microZone?: string | null
+  zoneType?: string | null
   zone?: string | null
   notes?: string | null
+  feetInstalled?: number | null
+  rollsUsed?: number | null
+  glueBuckets?: number | null
+  seams?: number | null
+  rollLengthFit?: string | null
+  compactionMethod?: string | null
+  compactionSurfaceFirm?: boolean | null
+  qualityLabel?: string | null
+  sourceTable?: string | null
+  sourceId?: string | null
+  photoType?: string | null
   metadata?: Record<string, unknown> | null
 }
 
@@ -45,8 +63,26 @@ export async function writeUnifiedCaptures(params: {
       image_url: capture.imageUrl,
       timestamp: capture.timestamp ?? new Date().toISOString(),
       crew: capture.crew ?? null,
+      project_zone_id: capture.projectZoneId ?? null,
+      capture_session_id: capture.captureSessionId ?? null,
+      capture_status: capture.captureStatus ?? null,
+      field_type: capture.fieldType ?? null,
+      macro_zone: capture.macroZone ?? null,
+      micro_zone: capture.microZone ?? null,
+      zone_type: capture.zoneType ?? null,
       zone: capture.zone ?? null,
       notes: capture.notes ?? null,
+      feet_installed: capture.feetInstalled ?? null,
+      rolls_used: capture.rollsUsed ?? null,
+      glue_buckets: capture.glueBuckets ?? null,
+      seams: capture.seams ?? null,
+      roll_length_fit: capture.rollLengthFit ?? null,
+      compaction_method: capture.compactionMethod ?? null,
+      compaction_surface_firm: capture.compactionSurfaceFirm ?? null,
+      quality_label: capture.qualityLabel ?? null,
+      source_table: capture.sourceTable ?? null,
+      source_id: capture.sourceId ?? null,
+      photo_type: capture.photoType ?? null,
       metadata: capture.metadata ?? {},
     }))
 

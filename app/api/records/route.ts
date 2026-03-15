@@ -401,6 +401,8 @@ export async function POST(request: Request) {
       }
     }
 
+    const insertedId = typeof data.id === "string" ? data.id : null
+
     if (photosUrls.length > 0) {
       const unifiedPhase = body.module === "pegada" ? "glue" : body.module === "compactacion" ? "compaction" : phase
       const note =
@@ -408,6 +410,13 @@ export async function POST(request: Request) {
         toStringOrNull(body.payload.notes) ??
         toStringOrNull(body.payload.observaciones) ??
         null
+      const payloadFt = toNumber(body.payload?.ftTotales ?? body.payload?.ft_totales)
+      const payloadBotes = toNumber(body.payload?.botesUsados ?? body.payload?.botes_usados)
+      const metadataRecord =
+        unifiedPayload.metadata && typeof unifiedPayload.metadata === "object" && !Array.isArray(unifiedPayload.metadata)
+          ? (unifiedPayload.metadata as Record<string, unknown>)
+          : null
+      const visionLabel = typeof metadataRecord?.visionLabel === "string" ? metadataRecord.visionLabel.toLowerCase() : null
 
       try {
         await writeUnifiedCaptures({
@@ -418,16 +427,21 @@ export async function POST(request: Request) {
             imageUrl,
             timestamp: unifiedPayload.createdAt,
             crew: auth.context.email,
+            projectZoneId,
+            captureSessionId,
+            captureStatus,
+            fieldType: body.fieldType ?? null,
+            macroZone,
+            microZone,
             zone: unifiedPayload.zone ?? microZone ?? macroZone,
             notes: note,
+            feetInstalled: unifiedPhase === "glue" ? payloadFt : null,
+            glueBuckets: unifiedPhase === "glue" ? payloadBotes : null,
+            qualityLabel: visionLabel,
+            sourceTable: "field_records",
+            sourceId: insertedId,
             metadata: {
               module: body.module,
-              fieldType: body.fieldType ?? null,
-              projectZoneId,
-              captureSessionId,
-              captureStatus,
-              macroZone,
-              microZone,
               internalPhase: phase,
               summary,
               payload: unifiedPayload.metadata,
@@ -449,7 +463,6 @@ export async function POST(request: Request) {
       projectId: data.project_id as string | null,
     })
 
-    const insertedId = typeof data.id === "string" ? data.id : null
     if (insertedId) {
       await recordMetadataVersion({
         projectId,
