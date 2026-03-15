@@ -142,6 +142,47 @@ function climateBadgeText(context: CaptureContextView): string | null {
   return parts.join(" · ")
 }
 
+type PhotoReviewItem = {
+  index: number
+  signal: "green" | "yellow" | "red"
+  source: string | null
+}
+
+function readPhotoReviews(metadata: Record<string, unknown>): PhotoReviewItem[] {
+  const direct = metadata.photo_reviews
+  const details = asObject(metadata.details)
+  const fallback = details.photo_reviews
+  const raw = Array.isArray(direct) ? direct : Array.isArray(fallback) ? fallback : []
+
+  return raw
+    .map((item, index) => {
+      const row = asObject(item)
+      const signal = asString(row.signal).toLowerCase()
+      if (signal !== "green" && signal !== "yellow" && signal !== "red") return null
+      const rawIndex = typeof row.index === "number" && Number.isFinite(row.index) ? row.index : index
+      return {
+        index: rawIndex,
+        signal,
+        source: asNullableString(row.source),
+      } as PhotoReviewItem
+    })
+    .filter((item): item is PhotoReviewItem => Boolean(item))
+}
+
+function signalBorderClass(signal: "green" | "yellow" | "red" | null): string {
+  if (signal === "green") return "border-emerald-500"
+  if (signal === "yellow") return "border-amber-400"
+  if (signal === "red") return "border-red-500"
+  return "border-neutral-700"
+}
+
+function signalDotClass(signal: "green" | "yellow" | "red" | null): string {
+  if (signal === "green") return "bg-emerald-500"
+  if (signal === "yellow") return "bg-amber-400"
+  if (signal === "red") return "bg-red-500"
+  return "bg-neutral-500"
+}
+
 type CaptureStoryCardProps = {
   capture: CaptureItem
   deleting: boolean
@@ -211,6 +252,8 @@ function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata 
   const isFlowEditable = capture.editable && capture.module === "flow"
   const captureContext = readCaptureContext(asObject(capture.metadata))
   const climateText = captureContext ? climateBadgeText(captureContext) : null
+  const photoReviews = readPhotoReviews(asObject(capture.metadata))
+  const activePhotoReview = photoReviews.find((item) => item.index === index) ?? null
 
   function toggleFlowPhase(phase: string) {
     setFlowPhases((current) => {
@@ -372,14 +415,48 @@ function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata 
         ) : null}
 
         {activePhoto ? (
-          <Image
-            src={activePhoto}
-            alt={`${capture.module}-${capture.id}`}
-            width={1200}
-            height={800}
-            unoptimized
-            className="h-72 w-full rounded-xl border border-neutral-700 object-cover"
-          />
+          <div className="space-y-3">
+            <div className="relative">
+              <Image
+                src={activePhoto}
+                alt={`${capture.module}-${capture.id}`}
+                width={1200}
+                height={800}
+                unoptimized
+                className={`h-72 w-full rounded-xl border-2 object-cover ${signalBorderClass(activePhotoReview?.signal ?? null)}`}
+              />
+              {activePhotoReview ? (
+                <div className="absolute right-3 top-3 inline-flex items-center gap-2 rounded-full border border-black/20 bg-black/55 px-3 py-1 text-xs font-semibold text-white">
+                  <span className={`h-3 w-3 rounded-full ${signalDotClass(activePhotoReview.signal)}`} />
+                  <span>{activePhotoReview.signal.toUpperCase()}</span>
+                </div>
+              ) : null}
+            </div>
+            {total > 1 ? (
+              <div className="flex flex-wrap gap-2">
+                {capture.photos.map((photo, photoIndex) => {
+                  const review = photoReviews.find((item) => item.index === photoIndex) ?? null
+                  return (
+                    <button
+                      key={`${capture.id}-${photoIndex}`}
+                      type="button"
+                      onClick={() => setIndex(photoIndex)}
+                      className={`overflow-hidden rounded-lg border-2 ${index === photoIndex ? signalBorderClass(review?.signal ?? null) : "border-neutral-700"}`}
+                    >
+                      <Image
+                        src={photo}
+                        alt={`${capture.module}-${capture.id}-thumb-${photoIndex + 1}`}
+                        width={160}
+                        height={120}
+                        unoptimized
+                        className="h-14 w-20 object-cover"
+                      />
+                    </button>
+                  )
+                })}
+              </div>
+            ) : null}
+          </div>
         ) : (
           <div className="flex h-40 items-center justify-center rounded-xl border border-neutral-700 bg-neutral-950 text-sm text-neutral-400">
             Sin fotos en este registro.
