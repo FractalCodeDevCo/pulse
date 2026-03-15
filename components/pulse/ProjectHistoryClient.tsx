@@ -13,6 +13,8 @@ type CaptureItem = {
   microZone: string | null
   projectZoneId: string | null
   photos: string[]
+  photoCaptureIds: string[]
+  photoQualityLabels: Array<"green" | "yellow" | "red" | null>
   summary: string
   metadata: Record<string, unknown>
   editable: boolean
@@ -246,7 +248,7 @@ function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata,
     setFlowMaterialTipo(asString(material.tipo))
     setFlowMaterialPasada(asString(material.pasada))
     const currentPhotoReviews = readPhotoReviews(metadata)
-    setPhotoSignal(currentPhotoReviews.find((item) => item.index === 0)?.signal ?? capture.qualityLabel ?? "yellow")
+    setPhotoSignal(currentPhotoReviews.find((item) => item.index === 0)?.signal ?? capture.photoQualityLabels[0] ?? capture.qualityLabel ?? "yellow")
     setAdvancedMode(false)
     setEditorError("")
   }, [capture.id, capture.metadata])
@@ -258,7 +260,7 @@ function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata,
   const climateText = captureContext ? climateBadgeText(captureContext) : null
   const photoReviews = readPhotoReviews(asObject(capture.metadata))
   const activePhotoReview = photoReviews.find((item) => item.index === index) ?? null
-  const activeSignal = activePhotoReview?.signal ?? capture.qualityLabel ?? null
+  const activeSignal = activePhotoReview?.signal ?? capture.photoQualityLabels[index] ?? capture.qualityLabel ?? null
 
   useEffect(() => {
     setPhotoSignal(activeSignal ?? "yellow")
@@ -444,7 +446,7 @@ function CaptureStoryCard({ capture, deleting, saving, onDelete, onSaveMetadata,
               <div className="flex flex-wrap gap-2">
                 {capture.photos.map((photo, photoIndex) => {
                   const review = photoReviews.find((item) => item.index === photoIndex) ?? null
-                  const reviewSignal = review?.signal ?? capture.qualityLabel ?? null
+                  const reviewSignal = review?.signal ?? capture.photoQualityLabels[photoIndex] ?? capture.qualityLabel ?? null
                   return (
                     <button
                       key={`${capture.id}-${photoIndex}`}
@@ -816,6 +818,7 @@ export default function ProjectHistoryClient({ projectId, initialZoneKey = null 
     setSavingCaptureId(capture.id)
     setError("")
     try {
+      const targetCaptureId = capture.photoCaptureIds[photoIndex] ?? capture.id
       const currentMetadata = asObject(capture.metadata)
       const details = asObject(currentMetadata.details)
       const existingReviews = readPhotoReviews(currentMetadata).filter((item) => item.index !== photoIndex)
@@ -834,7 +837,7 @@ export default function ProjectHistoryClient({ projectId, initialZoneKey = null 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           projectId,
-          id: capture.id,
+          id: targetCaptureId,
           module: capture.module,
           sourceTable: capture.sourceTable,
           qualityLabel: signal,
@@ -850,6 +853,7 @@ export default function ProjectHistoryClient({ projectId, initialZoneKey = null 
             ? {
                 ...item,
                 metadata: data.metadata ?? metadata,
+                photoQualityLabels: item.photoQualityLabels.map((entry, entryIndex) => (entryIndex === photoIndex ? (data.qualityLabel ?? signal) : entry)),
                 qualityLabel: data.qualityLabel ?? signal,
               }
             : item,
