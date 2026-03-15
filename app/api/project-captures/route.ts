@@ -20,89 +20,27 @@ type CaptureItem = {
   editable: boolean
 }
 
-type FieldRecordRow = {
+type UnifiedCaptureRow = {
   id: string
-  module: string | null
-  macro_zone: string | null
-  micro_zone: string | null
-  payload: unknown
-  created_at: string | null
-}
-
-type RollInstallationRow = {
-  id: string
-  macro_zone: string | null
-  micro_zone: string | null
+  phase: string | null
   project_zone_id: string | null
-  photos: unknown
+  macro_zone: string | null
+  micro_zone: string | null
+  zone: string | null
+  image_url: string | null
+  notes: string | null
+  timestamp: string | null
+  feet_installed: number | null
+  rolls_used: number | null
+  glue_buckets: number | null
+  seams: number | null
   roll_length_fit: string | null
-  total_rolls_used: number | null
-  total_seams: number | null
-  created_at: string | null
-}
-
-type MaterialRow = {
-  id: string
-  fotos: unknown
-  tipo_material: string | null
-  tipo_pasada: string | null
-  valvula: number | null
-  created_at: string | null
-}
-
-type IncidenceRow = {
-  id: string
-  macro_zone: string | null
-  micro_zone: string | null
-  project_zone_id: string | null
-  type_of_incidence: string | null
-  photos: unknown
-  created_at: string | null
-}
-
-type RollVerificationRow = {
-  id: string
-  macro_zone: string | null
-  micro_zone: string | null
-  project_zone_id: string | null
-  status: string | null
-  photo_url: string | null
-  created_at: string | null
-}
-
-type RollVerificationsRow = {
-  id: string
-  macro_zone: string | null
-  micro_zone: string | null
-  status: string | null
-  label_photo_url: string | null
-  created_at: string | null
+  quality_label: string | null
+  metadata: unknown
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value)
-}
-
-function toStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return []
-  return value.filter((item): item is string => typeof item === "string" && item.length > 0)
-}
-
-function toRollInstallationPhotoArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return []
-  const photos: string[] = []
-
-  for (const item of value) {
-    if (typeof item === "string" && item.length > 0) {
-      photos.push(item)
-      continue
-    }
-    if (isObject(item) && typeof item.url === "string" && item.url.length > 0) {
-      photos.push(item.url)
-    }
-  }
-
-  return photos
 }
 
 function toStringSafe(value: unknown): string | null {
@@ -126,35 +64,60 @@ function resolveCaptureTable(module: string): { table: string; isFieldRecord: bo
   return null
 }
 
-function formatFieldRecordSummary(module: string | null, metadata: Record<string, unknown>): string {
-  if (module === "flow") {
-    const phases = Array.isArray(metadata.phases_completed)
-      ? metadata.phases_completed.filter((item): item is string => typeof item === "string" && item.length > 0)
-      : []
-    const details = isObject(metadata.details) ? metadata.details : {}
-    const visionLabelRaw = typeof details.visionLabel === "string" ? details.visionLabel.toLowerCase() : ""
-    const visionLabel = visionLabelRaw === "ok" || visionLabelRaw === "check" || visionLabelRaw === "rework" ? visionLabelRaw.toUpperCase() : null
-    const base = phases.length > 0 ? `Flow: ${phases.join(" -> ")}` : "Flow guardado"
-    return visionLabel ? `${base} · ${visionLabel}` : base
+function toNumberSafe(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return null
+}
+
+function formatCaptureSummary(row: UnifiedCaptureRow, metadata: Record<string, unknown>): string {
+  const phase = row.phase ?? "capture"
+  const quality = typeof row.quality_label === "string" ? row.quality_label.toUpperCase() : null
+
+  if (phase === "glue") {
+    const ft = row.feet_installed ?? toNumberSafe(metadata.ftTotales) ?? toNumberSafe(metadata.ft_totales)
+    const botes = row.glue_buckets ?? toNumberSafe(metadata.botesUsados) ?? toNumberSafe(metadata.botes_usados)
+    const base = `Ft: ${ft ?? "-"} · Botes: ${botes ?? "-"}`
+    return quality ? `${base} · ${quality}` : base
   }
 
-  if (module === "pegada") {
-    const ft = metadata.ftTotales
-    const botes = metadata.botesUsados
-    return `Ft: ${typeof ft === "number" ? ft : "-"} · Botes: ${typeof botes === "number" ? botes : "-"}`
+  if (phase === "roll_install") {
+    const rolls = row.rolls_used ?? toNumberSafe(metadata.totalRollsUsed) ?? toNumberSafe(metadata.totalRolls)
+    const seams = row.seams ?? toNumberSafe(metadata.totalSeams)
+    const fit = row.roll_length_fit ?? toStringSafe(metadata.rollLengthFit)
+    const base = `Rollos: ${rolls ?? "-"} · Costuras: ${seams ?? "-"}${fit ? ` · Fit: ${fit}` : ""}`
+    return quality ? `${base} · ${quality}` : base
   }
 
-  if (module === "rollos") {
-    const rolls = metadata.totalRolls
-    const seams = metadata.totalSeams
-    return `Rollos: ${typeof rolls === "number" ? rolls : "-"} · Costuras: ${typeof seams === "number" ? seams : "-"}`
+  if (phase === "compaction") {
+    const base = "Compactación registrada"
+    return quality ? `${base} · ${quality}` : base
   }
 
-  if (module === "compactacion") {
-    return `Compactación registrada`
+  if (phase === "material") {
+    const material = toStringSafe(metadata.tipoMaterial)
+    const pasada = toStringSafe(metadata.tipoPasada)
+    const valvula = toNumberSafe(metadata.valvula)
+    return `Material: ${material ?? "-"} · Pasada: ${pasada ?? "-"} · Válvula: ${valvula ?? "-"}`
   }
 
-  return "Captura registrada"
+  if (phase === "verify") {
+    const status =
+      toStringSafe(metadata.verificationStatus) ??
+      toStringSafe(metadata.status) ??
+      "ok"
+    return `Verificación: ${status}`
+  }
+
+  if (phase === "incident") {
+    const type = toStringSafe(metadata.typeOfIncidence)
+    return `Incidencia: ${type ?? "-"}`
+  }
+
+  return quality ? `Captura registrada · ${quality}` : "Captura registrada"
 }
 
 export async function GET(request: Request) {
@@ -168,168 +131,33 @@ export async function GET(request: Request) {
 
     const supabase = getSupabaseAdminClient()
 
-    const [fieldRecordsRes, rollInstallationRes, materialRes, incidencesRes, rollVerificationRes, rollVerificationsRes] =
-      await Promise.all([
-        supabase
-          .from("field_records")
-          .select("id, module, macro_zone, micro_zone, payload, created_at")
-          .eq("project_id", projectId)
-          .order("created_at", { ascending: false })
-          .limit(1000),
-        supabase
-          .from("roll_installation")
-          .select("id, macro_zone, micro_zone, project_zone_id, photos, roll_length_fit, total_rolls_used, total_seams, created_at")
-          .eq("project_id", projectId)
-          .order("created_at", { ascending: false })
-          .limit(1000),
-        supabase
-          .from("material_records")
-          .select("id, fotos, tipo_material, tipo_pasada, valvula, created_at")
-          .eq("project_id", projectId)
-          .order("created_at", { ascending: false })
-          .limit(1000),
-        supabase
-          .from("incidences")
-          .select("id, macro_zone, micro_zone, project_zone_id, type_of_incidence, photos, created_at")
-          .eq("project_id", projectId)
-          .order("created_at", { ascending: false })
-          .limit(1000),
-        supabase
-          .from("roll_verification")
-          .select("id, macro_zone, micro_zone, project_zone_id, status, photo_url, created_at")
-          .eq("project_id", projectId)
-          .order("created_at", { ascending: false })
-          .limit(1000),
-        supabase
-          .from("roll_verifications")
-          .select("id, macro_zone, micro_zone, status, label_photo_url, created_at")
-          .eq("project_id", projectId)
-          .order("created_at", { ascending: false })
-          .limit(1000),
-      ])
+    const capturesRes = await supabase
+      .from("captures")
+      .select("id, phase, project_zone_id, macro_zone, micro_zone, zone, image_url, notes, timestamp, feet_installed, rolls_used, glue_buckets, seams, roll_length_fit, quality_label, metadata")
+      .eq("project_id", projectId)
+      .order("timestamp", { ascending: false })
+      .limit(2000)
 
-    const errors = [
-      fieldRecordsRes.error,
-      rollInstallationRes.error,
-      materialRes.error,
-      incidencesRes.error,
-      rollVerificationRes.error,
-      rollVerificationsRes.error,
-    ].filter(Boolean)
-
-    for (const error of errors) {
-      if (!isMissingRelationError(error)) {
-        const message = isObject(error) && typeof error.message === "string" ? error.message : "Database error"
-        return NextResponse.json({ error: message }, { status: 500 })
-      }
+    if (capturesRes.error) {
+      const message = isObject(capturesRes.error) && typeof capturesRes.error.message === "string" ? capturesRes.error.message : "Database error"
+      return NextResponse.json({ error: message }, { status: 500 })
     }
 
     const captures: CaptureItem[] = []
 
-    for (const row of (fieldRecordsRes.data ?? []) as FieldRecordRow[]) {
-      const payload = isObject(row.payload) ? row.payload : {}
-      const metadata = isObject(payload.metadata) ? payload.metadata : payload
-      const photos = toStringArray(payload.photosUrls)
-
-      let projectZoneId: string | null = null
-      if (typeof metadata.project_zone_id === "string") projectZoneId = metadata.project_zone_id
-
-      if (photos.length === 0 && isObject(metadata.evidencePhotos)) {
-        const values = Object.values(metadata.evidencePhotos).filter((item): item is string => typeof item === "string")
-        photos.push(...values)
-      }
-
+    for (const row of (capturesRes.data ?? []) as UnifiedCaptureRow[]) {
+      const metadata = isObject(row.metadata) ? row.metadata : {}
       captures.push({
         id: row.id,
-        module: row.module ?? "field_record",
-        createdAt: row.created_at ?? new Date().toISOString(),
+        module: row.phase ?? "capture",
+        createdAt: row.timestamp ?? new Date().toISOString(),
         macroZone: row.macro_zone,
         microZone: row.micro_zone,
-        projectZoneId,
-        photos,
-        summary: formatFieldRecordSummary(row.module, metadata),
+        projectZoneId: row.project_zone_id,
+        photos: row.image_url ? [row.image_url] : [],
+        summary: formatCaptureSummary(row, metadata),
         metadata,
-        sourceTable: "field_records",
-        editable: true,
-      })
-    }
-
-    for (const row of (rollInstallationRes.data ?? []) as RollInstallationRow[]) {
-      captures.push({
-        id: row.id,
-        module: "roll_installation",
-        createdAt: row.created_at ?? new Date().toISOString(),
-        macroZone: row.macro_zone,
-        microZone: row.micro_zone,
-        projectZoneId: row.project_zone_id,
-        photos: toRollInstallationPhotoArray(row.photos),
-        summary: `Roll Fit: ${row.roll_length_fit ?? "-"} · Rollos: ${row.total_rolls_used ?? "-"} · Costuras: ${row.total_seams ?? "-"}`,
-        metadata: {},
-        sourceTable: "roll_installation",
-        editable: false,
-      })
-    }
-
-    for (const row of (materialRes.data ?? []) as MaterialRow[]) {
-      captures.push({
-        id: row.id,
-        module: "material",
-        createdAt: row.created_at ?? new Date().toISOString(),
-        macroZone: null,
-        microZone: null,
-        projectZoneId: null,
-        photos: toStringArray(row.fotos),
-        summary: `Material: ${row.tipo_material ?? "-"} · Pasada: ${row.tipo_pasada ?? "-"} · Válvula: ${row.valvula ?? "-"}`,
-        metadata: {},
-        sourceTable: "material_records",
-        editable: false,
-      })
-    }
-
-    for (const row of (incidencesRes.data ?? []) as IncidenceRow[]) {
-      captures.push({
-        id: row.id,
-        module: "incidence",
-        createdAt: row.created_at ?? new Date().toISOString(),
-        macroZone: row.macro_zone,
-        microZone: row.micro_zone,
-        projectZoneId: row.project_zone_id,
-        photos: toStringArray(row.photos),
-        summary: `Incidencia: ${row.type_of_incidence ?? "-"}`,
-        metadata: {},
-        sourceTable: "incidences",
-        editable: false,
-      })
-    }
-
-    for (const row of (rollVerificationRes.data ?? []) as RollVerificationRow[]) {
-      captures.push({
-        id: row.id,
-        module: "roll_verification",
-        createdAt: row.created_at ?? new Date().toISOString(),
-        macroZone: row.macro_zone,
-        microZone: row.micro_zone,
-        projectZoneId: row.project_zone_id,
-        photos: row.photo_url ? [row.photo_url] : [],
-        summary: `Verificación: ${row.status ?? "-"}`,
-        metadata: {},
-        sourceTable: "roll_verification",
-        editable: false,
-      })
-    }
-
-    for (const row of (rollVerificationsRes.data ?? []) as RollVerificationsRow[]) {
-      captures.push({
-        id: row.id,
-        module: "roll_verifications",
-        createdAt: row.created_at ?? new Date().toISOString(),
-        macroZone: row.macro_zone,
-        microZone: row.micro_zone,
-        projectZoneId: null,
-        photos: row.label_photo_url ? [row.label_photo_url] : [],
-        summary: `Verificación: ${row.status ?? "-"}`,
-        metadata: {},
-        sourceTable: "roll_verifications",
+        sourceTable: "captures",
         editable: false,
       })
     }

@@ -147,13 +147,20 @@ export async function POST(request: Request) {
       await writeUnifiedCaptures({
         supabase,
         captures: photoUrls.map((imageUrl) => ({
-            projectId,
+          projectId,
           phase: "roll_install",
           imageUrl,
           timestamp: body.timestamp ?? new Date().toISOString(),
           crew: null,
           zone: String(body.zone),
           notes: body.observations ?? null,
+          rollsUsed: body.totalRolls,
+          seams: body.totalSeams,
+          rollLengthFit: body.rollLengthStatus,
+          compactionMethod: body.compactionType,
+          compactionSurfaceFirm: body.surfaceFirm ?? false,
+          sourceTable: "rollos",
+          sourceId: rollosData.id,
           metadata: {
             fieldType: body.fieldType ?? null,
             totalRolls: body.totalRolls,

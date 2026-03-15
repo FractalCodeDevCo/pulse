@@ -20,13 +20,18 @@ type ZoneDashboardMetrics = {
 
 type DatabaseProjectRow = {
   project_id: string | null
-  created_at: string | null
+  timestamp: string | null
 }
 
-type PegadaRow = {
+type CaptureMetricsRow = {
+  project_id: string | null
+  timestamp: string | null
   macro_zone: string | null
   micro_zone: string | null
-  payload: unknown
+  zone: string | null
+  feet_installed: number | null
+  glue_buckets: number | null
+  metadata: unknown
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -50,19 +55,19 @@ function readFirstNumber(source: Record<string, unknown>, keys: string[]): numbe
   return 0
 }
 
-function parsePegadaPayload(row: PegadaRow): ZoneDashboardMetrics {
-  const payload = isObject(row.payload) ? row.payload : {}
-  const metadata = isObject(payload.metadata) ? payload.metadata : payload
+function parseCaptureMetrics(row: CaptureMetricsRow): ZoneDashboardMetrics {
+  const metadata = isObject(row.metadata) ? row.metadata : {}
 
   const zone =
+    (typeof row.zone === "string" && row.zone) ||
     (typeof row.macro_zone === "string" && row.macro_zone) ||
     (typeof metadata.macro_zone === "string" && metadata.macro_zone) ||
     (typeof row.micro_zone === "string" && row.micro_zone) ||
     (typeof metadata.micro_zone === "string" && metadata.micro_zone) ||
     "Sin zona"
 
-  const realFt = readFirstNumber(metadata, ["ftTotales", "ft_totales", "real_ft", "ft", "feet"])
-  const realBotes = readFirstNumber(metadata, ["botesUsados", "botes_usados", "botes", "real_botes"])
+  const realFt = row.feet_installed ?? readFirstNumber(metadata, ["ftTotales", "ft_totales", "real_ft", "ft", "feet"])
+  const realBotes = row.glue_buckets ?? readFirstNumber(metadata, ["botesUsados", "botes_usados", "botes", "real_botes"])
   const plannedFt = readFirstNumber(metadata, ["planned_ft", "plannedFt", "ftPlaneados", "ft_planeados"])
   const plannedBotes = readFirstNumber(metadata, ["planned_botes", "plannedBotes", "botesPlaneados", "botes_planeados"])
 
@@ -89,43 +94,44 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   try {
     const supabase = getSupabaseAdminClient()
 
-    const [fieldProjects, materialProjects, rollProjects] = await Promise.all([
-      supabase.from("field_records").select("project_id, created_at").order("created_at", { ascending: false }).limit(1000),
-      supabase.from("material_records").select("project_id, created_at").order("created_at", { ascending: false }).limit(1000),
-      supabase.from("roll_installation").select("project_id, created_at").order("created_at", { ascending: false }).limit(1000),
-    ])
+    const { data: captureProjects, error: captureProjectsError } = await supabase
+      .from("captures")
+      .select("project_id, timestamp")
+      .order("timestamp", { ascending: false })
+      .limit(5000)
+
+    if (captureProjectsError) {
+      loadError = captureProjectsError.message
+    }
 
     const projectLatestMap = new Map<string, string>()
-    const sourceRows = [fieldProjects.data ?? [], materialProjects.data ?? [], rollProjects.data ?? []] as DatabaseProjectRow[][]
-    for (const rows of sourceRows) {
-      for (const row of rows) {
-        if (!row.project_id) continue
-        if (!projectLatestMap.has(row.project_id)) {
-          projectLatestMap.set(row.project_id, row.created_at ?? "")
-        }
+    for (const row of ((captureProjects ?? []) as DatabaseProjectRow[])) {
+      if (!row.project_id) continue
+      if (!projectLatestMap.has(row.project_id)) {
+        projectLatestMap.set(row.project_id, row.timestamp ?? "")
       }
     }
 
     projectRows = [...projectLatestMap.entries()]
-      .map(([project_id, created_at]) => ({ project_id, created_at }))
-      .sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")))
+      .map(([project_id, timestamp]) => ({ project_id, timestamp }))
+      .sort((a, b) => String(b.timestamp ?? "").localeCompare(String(a.timestamp ?? "")))
 
     const selectedProject = params.project ?? projectRows[0]?.project_id ?? null
 
     if (selectedProject) {
       const { data: pegadaRows, error: pegadaError } = await supabase
-        .from("field_records")
-        .select("macro_zone, micro_zone, payload")
+        .from("captures")
+        .select("project_id, timestamp, zone, macro_zone, micro_zone, feet_installed, glue_buckets, metadata")
         .eq("project_id", selectedProject)
-        .eq("module", "pegada")
-        .order("created_at", { ascending: false })
+        .eq("phase", "glue")
+        .order("timestamp", { ascending: false })
 
       if (pegadaError) {
         loadError = pegadaError.message
       } else {
         const zoneMap = new Map<string, ZoneDashboardMetrics>()
-        for (const row of (pegadaRows ?? []) as PegadaRow[]) {
-          const parsed = parsePegadaPayload(row)
+        for (const row of (pegadaRows ?? []) as CaptureMetricsRow[]) {
+          const parsed = parseCaptureMetrics(row)
           const current = zoneMap.get(parsed.zone) ?? {
             zone: parsed.zone,
             realFt: 0,
