@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 
+import { requireAuth } from "../../../lib/auth/guard"
+import { writeUnifiedCaptures } from "../../../lib/captures/writeUnifiedCaptures"
 import { getSupabaseAdminClient } from "../../../lib/supabase/server"
 import { CompactacionType, TrafficLightStatus } from "../../../types/compactacion"
 import { Zone } from "../../../types/zones"
@@ -58,6 +60,8 @@ async function uploadImage(
 }
 
 export async function GET(request: Request) {
+  const auth = await requireAuth(request, ["admin", "pm", "installer"])
+  if (!auth.ok) return auth.response
   const url = new URL(request.url)
   const projectId = url.searchParams.get("projectId")
 
@@ -80,12 +84,16 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const auth = await requireAuth(request, ["admin", "pm", "installer"])
+  if (!auth.ok) return auth.response
   try {
     const body = (await request.json()) as CompactacionBody
 
     if (!body.projectId || !body.zone || !body.compactacionType || !body.trafficLightStatus || !body.crewId) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
+
+    const projectId = body.projectId
 
     const photos = (body.photos ?? []).slice(0, 2)
     if (photos.length < 1) {
@@ -94,7 +102,7 @@ export async function POST(request: Request) {
 
     const photoUrls: string[] = []
     for (let index = 0; index < photos.length; index += 1) {
-      photoUrls.push(await uploadImage(photos[index], body.projectId, index))
+      photoUrls.push(await uploadImage(photos[index], projectId, index))
     }
 
     const supabase = getSupabaseAdminClient()
@@ -102,7 +110,7 @@ export async function POST(request: Request) {
       .from("compactacion")
       .insert({
         zone_id: body.zone,
-        project_id: body.projectId,
+        project_id: projectId,
         field_type: body.fieldType ?? null,
         compactacion_type: body.compactacionType,
         direction_aligned_to_rolls: body.directionAlignedToRolls ?? false,
@@ -131,6 +139,34 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: photosError.message }, { status: 500 })
     }
 
+    try {
+      await writeUnifiedCaptures({
+        supabase,
+        captures: photoUrls.map((imageUrl) => ({
+            projectId,
+          phase: "compaction",
+          imageUrl,
+          timestamp: body.timestamp ?? new Date().toISOString(),
+          crew: body.crewId ?? auth.context.email,
+          zone: String(body.zone),
+          notes: body.observations ?? null,
+          metadata: {
+            fieldType: body.fieldType ?? null,
+            compactacionType: body.compactacionType,
+            directionAlignedToRolls: body.directionAlignedToRolls ?? false,
+            surfaceFirm: body.surfaceFirm ?? false,
+            moistureOk: body.moistureOk ?? false,
+            trafficLightStatus: body.trafficLightStatus,
+          },
+        })),
+      })
+    } catch (captureError) {
+        console.error("[compactacion-api] unified_captures_insert_failed", {
+          error: captureError instanceof Error ? captureError.message : "unknown",
+          projectId,
+        })
+      }
+
     const { data: fullData, error: fullError } = await supabase
       .from("compactacion")
       .select("*, compactacion_photos(image_url)")
@@ -149,6 +185,8 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  const auth = await requireAuth(request, ["admin", "pm"])
+  if (!auth.ok) return auth.response
   const body = (await request.json()) as CompactacionBody
   if (!body.id) return NextResponse.json({ error: "id is required" }, { status: 400 })
 
@@ -170,6 +208,8 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const auth = await requireAuth(request, ["admin", "pm"])
+  if (!auth.ok) return auth.response
   const body = (await request.json()) as CompactacionBody
   if (!body.id) return NextResponse.json({ error: "id is required" }, { status: 400 })
 

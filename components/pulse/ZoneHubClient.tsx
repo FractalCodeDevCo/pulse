@@ -1,0 +1,122 @@
+"use client"
+
+import Link from "next/link"
+import { useMemo } from "react"
+
+import ContextHeader from "./ContextHeader"
+import { ensureProjectZones, getProjectById, getZoneProgress } from "../../lib/projects"
+
+type ZoneHubClientProps = {
+  projectId: string | null
+}
+
+export default function ZoneHubClient({ projectId }: ZoneHubClientProps) {
+  const project = useMemo(() => (projectId ? getProjectById(projectId) : null), [projectId])
+  const zones = useMemo(() => {
+    if (!projectId || !project) return []
+    return ensureProjectZones(projectId, project.fieldType)
+  }, [projectId, project])
+
+  const grouped = useMemo(() => {
+    const map: Record<string, typeof zones> = {}
+    zones.forEach((zone) => {
+      if (!map[zone.macroZone]) map[zone.macroZone] = []
+      map[zone.macroZone].push(zone)
+    })
+    return map
+  }, [zones])
+
+  if (!projectId || !project) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center gap-6 bg-neutral-950 px-4 text-white">
+        <h1 className="text-2xl font-bold">Falta seleccionar proyecto</h1>
+        <p className="text-center text-neutral-400">Primero elige un proyecto para abrir zonas de captura.</p>
+        <Link href="/projects?flow=load" className="rounded-xl bg-blue-600 px-4 py-3 font-semibold hover:bg-blue-700">
+          Ir a proyectos
+        </Link>
+      </main>
+    )
+  }
+
+  return (
+    <main className="min-h-screen bg-neutral-950 px-4 py-8 text-white">
+      <section className="mx-auto w-full max-w-5xl space-y-6">
+        <ContextHeader
+          title={project.name}
+          subtitle="Zonas del proyecto por deporte. Entra a una zona para capturar procesos."
+          backHref="/"
+          backLabel="Inicio"
+          breadcrumbs={[
+            { label: "Pulse", href: "/" },
+            { label: project.name },
+          ]}
+          projectLabel={project.id}
+          statusLabel="En captura"
+          dateLabel={new Date().toLocaleDateString("es-MX")}
+        />
+
+        {Object.entries(grouped).map(([macroZone, list]) => (
+          <section key={macroZone} className="space-y-3 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
+            <h2 className="text-xl font-semibold">{macroZone}</h2>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {list.map((zone) => {
+                const progress = getZoneProgress(zone)
+                const statusCls =
+                  progress >= 100
+                    ? "border-emerald-500/80 bg-emerald-500/10"
+                    : progress > 0
+                      ? "border-amber-500/80 bg-amber-500/10"
+                      : "border-neutral-700 bg-neutral-950"
+
+                return (
+                  <Link
+                    key={zone.id}
+                    href={`/pulse/zones/${encodeURIComponent(zone.id)}?project=${encodeURIComponent(project.id)}`}
+                    className={`rounded-xl border p-4 transition hover:border-blue-500 ${statusCls}`}
+                  >
+                    <p className="font-semibold">{zone.microZone}</p>
+                    <p className="mt-1 text-xs text-neutral-400">Tipo: {zone.zoneType}</p>
+                    <p className="mt-3 text-sm text-neutral-300">Progreso: {progress}%</p>
+                  </Link>
+                )
+              })}
+            </div>
+          </section>
+        ))}
+
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <Link
+            href={`/projects/admin?edit=${encodeURIComponent(project.id)}`}
+            className="w-full rounded-xl border border-cyan-500 px-4 py-3 text-center font-semibold text-cyan-300 hover:bg-cyan-500/10"
+          >
+            Editar setup base
+          </Link>
+          <Link
+            href="/projects?flow=load"
+            className="w-full rounded-xl border border-neutral-600 px-4 py-3 text-center font-semibold hover:bg-neutral-800"
+          >
+            Cambiar proyecto
+          </Link>
+          <Link
+            href={`/pulse/overview?project=${encodeURIComponent(project.id)}`}
+            className="w-full rounded-xl border border-cyan-500 px-4 py-3 text-center font-semibold text-cyan-300 hover:bg-cyan-500/10"
+          >
+            Project Overview
+          </Link>
+          <Link
+            href={`/pulse/history?project=${encodeURIComponent(project.id)}`}
+            className="w-full rounded-xl border border-amber-500 px-4 py-3 text-center font-semibold text-amber-300 hover:bg-amber-500/10"
+          >
+            Ver historial
+          </Link>
+          <Link
+            href={`/capture?project=${encodeURIComponent(project.id)}`}
+            className="w-full rounded-xl border border-neutral-600 px-4 py-3 text-center font-semibold hover:bg-neutral-800"
+          >
+            Abrir módulos legacy
+          </Link>
+        </div>
+      </section>
+    </main>
+  )
+}
