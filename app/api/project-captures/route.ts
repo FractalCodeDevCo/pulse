@@ -14,6 +14,8 @@ type CaptureItem = {
   microZone: string | null
   projectZoneId: string | null
   photos: string[]
+  photoCaptureIds: string[]
+  photoQualityLabels: Array<"green" | "yellow" | "red" | null>
   summary: string
   metadata: Record<string, unknown>
   sourceTable: string
@@ -26,6 +28,9 @@ type UnifiedCaptureRow = {
   id: string
   phase: string | null
   project_zone_id: string | null
+  capture_session_id: string | null
+  source_id: string | null
+  photo_type: string | null
   macro_zone: string | null
   micro_zone: string | null
   zone: string | null
@@ -122,6 +127,10 @@ function formatCaptureSummary(row: UnifiedCaptureRow, metadata: Record<string, u
   return quality ? `Captura registrada · ${quality}` : "Captura registrada"
 }
 
+function normalizeSignal(value: unknown): "green" | "yellow" | "red" | null {
+  return value === "green" || value === "yellow" || value === "red" ? value : null
+}
+
 export async function GET(request: Request) {
   const auth = await requireAuth(request, ["admin", "pm", "installer"])
   if (!auth.ok) return auth.response
@@ -135,7 +144,7 @@ export async function GET(request: Request) {
 
     const capturesRes = await supabase
       .from("captures")
-      .select("id, phase, project_zone_id, macro_zone, micro_zone, zone, image_url, notes, timestamp, feet_installed, rolls_used, glue_buckets, seams, roll_length_fit, quality_label, metadata")
+      .select("id, phase, project_zone_id, capture_session_id, source_id, photo_type, macro_zone, micro_zone, zone, image_url, notes, timestamp, feet_installed, rolls_used, glue_buckets, seams, roll_length_fit, quality_label, metadata")
       .eq("project_id", projectId)
       .order("timestamp", { ascending: false })
       .limit(2000)
@@ -145,31 +154,47 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: message }, { status: 500 })
     }
 
-    const captures: CaptureItem[] = []
+    const captureGroups = new Map<string, CaptureItem>()
 
     for (const row of (capturesRes.data ?? []) as UnifiedCaptureRow[]) {
       const metadata = isObject(row.metadata) ? row.metadata : {}
-      captures.push({
-        id: row.id,
-        module: row.phase ?? "capture",
-        createdAt: row.timestamp ?? new Date().toISOString(),
-        macroZone: row.macro_zone,
-        microZone: row.micro_zone,
-        projectZoneId: row.project_zone_id,
-        photos: row.image_url ? [row.image_url] : [],
-        summary: formatCaptureSummary(row, metadata),
-        metadata,
-        sourceTable: "captures",
-        editable: false,
-        labelEditable: Boolean(row.image_url),
-        qualityLabel:
-          row.quality_label === "green" || row.quality_label === "yellow" || row.quality_label === "red"
-            ? row.quality_label
-            : null,
-      })
+      const groupKey = row.capture_session_id ?? row.source_id ?? row.id
+      const currentSignal = normalizeSignal(row.quality_label)
+      const currentPhotoUrl = row.image_url ? [row.image_url] : []
+      const existing = captureGroups.get(groupKey)
+      if (!existing) {
+        captureGroups.set(groupKey, {
+          id: groupKey,
+          module: row.phase ?? "capture",
+          createdAt: row.timestamp ?? new Date().toISOString(),
+          macroZone: row.macro_zone,
+          microZone: row.micro_zone,
+          projectZoneId: row.project_zone_id,
+          photos: currentPhotoUrl,
+          photoCaptureIds: row.image_url ? [row.id] : [],
+          photoQualityLabels: row.image_url ? [currentSignal] : [],
+          summary: formatCaptureSummary(row, metadata),
+          metadata,
+          sourceTable: "captures",
+          editable: false,
+          labelEditable: Boolean(row.image_url),
+          qualityLabel: currentSignal,
+        })
+        continue
+      }
+
+      if (row.image_url) {
+        existing.photos.unshift(row.image_url)
+        existing.photoCaptureIds.unshift(row.id)
+        existing.photoQualityLabels.unshift(currentSignal)
+      }
+      if ((row.timestamp ?? "") > existing.createdAt) {
+        existing.createdAt = row.timestamp ?? existing.createdAt
+      }
+      existing.labelEditable = existing.labelEditable || Boolean(row.image_url)
     }
 
-    const sorted = captures.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    const sorted = [...captureGroups.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 
     const zonesMap = new Map<string, { key: string; macroZone: string; microZone: string }>()
     for (const capture of sorted) {
